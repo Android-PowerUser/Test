@@ -16,8 +16,7 @@ You can clone this repository or import the project from Android Studio followin
 
 ## Requirements
 
-1. Follow the instructions on Google AI Studio [setup page](https://makersuite.google.com/app/apikey) to obtain an API key.
-2. Add your API Key to the `local.properties` file in this format
+Follow the instructions on Google AI Studio [setup page](https://makersuite.google.com/app/apikey) to obtain an API key.
 
 ```txt
 apiKey=YOUR_API_KEY
