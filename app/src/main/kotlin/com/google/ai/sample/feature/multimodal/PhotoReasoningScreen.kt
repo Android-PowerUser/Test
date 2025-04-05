@@ -87,8 +87,8 @@ internal fun PhotoReasoningRoute(
                 val bitmaps = selectedItems.mapNotNull {
                     val imageRequest = imageRequestBuilder
                         .data(it)
-                        // Scale the image down to 768px for faster uploads
-                        .size(size = 768)
+                        // Scale the image down to 768px for faster uploads deaktiviert um genaue Auflösungen feedback zu bekommen
+                        // .size(size = 768)
                         .precision(Precision.EXACT)
                         .build()
                     try {
