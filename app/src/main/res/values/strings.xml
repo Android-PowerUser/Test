@@ -37,4 +37,8 @@
     <!-- Chat sample strings -->
     <string name="chat_label">Message</string>
     <string name="action_send">Send</string>
+
+         <!-- Screen Operator -->
+    <string name="accessibility_service_description">Screen Operator accessibility service for automated screen operations</string>
+
 </resources>
