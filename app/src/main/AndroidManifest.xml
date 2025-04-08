@@ -20,6 +20,8 @@
         <uses-permission android:name="android.permission.BIND_ACCESSIBILITY_SERVICE" />
         <!-- Add permissions for screenshot functionality -->
         <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+        <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION" />
+        <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
         <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" 
                          android:maxSdkVersion="28" />
         <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" 
@@ -56,5 +58,12 @@
                 android:name="android.accessibilityservice"
                 android:resource="@xml/accessibility_service_config" />
         </service>
+        
+        <!-- Add the screenshot service configuration -->
+        <service
+            android:name=".ScreenshotService"
+            android:enabled="true"
+            android:exported="false"
+            android:foregroundServiceType="mediaProjection" />
     </application>
 </manifest>
