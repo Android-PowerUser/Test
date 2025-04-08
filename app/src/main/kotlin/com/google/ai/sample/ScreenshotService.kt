@@ -1,19 +1,3 @@
-/*
- * Copyright 2023 Google LLC
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
-
 package com.google.ai.sample
 
 import android.app.Notification
@@ -43,10 +27,9 @@ import java.io.File
 import java.io.FileOutputStream
 import java.io.IOException
 import java.util.UUID
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
 
-/**
- * Foreground service for handling screenshot capture using MediaProjection
- */
 class ScreenshotService : Service() {
     companion object {
         private const val TAG = "ScreenshotService"
@@ -54,19 +37,15 @@ class ScreenshotService : Service() {
         private const val CHANNEL_ID = "screenshot_channel"
         private const val CHANNEL_NAME = "Screenshot Service"
         
-        // Intent actions
         const val ACTION_START = "com.google.ai.sample.action.START_SCREENSHOT"
         const val ACTION_STOP = "com.google.ai.sample.action.STOP_SCREENSHOT"
         
-        // Intent extras
         const val EXTRA_RESULT_CODE = "result_code"
         const val EXTRA_DATA = "data"
     }
     
-    // Binder for local service binding
     private val binder = LocalBinder()
     
-    // MediaProjection related variables
     private var mediaProjection: MediaProjection? = null
     private var virtualDisplay: VirtualDisplay? = null
     private var imageReader: ImageReader? = null
@@ -75,7 +54,10 @@ class ScreenshotService : Service() {
     private var screenHeight: Int = 0
     private val handler = Handler(Looper.getMainLooper())
     
-    // Callback for screenshot capture
+    // Synchronization for MediaProjection initialization
+    private val mediaProjectionInitLatch = CountDownLatch(1)
+    private var isMediaProjectionInitialized = false
+    
     private var screenshotCallback: ((Bitmap?) -> Unit)? = null
     
     inner class LocalBinder : Binder() {
@@ -85,7 +67,6 @@ class ScreenshotService : Service() {
     override fun onCreate() {
         super.onCreate()
         
-        // Get screen metrics
         val windowManager = getSystemService(Context.WINDOW_SERVICE) as WindowManager
         val metrics = DisplayMetrics()
         windowManager.defaultDisplay.getMetrics(metrics)
@@ -93,7 +74,6 @@ class ScreenshotService : Service() {
         screenWidth = metrics.widthPixels
         screenHeight = metrics.heightPixels
         
-        // Create notification channel for foreground service
         createNotificationChannel()
     }
     
@@ -105,7 +85,19 @@ class ScreenshotService : Service() {
                 
                 if (resultCode != -1 && data != null) {
                     startForeground(NOTIFICATION_ID, createNotification())
-                    initializeMediaProjection(resultCode, data)
+                    
+                    // Initialize MediaProjection in a background thread to avoid ANR
+                    Thread {
+                        try {
+                            initializeMediaProjection(resultCode, data)
+                            isMediaProjectionInitialized = true
+                            mediaProjectionInitLatch.countDown()
+                        } catch (e: Exception) {
+                            Log.e(TAG, "Failed to initialize MediaProjection: ${e.message}")
+                            isMediaProjectionInitialized = false
+                            mediaProjectionInitLatch.countDown()
+                        }
+                    }.start()
                 }
             }
             ACTION_STOP -> {
@@ -125,9 +117,6 @@ class ScreenshotService : Service() {
         super.onDestroy()
     }
     
-    /**
-     * Create notification channel for foreground service
-     */
     private fun createNotificationChannel() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val channel = NotificationChannel(
@@ -144,9 +133,6 @@ class ScreenshotService : Service() {
         }
     }
     
-    /**
-     * Create notification for foreground service
-     */
     private fun createNotification(): Notification {
         return NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle("Screenshot Service")
@@ -157,24 +143,30 @@ class ScreenshotService : Service() {
             .build()
     }
     
-    /**
-     * Initialize MediaProjection with permission result
-     */
     private fun initializeMediaProjection(resultCode: Int, data: Intent) {
         val mediaProjectionManager = getSystemService(Context.MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
         mediaProjection = mediaProjectionManager.getMediaProjection(resultCode, data)
     }
     
-    /**
-     * Take a screenshot
-     * @param callback Callback function that will be called with the screenshot bitmap
-     */
     fun takeScreenshot(callback: (Bitmap?) -> Unit) {
         screenshotCallback = callback
         
+        // Wait for MediaProjection to be initialized with a timeout
+        try {
+            if (!isMediaProjectionInitialized && !mediaProjectionInitLatch.await(3, TimeUnit.SECONDS)) {
+                Log.e(TAG, "Timeout waiting for MediaProjection initialization")
+                handler.post { callback(null) }
+                return
+            }
+        } catch (e: InterruptedException) {
+            Log.e(TAG, "Interrupted while waiting for MediaProjection initialization")
+            handler.post { callback(null) }
+            return
+        }
+        
         if (mediaProjection == null) {
             Log.e(TAG, "MediaProjection not initialized")
-            callback(null)
+            handler.post { callback(null) }
             return
         }
         
@@ -251,11 +243,6 @@ class ScreenshotService : Service() {
         }, 100)
     }
     
-    /**
-     * Save bitmap to file
-     * @param bitmap The bitmap to save
-     * @return The file containing the saved bitmap, or null if saving failed
-     */
     fun saveBitmapToFile(bitmap: Bitmap): File? {
         val fileName = "screenshot_${UUID.randomUUID()}.png"
         val file = File(cacheDir, fileName)
@@ -271,9 +258,6 @@ class ScreenshotService : Service() {
         }
     }
     
-    /**
-     * Clean up virtual display resources
-     */
     private fun tearDownVirtualDisplay() {
         virtualDisplay?.release()
         virtualDisplay = null
@@ -282,9 +266,6 @@ class ScreenshotService : Service() {
         imageReader = null
     }
     
-    /**
-     * Clean up all resources
-     */
     private fun tearDown() {
         tearDownVirtualDisplay()
         mediaProjection?.stop()
