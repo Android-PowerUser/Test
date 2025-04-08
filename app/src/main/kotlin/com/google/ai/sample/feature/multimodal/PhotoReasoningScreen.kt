@@ -93,6 +93,8 @@ internal fun PhotoReasoningRoute(
             coroutineScope.launch {
                 // Take screenshot when Go button is pressed
                 val screenshotManager = ScreenshotManager.getInstance(context)
+                
+                // Use a callback approach instead of direct suspension function calls
                 screenshotManager.takeScreenshot { bitmap ->
                     if (bitmap != null) {
                         // Save screenshot to file
@@ -102,16 +104,22 @@ internal fun PhotoReasoningRoute(
                             val updatedItems = selectedItems.toMutableList()
                             updatedItems.add(screenshotFile.toUri())
                             
-                            // Process all images including screenshot
-                            processImagesAndReason(updatedItems, inputText, imageRequestBuilder, imageLoader, viewModel)
+                            // Process all images including screenshot within the coroutine scope
+                            coroutineScope.launch {
+                                processImagesAndReason(updatedItems, inputText, imageRequestBuilder, imageLoader, viewModel)
+                            }
                         } else {
                             // If screenshot saving failed, proceed with original images
-                            processImagesAndReason(selectedItems, inputText, imageRequestBuilder, imageLoader, viewModel)
+                            coroutineScope.launch {
+                                processImagesAndReason(selectedItems, inputText, imageRequestBuilder, imageLoader, viewModel)
+                            }
                             Toast.makeText(context, "Failed to save screenshot", Toast.LENGTH_SHORT).show()
                         }
                     } else {
                         // If screenshot failed, proceed with original images
-                        processImagesAndReason(selectedItems, inputText, imageRequestBuilder, imageLoader, viewModel)
+                        coroutineScope.launch {
+                            processImagesAndReason(selectedItems, inputText, imageRequestBuilder, imageLoader, viewModel)
+                        }
                         Toast.makeText(context, "Failed to take screenshot", Toast.LENGTH_SHORT).show()
                     }
                 }
