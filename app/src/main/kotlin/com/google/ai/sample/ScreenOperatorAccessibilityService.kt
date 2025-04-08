@@ -1,3 +1,5 @@
+package com.google.ai.sample
+
 import android.accessibilityservice.AccessibilityService
 import android.view.accessibility.AccessibilityEvent
 import android.util.Log

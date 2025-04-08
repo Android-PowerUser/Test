@@ -1,19 +1,3 @@
-/*
- * Copyright 2023 Google LLC
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
-
 package com.google.ai.sample
 
 import android.app.Activity
@@ -27,9 +11,6 @@ import android.os.IBinder
 import android.util.Log
 import java.io.File
 
-/**
- * Manager class for handling screenshot functionality using MediaProjection via a foreground service
- */
 class ScreenshotManager(private val context: Context) {
     companion object {
         private const val TAG = "ScreenshotManager"
@@ -58,9 +39,11 @@ class ScreenshotManager(private val context: Context) {
             val binder = service as ScreenshotService.LocalBinder
             screenshotService = binder.getService()
             isBound = true
+            Log.d(TAG, "Service connected")
             
             // If there's a pending screenshot request, execute it now
             pendingScreenshotCallback?.let { callback ->
+                Log.d(TAG, "Executing pending screenshot request")
                 takeScreenshot(callback)
                 pendingScreenshotCallback = null
             }
@@ -69,6 +52,7 @@ class ScreenshotManager(private val context: Context) {
         override fun onServiceDisconnected(name: ComponentName?) {
             screenshotService = null
             isBound = false
+            Log.d(TAG, "Service disconnected")
         }
     }
     
@@ -118,8 +102,12 @@ class ScreenshotManager(private val context: Context) {
      */
     private fun bindService() {
         if (!isBound) {
+            Log.d(TAG, "Binding to service")
             val intent = Intent(context, ScreenshotService::class.java)
-            context.bindService(intent, serviceConnection, Context.BIND_AUTO_CREATE)
+            val result = context.bindService(intent, serviceConnection, Context.BIND_AUTO_CREATE)
+            Log.d(TAG, "Bind service result: $result")
+        } else {
+            Log.d(TAG, "Service already bound")
         }
     }
     
@@ -128,8 +116,13 @@ class ScreenshotManager(private val context: Context) {
      */
     private fun unbindService() {
         if (isBound) {
-            context.unbindService(serviceConnection)
-            isBound = false
+            try {
+                context.unbindService(serviceConnection)
+                isBound = false
+                Log.d(TAG, "Service unbound")
+            } catch (e: Exception) {
+                Log.e(TAG, "Error unbinding service: ${e.message}")
+            }
         }
     }
     
@@ -138,10 +131,13 @@ class ScreenshotManager(private val context: Context) {
      * @param callback Callback function that will be called with the screenshot bitmap
      */
     fun takeScreenshot(callback: (Bitmap?) -> Unit) {
+        Log.d(TAG, "takeScreenshot called, isBound=$isBound")
         if (isBound && screenshotService != null) {
+            Log.d(TAG, "Taking screenshot via service")
             screenshotService?.takeScreenshot(callback)
         } else {
             // Store the callback and execute it when the service is connected
+            Log.d(TAG, "Service not bound, storing callback and binding")
             pendingScreenshotCallback = callback
             
             // Try to bind to the service if not already bound
@@ -170,10 +166,15 @@ class ScreenshotManager(private val context: Context) {
      */
     fun release() {
         // Stop the service
-        val serviceIntent = Intent(context, ScreenshotService::class.java).apply {
-            action = ScreenshotService.ACTION_STOP
+        try {
+            val serviceIntent = Intent(context, ScreenshotService::class.java).apply {
+                action = ScreenshotService.ACTION_STOP
+            }
+            context.startService(serviceIntent)
+            Log.d(TAG, "Stop service request sent")
+        } catch (e: Exception) {
+            Log.e(TAG, "Error stopping service: ${e.message}")
         }
-        context.startService(serviceIntent)
         
         // Unbind from the service
         unbindService()

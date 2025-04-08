@@ -29,6 +29,7 @@ import java.io.IOException
 import java.util.UUID
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicBoolean
 
 class ScreenshotService : Service() {
     companion object {
@@ -58,6 +59,9 @@ class ScreenshotService : Service() {
     private val mediaProjectionInitLatch = CountDownLatch(1)
     private var isMediaProjectionInitialized = false
     
+    // Flag to track if a screenshot is in progress
+    private val screenshotInProgress = AtomicBoolean(false)
+    
     private var screenshotCallback: ((Bitmap?) -> Unit)? = null
     
     inner class LocalBinder : Binder() {
@@ -67,6 +71,7 @@ class ScreenshotService : Service() {
     override fun onCreate() {
         super.onCreate()
         
+        // Get screen metrics
         val windowManager = getSystemService(Context.WINDOW_SERVICE) as WindowManager
         val metrics = DisplayMetrics()
         windowManager.defaultDisplay.getMetrics(metrics)
@@ -92,6 +97,7 @@ class ScreenshotService : Service() {
                             initializeMediaProjection(resultCode, data)
                             isMediaProjectionInitialized = true
                             mediaProjectionInitLatch.countDown()
+                            Log.d(TAG, "MediaProjection initialized successfully")
                         } catch (e: Exception) {
                             Log.e(TAG, "Failed to initialize MediaProjection: ${e.message}")
                             isMediaProjectionInitialized = false
@@ -149,98 +155,152 @@ class ScreenshotService : Service() {
     }
     
     fun takeScreenshot(callback: (Bitmap?) -> Unit) {
+        // Prevent multiple simultaneous screenshot attempts
+        if (!screenshotInProgress.compareAndSet(false, true)) {
+            Log.w(TAG, "Screenshot already in progress, ignoring request")
+            handler.post { callback(null) }
+            return
+        }
+        
         screenshotCallback = callback
         
         // Wait for MediaProjection to be initialized with a timeout
         try {
-            if (!isMediaProjectionInitialized && !mediaProjectionInitLatch.await(3, TimeUnit.SECONDS)) {
-                Log.e(TAG, "Timeout waiting for MediaProjection initialization")
-                handler.post { callback(null) }
-                return
+            if (!isMediaProjectionInitialized) {
+                Log.d(TAG, "Waiting for MediaProjection initialization...")
+                if (!mediaProjectionInitLatch.await(5, TimeUnit.SECONDS)) {
+                    Log.e(TAG, "Timeout waiting for MediaProjection initialization")
+                    screenshotInProgress.set(false)
+                    handler.post { callback(null) }
+                    return
+                }
             }
         } catch (e: InterruptedException) {
             Log.e(TAG, "Interrupted while waiting for MediaProjection initialization")
+            screenshotInProgress.set(false)
             handler.post { callback(null) }
             return
         }
         
         if (mediaProjection == null) {
             Log.e(TAG, "MediaProjection not initialized")
+            screenshotInProgress.set(false)
             handler.post { callback(null) }
             return
         }
         
-        // Create ImageReader
-        imageReader = ImageReader.newInstance(
-            screenWidth,
-            screenHeight,
-            PixelFormat.RGBA_8888,
-            1
-        )
-        
-        // Create virtual display
-        virtualDisplay = mediaProjection?.createVirtualDisplay(
-            "ScreenCapture",
-            screenWidth,
-            screenHeight,
-            screenDensity,
-            DisplayManager.VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR,
-            imageReader?.surface,
-            null,
-            handler
-        )
-        
-        // Capture image
-        imageReader?.setOnImageAvailableListener({ reader ->
-            var image: Image? = null
-            var bitmap: Bitmap? = null
+        try {
+            // Create ImageReader
+            imageReader = ImageReader.newInstance(
+                screenWidth,
+                screenHeight,
+                PixelFormat.RGBA_8888,
+                2  // Increased buffer size
+            )
             
-            try {
-                image = reader.acquireLatestImage()
-                if (image != null) {
-                    val planes = image.planes
-                    val buffer = planes[0].buffer
-                    val pixelStride = planes[0].pixelStride
-                    val rowStride = planes[0].rowStride
-                    val rowPadding = rowStride - pixelStride * screenWidth
-                    
-                    // Create bitmap
-                    bitmap = Bitmap.createBitmap(
-                        screenWidth + rowPadding / pixelStride,
-                        screenHeight,
-                        Bitmap.Config.ARGB_8888
-                    )
-                    bitmap.copyPixelsFromBuffer(buffer)
-                    
-                    // Crop bitmap to exact screen size if needed
-                    if (bitmap.width > screenWidth || bitmap.height > screenHeight) {
-                        bitmap = Bitmap.createBitmap(
-                            bitmap,
-                            0,
-                            0,
-                            screenWidth,
-                            screenHeight
-                        )
-                    }
+            // Create virtual display
+            virtualDisplay = mediaProjection?.createVirtualDisplay(
+                "ScreenCapture",
+                screenWidth,
+                screenHeight,
+                screenDensity,
+                DisplayManager.VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR,
+                imageReader?.surface,
+                null,
+                handler
+            )
+            
+            // Add a delay to ensure the virtual display is set up
+            handler.postDelayed({
+                if (imageReader?.surface == null) {
+                    Log.e(TAG, "Surface is null")
+                    tearDownVirtualDisplay()
+                    screenshotInProgress.set(false)
+                    callback(null)
+                    return@postDelayed
                 }
-            } catch (e: Exception) {
-                Log.e(TAG, "Error capturing screen: ${e.message}")
-                bitmap = null
-            } finally {
-                image?.close()
-                tearDownVirtualDisplay()
-                screenshotCallback?.invoke(bitmap)
-            }
-        }, handler)
-        
-        // Add a delay to ensure the virtual display is set up
-        handler.postDelayed({
-            if (imageReader?.surface == null) {
-                Log.e(TAG, "Surface is null")
-                tearDownVirtualDisplay()
-                callback(null)
-            }
-        }, 100)
+                
+                // Capture image with timeout
+                val imageAvailableLatch = CountDownLatch(1)
+                var capturedBitmap: Bitmap? = null
+                
+                imageReader?.setOnImageAvailableListener({ reader ->
+                    var image: Image? = null
+                    
+                    try {
+                        image = reader.acquireLatestImage()
+                        if (image != null) {
+                            val planes = image.planes
+                            val buffer = planes[0].buffer
+                            val pixelStride = planes[0].pixelStride
+                            val rowStride = planes[0].rowStride
+                            val rowPadding = rowStride - pixelStride * screenWidth
+                            
+                            // Create bitmap
+                            capturedBitmap = Bitmap.createBitmap(
+                                screenWidth + rowPadding / pixelStride,
+                                screenHeight,
+                                Bitmap.Config.ARGB_8888
+                            )
+                            capturedBitmap?.copyPixelsFromBuffer(buffer)
+                            
+                            // Crop bitmap to exact screen size if needed
+                            if (capturedBitmap != null && (capturedBitmap!!.width > screenWidth || capturedBitmap!!.height > screenHeight)) {
+                                capturedBitmap = Bitmap.createBitmap(
+                                    capturedBitmap!!,
+                                    0,
+                                    0,
+                                    screenWidth,
+                                    screenHeight
+                                )
+                            }
+                            
+                            imageAvailableLatch.countDown()
+                        }
+                    } catch (e: Exception) {
+                        Log.e(TAG, "Error capturing screen: ${e.message}")
+                        capturedBitmap = null
+                        imageAvailableLatch.countDown()
+                    } finally {
+                        image?.close()
+                    }
+                }, handler)
+                
+                // Wait for image with timeout
+                Thread {
+                    try {
+                        if (!imageAvailableLatch.await(3, TimeUnit.SECONDS)) {
+                            Log.e(TAG, "Timeout waiting for image")
+                            handler.post {
+                                tearDownVirtualDisplay()
+                                screenshotInProgress.set(false)
+                                callback(null)
+                            }
+                            return@Thread
+                        }
+                        
+                        handler.post {
+                            tearDownVirtualDisplay()
+                            screenshotInProgress.set(false)
+                            callback(capturedBitmap)
+                        }
+                    } catch (e: Exception) {
+                        Log.e(TAG, "Error waiting for image: ${e.message}")
+                        handler.post {
+                            tearDownVirtualDisplay()
+                            screenshotInProgress.set(false)
+                            callback(null)
+                        }
+                    }
+                }.start()
+            }, 300)  // Increased delay for virtual display setup
+            
+        } catch (e: Exception) {
+            Log.e(TAG, "Error setting up screenshot: ${e.message}")
+            tearDownVirtualDisplay()
+            screenshotInProgress.set(false)
+            handler.post { callback(null) }
+        }
     }
     
     fun saveBitmapToFile(bitmap: Bitmap): File? {
@@ -250,7 +310,9 @@ class ScreenshotService : Service() {
         return try {
             FileOutputStream(file).use { out ->
                 bitmap.compress(Bitmap.CompressFormat.PNG, 100, out)
+                out.flush()
             }
+            Log.d(TAG, "Screenshot saved to ${file.absolutePath}")
             file
         } catch (e: IOException) {
             Log.e(TAG, "Error saving bitmap: ${e.message}")
@@ -259,16 +321,24 @@ class ScreenshotService : Service() {
     }
     
     private fun tearDownVirtualDisplay() {
-        virtualDisplay?.release()
-        virtualDisplay = null
-        
-        imageReader?.close()
-        imageReader = null
+        try {
+            virtualDisplay?.release()
+            virtualDisplay = null
+            
+            imageReader?.close()
+            imageReader = null
+        } catch (e: Exception) {
+            Log.e(TAG, "Error tearing down virtual display: ${e.message}")
+        }
     }
     
     private fun tearDown() {
-        tearDownVirtualDisplay()
-        mediaProjection?.stop()
-        mediaProjection = null
+        try {
+            tearDownVirtualDisplay()
+            mediaProjection?.stop()
+            mediaProjection = null
+        } catch (e: Exception) {
+            Log.e(TAG, "Error tearing down resources: ${e.message}")
+        }
     }
 }
