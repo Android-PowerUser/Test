@@ -84,6 +84,7 @@ class ScreenshotService : Service() {
                 val data = intent.getParcelableExtra<Intent>(EXTRA_DATA)
                 
                 if (resultCode != -1 && data != null) {
+                    // CRITICAL: Start foreground immediately to avoid ANR
                     startForeground(NOTIFICATION_ID, createNotification())
                     
                     // Initialize MediaProjection in a background thread to avoid ANR
@@ -147,6 +148,10 @@ class ScreenshotService : Service() {
         mediaProjection = mediaProjectionManager.getMediaProjection(resultCode, data)
     }
     
+    fun isMediaProjectionReady(): Boolean {
+        return isMediaProjectionInitialized.get() && mediaProjection != null
+    }
+    
     fun takeScreenshot(callback: (Bitmap?) -> Unit) {
         // Prevent multiple simultaneous screenshot attempts
         if (!screenshotInProgress.compareAndSet(false, true)) {
@@ -155,16 +160,9 @@ class ScreenshotService : Service() {
             return
         }
         
-        // Check if MediaProjection is initialized - IMPORTANT: Don't wait on main thread!
-        if (!isMediaProjectionInitialized.get()) {
+        // Check if MediaProjection is initialized
+        if (!isMediaProjectionInitialized.get() || mediaProjection == null) {
             Log.e(TAG, "MediaProjection not initialized yet, cannot take screenshot")
-            screenshotInProgress.set(false)
-            handler.post { callback(null) }
-            return
-        }
-        
-        if (mediaProjection == null) {
-            Log.e(TAG, "MediaProjection is null")
             screenshotInProgress.set(false)
             handler.post { callback(null) }
             return

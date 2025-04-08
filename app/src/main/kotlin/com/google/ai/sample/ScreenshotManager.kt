@@ -18,6 +18,8 @@ class ScreenshotManager(private val context: Context) {
     companion object {
         private const val TAG = "ScreenshotManager"
         const val REQUEST_MEDIA_PROJECTION = 1001
+        private const val MAX_RETRY_COUNT = 10
+        private const val RETRY_DELAY_MS = 500L
         
         // Singleton instance
         @Volatile
@@ -48,7 +50,7 @@ class ScreenshotManager(private val context: Context) {
             // If there's a pending screenshot request, execute it now
             pendingScreenshotCallback?.let { callback ->
                 Log.d(TAG, "Executing pending screenshot request")
-                takeScreenshot(callback)
+                takeScreenshotWithRetry(callback, 0)
                 pendingScreenshotCallback = null
             }
         }
@@ -150,12 +152,11 @@ class ScreenshotManager(private val context: Context) {
     }
     
     /**
-     * Take a screenshot
+     * Take a screenshot with retry mechanism
      * @param callback Callback function that will be called with the screenshot bitmap
+     * @param retryCount Current retry count
      */
-    fun takeScreenshot(callback: (Bitmap?) -> Unit) {
-        Log.d(TAG, "takeScreenshot called, isBound=$isBound")
-        
+    private fun takeScreenshotWithRetry(callback: (Bitmap?) -> Unit, retryCount: Int) {
         // Create a wrapper callback that always runs on the main thread
         val mainThreadCallback: (Bitmap?) -> Unit = { bitmap ->
             handler.post {
@@ -164,17 +165,31 @@ class ScreenshotManager(private val context: Context) {
         }
         
         if (isBound && screenshotService != null) {
-            Log.d(TAG, "Taking screenshot via service")
-            try {
-                screenshotService?.takeScreenshot(mainThreadCallback)
-            } catch (e: Exception) {
-                Log.e(TAG, "Error taking screenshot: ${e.message}")
+            // Check if MediaProjection is ready
+            if (screenshotService?.isMediaProjectionReady() == true) {
+                Log.d(TAG, "Taking screenshot via service")
+                try {
+                    screenshotService?.takeScreenshot(mainThreadCallback)
+                } catch (e: Exception) {
+                    Log.e(TAG, "Error taking screenshot: ${e.message}")
+                    mainThreadCallback(null)
+                }
+            } else if (retryCount < MAX_RETRY_COUNT) {
+                // Retry after delay
+                Log.d(TAG, "MediaProjection not ready, retrying in ${RETRY_DELAY_MS}ms (attempt ${retryCount + 1}/${MAX_RETRY_COUNT})")
+                handler.postDelayed({
+                    takeScreenshotWithRetry(callback, retryCount + 1)
+                }, RETRY_DELAY_MS)
+            } else {
+                // Max retries reached
+                Log.e(TAG, "Max retries reached, MediaProjection still not initialized")
+                Toast.makeText(context, "Failed to initialize screenshot service", Toast.LENGTH_SHORT).show()
                 mainThreadCallback(null)
             }
         } else {
             // Store the callback and execute it when the service is connected
             Log.d(TAG, "Service not bound, storing callback and binding")
-            pendingScreenshotCallback = mainThreadCallback
+            pendingScreenshotCallback = callback
             
             // Try to bind to the service if not already bound
             if (!isBound) {
@@ -185,6 +200,15 @@ class ScreenshotManager(private val context: Context) {
                 mainThreadCallback(null)
             }
         }
+    }
+    
+    /**
+     * Take a screenshot
+     * @param callback Callback function that will be called with the screenshot bitmap
+     */
+    fun takeScreenshot(callback: (Bitmap?) -> Unit) {
+        Log.d(TAG, "takeScreenshot called, isBound=$isBound")
+        takeScreenshotWithRetry(callback, 0)
     }
     
     /**
