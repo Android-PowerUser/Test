@@ -17,29 +17,18 @@
 package com.google.ai.sample
 
 import android.app.Activity
+import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
+import android.content.ServiceConnection
 import android.graphics.Bitmap
-import android.graphics.PixelFormat
-import android.hardware.display.DisplayManager
-import android.hardware.display.VirtualDisplay
-import android.media.Image
-import android.media.ImageReader
-import android.media.projection.MediaProjection
 import android.media.projection.MediaProjectionManager
-import android.os.Handler
-import android.os.Looper
-import android.util.DisplayMetrics
+import android.os.IBinder
 import android.util.Log
-import android.view.WindowManager
 import java.io.File
-import java.io.FileOutputStream
-import java.io.IOException
-import java.nio.ByteBuffer
-import java.util.UUID
 
 /**
- * Manager class for handling screenshot functionality using MediaProjection
+ * Manager class for handling screenshot functionality using MediaProjection via a foreground service
  */
 class ScreenshotManager(private val context: Context) {
     companion object {
@@ -57,23 +46,30 @@ class ScreenshotManager(private val context: Context) {
         }
     }
     
-    private var mediaProjection: MediaProjection? = null
-    private var virtualDisplay: VirtualDisplay? = null
-    private var imageReader: ImageReader? = null
-    private var screenDensity: Int = 0
-    private var screenWidth: Int = 0
-    private var screenHeight: Int = 0
-    private var screenshotCallback: ((Bitmap?) -> Unit)? = null
-    private val handler = Handler(Looper.getMainLooper())
+    private var screenshotService: ScreenshotService? = null
+    private var isBound = false
+    private var pendingScreenshotCallback: ((Bitmap?) -> Unit)? = null
+    private var resultCode: Int = Activity.RESULT_CANCELED
+    private var resultData: Intent? = null
     
-    init {
-        // Get screen metrics
-        val windowManager = context.getSystemService(Context.WINDOW_SERVICE) as WindowManager
-        val metrics = DisplayMetrics()
-        windowManager.defaultDisplay.getMetrics(metrics)
-        screenDensity = metrics.densityDpi
-        screenWidth = metrics.widthPixels
-        screenHeight = metrics.heightPixels
+    // Service connection
+    private val serviceConnection = object : ServiceConnection {
+        override fun onServiceConnected(name: ComponentName?, service: IBinder?) {
+            val binder = service as ScreenshotService.LocalBinder
+            screenshotService = binder.getService()
+            isBound = true
+            
+            // If there's a pending screenshot request, execute it now
+            pendingScreenshotCallback?.let { callback ->
+                takeScreenshot(callback)
+                pendingScreenshotCallback = null
+            }
+        }
+        
+        override fun onServiceDisconnected(name: ComponentName?) {
+            screenshotService = null
+            isBound = false
+        }
     }
     
     /**
@@ -100,9 +96,41 @@ class ScreenshotManager(private val context: Context) {
             return false
         }
         
-        val mediaProjectionManager = context.getSystemService(Context.MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
-        mediaProjection = mediaProjectionManager.getMediaProjection(resultCode, data)
+        this.resultCode = resultCode
+        this.resultData = data
+        
+        // Start the foreground service
+        val serviceIntent = Intent(context, ScreenshotService::class.java).apply {
+            action = ScreenshotService.ACTION_START
+            putExtra(ScreenshotService.EXTRA_RESULT_CODE, resultCode)
+            putExtra(ScreenshotService.EXTRA_DATA, data)
+        }
+        context.startForegroundService(serviceIntent)
+        
+        // Bind to the service
+        bindService()
+        
         return true
+    }
+    
+    /**
+     * Bind to the screenshot service
+     */
+    private fun bindService() {
+        if (!isBound) {
+            val intent = Intent(context, ScreenshotService::class.java)
+            context.bindService(intent, serviceConnection, Context.BIND_AUTO_CREATE)
+        }
+    }
+    
+    /**
+     * Unbind from the screenshot service
+     */
+    private fun unbindService() {
+        if (isBound) {
+            context.unbindService(serviceConnection)
+            isBound = false
+        }
     }
     
     /**
@@ -110,105 +138,17 @@ class ScreenshotManager(private val context: Context) {
      * @param callback Callback function that will be called with the screenshot bitmap
      */
     fun takeScreenshot(callback: (Bitmap?) -> Unit) {
-        screenshotCallback = callback
-        
-        if (mediaProjection == null) {
-            Log.e(TAG, "MediaProjection not initialized")
-            callback(null)
-            return
-        }
-        
-        // Create ImageReader
-        imageReader = ImageReader.newInstance(
-            screenWidth,
-            screenHeight,
-            PixelFormat.RGBA_8888,
-            1
-        )
-        
-        // Create virtual display
-        virtualDisplay = mediaProjection?.createVirtualDisplay(
-            "ScreenCapture",
-            screenWidth,
-            screenHeight,
-            screenDensity,
-            DisplayManager.VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR,
-            imageReader?.surface,
-            null,
-            handler
-        )
-        
-        // Capture image
-        imageReader?.setOnImageAvailableListener({ reader ->
-            var image: Image? = null
-            var bitmap: Bitmap? = null
+        if (isBound && screenshotService != null) {
+            screenshotService?.takeScreenshot(callback)
+        } else {
+            // Store the callback and execute it when the service is connected
+            pendingScreenshotCallback = callback
             
-            try {
-                image = reader.acquireLatestImage()
-                if (image != null) {
-                    val planes = image.planes
-                    val buffer = planes[0].buffer
-                    val pixelStride = planes[0].pixelStride
-                    val rowStride = planes[0].rowStride
-                    val rowPadding = rowStride - pixelStride * screenWidth
-                    
-                    // Create bitmap
-                    bitmap = Bitmap.createBitmap(
-                        screenWidth + rowPadding / pixelStride,
-                        screenHeight,
-                        Bitmap.Config.ARGB_8888
-                    )
-                    bitmap.copyPixelsFromBuffer(buffer)
-                    
-                    // Crop bitmap to exact screen size if needed
-                    if (bitmap.width > screenWidth || bitmap.height > screenHeight) {
-                        bitmap = Bitmap.createBitmap(
-                            bitmap,
-                            0,
-                            0,
-                            screenWidth,
-                            screenHeight
-                        )
-                    }
-                }
-            } catch (e: Exception) {
-                Log.e(TAG, "Error capturing screen: ${e.message}")
-                bitmap = null
-            } finally {
-                image?.close()
-                tearDown()
-                screenshotCallback?.invoke(bitmap)
+            // Try to bind to the service if not already bound
+            if (!isBound) {
+                bindService()
             }
-        }, handler)
-        
-        // Add a delay to ensure the virtual display is set up
-        handler.postDelayed({
-            if (imageReader?.surface == null) {
-                Log.e(TAG, "Surface is null")
-                tearDown()
-                callback(null)
-            }
-        }, 100)
-    }
-    
-    /**
-     * Clean up resources
-     */
-    private fun tearDown() {
-        virtualDisplay?.release()
-        virtualDisplay = null
-        
-        imageReader?.close()
-        imageReader = null
-    }
-    
-    /**
-     * Release all resources
-     */
-    fun release() {
-        tearDown()
-        mediaProjection?.stop()
-        mediaProjection = null
+        }
     }
     
     /**
@@ -217,17 +157,29 @@ class ScreenshotManager(private val context: Context) {
      * @return The URI of the saved file, or null if saving failed
      */
     fun saveBitmapToFile(bitmap: Bitmap): File? {
-        val fileName = "screenshot_${UUID.randomUUID()}.png"
-        val file = File(context.cacheDir, fileName)
-        
-        return try {
-            FileOutputStream(file).use { out ->
-                bitmap.compress(Bitmap.CompressFormat.PNG, 100, out)
-            }
-            file
-        } catch (e: IOException) {
-            Log.e(TAG, "Error saving bitmap: ${e.message}")
+        return if (isBound && screenshotService != null) {
+            screenshotService?.saveBitmapToFile(bitmap)
+        } else {
+            Log.e(TAG, "Service not bound, cannot save bitmap")
             null
         }
+    }
+    
+    /**
+     * Release all resources
+     */
+    fun release() {
+        // Stop the service
+        val serviceIntent = Intent(context, ScreenshotService::class.java).apply {
+            action = ScreenshotService.ACTION_STOP
+        }
+        context.startService(serviceIntent)
+        
+        // Unbind from the service
+        unbindService()
+        
+        // Clear references
+        screenshotService = null
+        resultData = null
     }
 }
