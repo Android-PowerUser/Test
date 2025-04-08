@@ -27,8 +27,6 @@ import java.io.File
 import java.io.FileOutputStream
 import java.io.IOException
 import java.util.UUID
-import java.util.concurrent.CountDownLatch
-import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
 
 class ScreenshotService : Service() {
@@ -55,14 +53,11 @@ class ScreenshotService : Service() {
     private var screenHeight: Int = 0
     private val handler = Handler(Looper.getMainLooper())
     
-    // Synchronization for MediaProjection initialization
-    private val mediaProjectionInitLatch = CountDownLatch(1)
-    private var isMediaProjectionInitialized = false
-    
     // Flag to track if a screenshot is in progress
     private val screenshotInProgress = AtomicBoolean(false)
     
-    private var screenshotCallback: ((Bitmap?) -> Unit)? = null
+    // Flag to track if MediaProjection is initialized
+    private val isMediaProjectionInitialized = AtomicBoolean(false)
     
     inner class LocalBinder : Binder() {
         fun getService(): ScreenshotService = this@ScreenshotService
@@ -95,13 +90,11 @@ class ScreenshotService : Service() {
                     Thread {
                         try {
                             initializeMediaProjection(resultCode, data)
-                            isMediaProjectionInitialized = true
-                            mediaProjectionInitLatch.countDown()
+                            isMediaProjectionInitialized.set(true)
                             Log.d(TAG, "MediaProjection initialized successfully")
                         } catch (e: Exception) {
                             Log.e(TAG, "Failed to initialize MediaProjection: ${e.message}")
-                            isMediaProjectionInitialized = false
-                            mediaProjectionInitLatch.countDown()
+                            isMediaProjectionInitialized.set(false)
                         }
                     }.start()
                 }
@@ -162,28 +155,16 @@ class ScreenshotService : Service() {
             return
         }
         
-        screenshotCallback = callback
-        
-        // Wait for MediaProjection to be initialized with a timeout
-        try {
-            if (!isMediaProjectionInitialized) {
-                Log.d(TAG, "Waiting for MediaProjection initialization...")
-                if (!mediaProjectionInitLatch.await(5, TimeUnit.SECONDS)) {
-                    Log.e(TAG, "Timeout waiting for MediaProjection initialization")
-                    screenshotInProgress.set(false)
-                    handler.post { callback(null) }
-                    return
-                }
-            }
-        } catch (e: InterruptedException) {
-            Log.e(TAG, "Interrupted while waiting for MediaProjection initialization")
+        // Check if MediaProjection is initialized - IMPORTANT: Don't wait on main thread!
+        if (!isMediaProjectionInitialized.get()) {
+            Log.e(TAG, "MediaProjection not initialized yet, cannot take screenshot")
             screenshotInProgress.set(false)
             handler.post { callback(null) }
             return
         }
         
         if (mediaProjection == null) {
-            Log.e(TAG, "MediaProjection not initialized")
+            Log.e(TAG, "MediaProjection is null")
             screenshotInProgress.set(false)
             handler.post { callback(null) }
             return
@@ -220,12 +201,10 @@ class ScreenshotService : Service() {
                     return@postDelayed
                 }
                 
-                // Capture image with timeout
-                val imageAvailableLatch = CountDownLatch(1)
-                var capturedBitmap: Bitmap? = null
-                
+                // Set up image listener
                 imageReader?.setOnImageAvailableListener({ reader ->
                     var image: Image? = null
+                    var bitmap: Bitmap? = null
                     
                     try {
                         image = reader.acquireLatestImage()
@@ -237,62 +216,45 @@ class ScreenshotService : Service() {
                             val rowPadding = rowStride - pixelStride * screenWidth
                             
                             // Create bitmap
-                            capturedBitmap = Bitmap.createBitmap(
+                            bitmap = Bitmap.createBitmap(
                                 screenWidth + rowPadding / pixelStride,
                                 screenHeight,
                                 Bitmap.Config.ARGB_8888
                             )
-                            capturedBitmap?.copyPixelsFromBuffer(buffer)
+                            bitmap.copyPixelsFromBuffer(buffer)
                             
                             // Crop bitmap to exact screen size if needed
-                            if (capturedBitmap != null && (capturedBitmap!!.width > screenWidth || capturedBitmap!!.height > screenHeight)) {
-                                capturedBitmap = Bitmap.createBitmap(
-                                    capturedBitmap!!,
+                            if (bitmap.width > screenWidth || bitmap.height > screenHeight) {
+                                bitmap = Bitmap.createBitmap(
+                                    bitmap,
                                     0,
                                     0,
                                     screenWidth,
                                     screenHeight
                                 )
                             }
-                            
-                            imageAvailableLatch.countDown()
                         }
                     } catch (e: Exception) {
                         Log.e(TAG, "Error capturing screen: ${e.message}")
-                        capturedBitmap = null
-                        imageAvailableLatch.countDown()
+                        bitmap = null
                     } finally {
                         image?.close()
+                        tearDownVirtualDisplay()
+                        screenshotInProgress.set(false)
+                        callback(bitmap)
                     }
                 }, handler)
                 
-                // Wait for image with timeout
-                Thread {
-                    try {
-                        if (!imageAvailableLatch.await(3, TimeUnit.SECONDS)) {
-                            Log.e(TAG, "Timeout waiting for image")
-                            handler.post {
-                                tearDownVirtualDisplay()
-                                screenshotInProgress.set(false)
-                                callback(null)
-                            }
-                            return@Thread
-                        }
-                        
-                        handler.post {
-                            tearDownVirtualDisplay()
-                            screenshotInProgress.set(false)
-                            callback(capturedBitmap)
-                        }
-                    } catch (e: Exception) {
-                        Log.e(TAG, "Error waiting for image: ${e.message}")
-                        handler.post {
-                            tearDownVirtualDisplay()
-                            screenshotInProgress.set(false)
-                            callback(null)
-                        }
+                // Add a timeout to prevent hanging
+                handler.postDelayed({
+                    if (screenshotInProgress.get()) {
+                        Log.e(TAG, "Screenshot timed out")
+                        tearDownVirtualDisplay()
+                        screenshotInProgress.set(false)
+                        callback(null)
                     }
-                }.start()
+                }, 3000) // 3 second timeout
+                
             }, 300)  // Increased delay for virtual display setup
             
         } catch (e: Exception) {

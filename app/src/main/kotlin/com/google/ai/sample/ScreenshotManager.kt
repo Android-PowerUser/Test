@@ -7,8 +7,11 @@ import android.content.Intent
 import android.content.ServiceConnection
 import android.graphics.Bitmap
 import android.media.projection.MediaProjectionManager
+import android.os.Handler
 import android.os.IBinder
+import android.os.Looper
 import android.util.Log
+import android.widget.Toast
 import java.io.File
 
 class ScreenshotManager(private val context: Context) {
@@ -32,6 +35,7 @@ class ScreenshotManager(private val context: Context) {
     private var pendingScreenshotCallback: ((Bitmap?) -> Unit)? = null
     private var resultCode: Int = Activity.RESULT_CANCELED
     private var resultData: Intent? = null
+    private val handler = Handler(Looper.getMainLooper())
     
     // Service connection
     private val serviceConnection = object : ServiceConnection {
@@ -61,11 +65,16 @@ class ScreenshotManager(private val context: Context) {
      * @param activity The activity to request permission from
      */
     fun requestScreenshotPermission(activity: Activity) {
-        val mediaProjectionManager = activity.getSystemService(Context.MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
-        activity.startActivityForResult(
-            mediaProjectionManager.createScreenCaptureIntent(),
-            REQUEST_MEDIA_PROJECTION
-        )
+        try {
+            val mediaProjectionManager = activity.getSystemService(Context.MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
+            activity.startActivityForResult(
+                mediaProjectionManager.createScreenCaptureIntent(),
+                REQUEST_MEDIA_PROJECTION
+            )
+        } catch (e: Exception) {
+            Log.e(TAG, "Error requesting screenshot permission: ${e.message}")
+            Toast.makeText(context, "Failed to request screenshot permission", Toast.LENGTH_SHORT).show()
+        }
     }
     
     /**
@@ -83,18 +92,23 @@ class ScreenshotManager(private val context: Context) {
         this.resultCode = resultCode
         this.resultData = data
         
-        // Start the foreground service
-        val serviceIntent = Intent(context, ScreenshotService::class.java).apply {
-            action = ScreenshotService.ACTION_START
-            putExtra(ScreenshotService.EXTRA_RESULT_CODE, resultCode)
-            putExtra(ScreenshotService.EXTRA_DATA, data)
+        try {
+            // Start the foreground service
+            val serviceIntent = Intent(context, ScreenshotService::class.java).apply {
+                action = ScreenshotService.ACTION_START
+                putExtra(ScreenshotService.EXTRA_RESULT_CODE, resultCode)
+                putExtra(ScreenshotService.EXTRA_DATA, data)
+            }
+            context.startForegroundService(serviceIntent)
+            
+            // Bind to the service
+            bindService()
+            
+            return true
+        } catch (e: Exception) {
+            Log.e(TAG, "Error handling permission result: ${e.message}")
+            return false
         }
-        context.startForegroundService(serviceIntent)
-        
-        // Bind to the service
-        bindService()
-        
-        return true
     }
     
     /**
@@ -102,10 +116,19 @@ class ScreenshotManager(private val context: Context) {
      */
     private fun bindService() {
         if (!isBound) {
-            Log.d(TAG, "Binding to service")
-            val intent = Intent(context, ScreenshotService::class.java)
-            val result = context.bindService(intent, serviceConnection, Context.BIND_AUTO_CREATE)
-            Log.d(TAG, "Bind service result: $result")
+            try {
+                Log.d(TAG, "Binding to service")
+                val intent = Intent(context, ScreenshotService::class.java)
+                val result = context.bindService(intent, serviceConnection, Context.BIND_AUTO_CREATE)
+                Log.d(TAG, "Bind service result: $result")
+                
+                if (!result) {
+                    Log.e(TAG, "Failed to bind to service")
+                    Toast.makeText(context, "Failed to connect to screenshot service", Toast.LENGTH_SHORT).show()
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Error binding to service: ${e.message}")
+            }
         } else {
             Log.d(TAG, "Service already bound")
         }
@@ -132,17 +155,34 @@ class ScreenshotManager(private val context: Context) {
      */
     fun takeScreenshot(callback: (Bitmap?) -> Unit) {
         Log.d(TAG, "takeScreenshot called, isBound=$isBound")
+        
+        // Create a wrapper callback that always runs on the main thread
+        val mainThreadCallback: (Bitmap?) -> Unit = { bitmap ->
+            handler.post {
+                callback(bitmap)
+            }
+        }
+        
         if (isBound && screenshotService != null) {
             Log.d(TAG, "Taking screenshot via service")
-            screenshotService?.takeScreenshot(callback)
+            try {
+                screenshotService?.takeScreenshot(mainThreadCallback)
+            } catch (e: Exception) {
+                Log.e(TAG, "Error taking screenshot: ${e.message}")
+                mainThreadCallback(null)
+            }
         } else {
             // Store the callback and execute it when the service is connected
             Log.d(TAG, "Service not bound, storing callback and binding")
-            pendingScreenshotCallback = callback
+            pendingScreenshotCallback = mainThreadCallback
             
             // Try to bind to the service if not already bound
             if (!isBound) {
                 bindService()
+            } else {
+                // If binding failed or service is null, return null
+                Log.e(TAG, "Service is bound but null, cannot take screenshot")
+                mainThreadCallback(null)
             }
         }
     }
@@ -154,7 +194,12 @@ class ScreenshotManager(private val context: Context) {
      */
     fun saveBitmapToFile(bitmap: Bitmap): File? {
         return if (isBound && screenshotService != null) {
-            screenshotService?.saveBitmapToFile(bitmap)
+            try {
+                screenshotService?.saveBitmapToFile(bitmap)
+            } catch (e: Exception) {
+                Log.e(TAG, "Error saving bitmap: ${e.message}")
+                null
+            }
         } else {
             Log.e(TAG, "Service not bound, cannot save bitmap")
             null
