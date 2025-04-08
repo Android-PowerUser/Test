@@ -67,8 +67,14 @@ import coil.request.SuccessResult
 import com.google.ai.sample.GenerativeViewModelFactory
 import coil.size.Precision
 import com.google.ai.sample.R
+import com.google.ai.sample.ScreenshotManager
 import com.google.ai.sample.util.UriSaver
 import kotlinx.coroutines.launch
+import android.content.Context
+import android.graphics.Bitmap
+import android.widget.Toast
+import androidx.core.net.toUri
+import java.io.File
 
 @Composable
 internal fun PhotoReasoningRoute(
@@ -79,33 +85,68 @@ internal fun PhotoReasoningRoute(
     val coroutineScope = rememberCoroutineScope()
     val imageRequestBuilder = ImageRequest.Builder(LocalContext.current)
     val imageLoader = ImageLoader.Builder(LocalContext.current).build()
+    val context = LocalContext.current
 
     PhotoReasoningScreen(
         uiState = photoReasoningUiState,
         onReasonClicked = { inputText, selectedItems ->
             coroutineScope.launch {
-                val bitmaps = selectedItems.mapNotNull {
-                    val imageRequest = imageRequestBuilder
-                        .data(it)
-                        // Scale the image down to 768px for faster uploads deaktiviert um genaue Auflösungen feedback zu bekommen
-                        // .size(size = 768)
-                        .precision(Precision.EXACT)
-                        .build()
-                    try {
-                        val result = imageLoader.execute(imageRequest)
-                        if (result is SuccessResult) {
-                            return@mapNotNull (result.drawable as BitmapDrawable).bitmap
+                // Take screenshot when Go button is pressed
+                val screenshotManager = ScreenshotManager.getInstance(context)
+                screenshotManager.takeScreenshot { bitmap ->
+                    if (bitmap != null) {
+                        // Save screenshot to file
+                        val screenshotFile = screenshotManager.saveBitmapToFile(bitmap)
+                        if (screenshotFile != null) {
+                            // Add screenshot URI to selected items
+                            val updatedItems = selectedItems.toMutableList()
+                            updatedItems.add(screenshotFile.toUri())
+                            
+                            // Process all images including screenshot
+                            processImagesAndReason(updatedItems, inputText, imageRequestBuilder, imageLoader, viewModel)
                         } else {
-                            return@mapNotNull null
+                            // If screenshot saving failed, proceed with original images
+                            processImagesAndReason(selectedItems, inputText, imageRequestBuilder, imageLoader, viewModel)
+                            Toast.makeText(context, "Failed to save screenshot", Toast.LENGTH_SHORT).show()
                         }
-                    } catch (e: Exception) {
-                        return@mapNotNull null
+                    } else {
+                        // If screenshot failed, proceed with original images
+                        processImagesAndReason(selectedItems, inputText, imageRequestBuilder, imageLoader, viewModel)
+                        Toast.makeText(context, "Failed to take screenshot", Toast.LENGTH_SHORT).show()
                     }
                 }
-                viewModel.reason(inputText, bitmaps)
             }
         }
     )
+}
+
+// Helper function to process images and call reason
+private suspend fun processImagesAndReason(
+    selectedItems: List<Uri>,
+    inputText: String,
+    imageRequestBuilder: ImageRequest.Builder,
+    imageLoader: ImageLoader,
+    viewModel: PhotoReasoningViewModel
+) {
+    val bitmaps = selectedItems.mapNotNull {
+        val imageRequest = imageRequestBuilder
+            .data(it)
+            // Scale the image down to 768px for faster uploads deaktiviert um genaue Auflösungen feedback zu bekommen
+            // .size(size = 768)
+            .precision(Precision.EXACT)
+            .build()
+        try {
+            val result = imageLoader.execute(imageRequest)
+            if (result is SuccessResult) {
+                return@mapNotNull (result.drawable as BitmapDrawable).bitmap
+            } else {
+                return@mapNotNull null
+            }
+        } catch (e: Exception) {
+            return@mapNotNull null
+        }
+    }
+    viewModel.reason(inputText, bitmaps)
 }
 
 @Composable
