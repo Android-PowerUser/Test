@@ -2,7 +2,7 @@
 
 This app is intended to operate the screen with AI and is still in development
 
-Current development steps:
+Current development step:
 
 Correct implementation of MediaProjection. (Create screenshots for Gemini) in the screenshot branch.
 
