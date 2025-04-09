@@ -1,6 +1,6 @@
 ## Not ready
 
-This app is intended to operate the screen and is still in development
+This app is intended to operate the screen with AI and is still in development
 
 Upcoming development steps:
 
@@ -20,6 +20,6 @@ This sample showcases the following API capablilites:
 * Photo Reasoning - demonstrates the MultiModal feature from the SDK
 * Chat - demonstrates the Multi-turn Conversations feature from the SDK
 
-## Documentation
+##### Documentation
 
 You can find the quick start documentation for the Android Generative AI API [here](https://ai.google.dev/tutorials/android_quickstart).
