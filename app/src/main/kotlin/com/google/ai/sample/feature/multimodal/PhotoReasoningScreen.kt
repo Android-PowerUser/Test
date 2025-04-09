@@ -103,36 +103,27 @@ internal fun PhotoReasoningRoute(
                         Log.d("PhotoReasoningScreen", "Screenshot callback triggered")
                         
                         // Give some time for the screenshot to be saved and processed
-                        delay(2500)
+                        delay(1000)
                         
-                        // Get the latest screenshot
-                        val screenshotFile = ScreenOperatorAccessibilityService.getLatestScreenshot()
+                        // Get the latest screenshot URI directly
+                        val screenshotUri = ScreenOperatorAccessibilityService.getLatestScreenshotUri()
                         val updatedItems = selectedItems.toMutableList()
                         
                         // Add the screenshot to the list if it exists
-                        if (screenshotFile != null && screenshotFile.exists()) {
+                        if (screenshotUri != null) {
                             try {
-                                val screenshotUri = Uri.fromFile(screenshotFile)
                                 updatedItems.add(screenshotUri)
-                                Log.d("PhotoReasoningScreen", "Added screenshot: ${screenshotFile.absolutePath}")
+                                Log.d("PhotoReasoningScreen", "Added screenshot URI: $screenshotUri")
                                 
                                 // Show a toast to indicate the screenshot was added
                                 Toast.makeText(context, "Screenshot added", Toast.LENGTH_SHORT).show()
                             } catch (e: Exception) {
-                                Log.e("PhotoReasoningScreen", "Error adding screenshot: ${e.message}")
+                                Log.e("PhotoReasoningScreen", "Error adding screenshot URI: ${e.message}")
                                 Toast.makeText(context, "Error adding screenshot: ${e.message}", Toast.LENGTH_SHORT).show()
                             }
                         } else {
-                            Log.e("PhotoReasoningScreen", "Screenshot file not found or doesn't exist")
+                            Log.e("PhotoReasoningScreen", "Screenshot URI not found")
                             Toast.makeText(context, "Screenshot not found", Toast.LENGTH_SHORT).show()
-                            
-                            // Try to get the URI directly as a fallback
-                            val screenshotUri = ScreenOperatorAccessibilityService.getLatestScreenshotUri()
-                            if (screenshotUri != null) {
-                                updatedItems.add(screenshotUri)
-                                Log.d("PhotoReasoningScreen", "Added screenshot from URI")
-                                Toast.makeText(context, "Screenshot added from URI", Toast.LENGTH_SHORT).show()
-                            }
                         }
                         
                         // Process all images including the screenshot
