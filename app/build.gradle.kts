@@ -43,8 +43,16 @@ android {
         }
     }
 
-    sourceSets.getByName("samples") {
-        java.setSrcDirs(listOf("src/main/java", "src/main/kotlin", "../../samples/src/main/java"))
+    // Korrekte Konfiguration der Quellverzeichnisse
+    sourceSets {
+        getByName("main") {
+            java.srcDirs("src/main/java")
+            kotlin.srcDirs("src/main/kotlin")
+        }
+        getByName("samples") {
+            java.setSrcDirs(listOf("src/main/java", "../../samples/src/main/java"))
+            kotlin.setSrcDirs(listOf("src/main/kotlin", "../../samples/src/main/kotlin"))
+        }
     }
 
     compileOptions {
