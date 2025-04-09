@@ -51,7 +51,7 @@ import coil.request.SuccessResult
 import com.google.ai.sample.GenerativeViewModelFactory
 import coil.size.Precision
 import com.google.ai.sample.R
-import com.google.ai.sample.ScreenshotManager
+import com.google.ai.sample.ScreenshotBridge
 import com.google.ai.sample.util.UriSaver
 import kotlinx.coroutines.launch
 import android.content.Context
@@ -76,37 +76,39 @@ internal fun PhotoReasoningRoute(
         onReasonClicked = { inputText, selectedItems ->
             coroutineScope.launch {
                 // Take screenshot when Go button is pressed
-                val screenshotManager = ScreenshotManager.getInstance(context)
+                val screenshotBridge = ScreenshotBridge.getInstance(context)
                 
                 // Use a callback approach with non-blocking behavior
-                screenshotManager.takeScreenshot { bitmap ->
-                    if (bitmap != null) {
-                        // Save screenshot to file
-                        val screenshotFile = screenshotManager.saveBitmapToFile(bitmap)
-                        if (screenshotFile != null) {
-                            // Add screenshot URI to selected items
-                            val updatedItems = selectedItems.toMutableList()
-                            updatedItems.add(screenshotFile.toUri())
-                            
-                            // Process all images including screenshot within the coroutine scope
-                            coroutineScope.launch {
-                                processImagesAndReason(updatedItems, inputText, imageRequestBuilder, imageLoader, viewModel)
+                screenshotBridge.takeScreenshot(object : ScreenshotBridge.ScreenshotCallback {
+                    override fun onScreenshotTaken(bitmap: Bitmap?) {
+                        if (bitmap != null) {
+                            // Save screenshot to file
+                            val screenshotFile = screenshotBridge.saveBitmapToFile(bitmap)
+                            if (screenshotFile != null) {
+                                // Add screenshot URI to selected items
+                                val updatedItems = selectedItems.toMutableList()
+                                updatedItems.add(screenshotFile.toUri())
+                                
+                                // Process all images including screenshot within the coroutine scope
+                                coroutineScope.launch {
+                                    processImagesAndReason(updatedItems, inputText, imageRequestBuilder, imageLoader, viewModel)
+                                }
+                            } else {
+                                // If screenshot saving failed, proceed with original images
+                                coroutineScope.launch {
+                                    processImagesAndReason(selectedItems, inputText, imageRequestBuilder, imageLoader, viewModel)
+                                }
+                                Toast.makeText(context, "Failed to save screenshot", Toast.LENGTH_SHORT).show()
                             }
                         } else {
-                            // If screenshot saving failed, proceed with original images
+                            // If screenshot failed, proceed with original images
                             coroutineScope.launch {
                                 processImagesAndReason(selectedItems, inputText, imageRequestBuilder, imageLoader, viewModel)
                             }
-                            Toast.makeText(context, "Failed to save screenshot", Toast.LENGTH_SHORT).show()
+                            Toast.makeText(context, "Failed to take screenshot", Toast.LENGTH_SHORT).show()
                         }
-                    } else {
-                        // If screenshot failed, proceed with original images
-                        coroutineScope.launch {
-                            processImagesAndReason(selectedItems, inputText, imageRequestBuilder, imageLoader, viewModel)
-                        }
-                        Toast.makeText(context, "Failed to take screenshot", Toast.LENGTH_SHORT).show()
                     }
-                }
+                })
             }
         }
     )
