@@ -8,7 +8,7 @@ Current development step:
 
 Correct implementation of MediaProjection. (Create screenshots for Gemini) in the screenshot branch.
 
-
+<br>
 
 #### Free API
 
