@@ -6,6 +6,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.ServiceConnection
 import android.graphics.Bitmap
+import android.media.projection.MediaProjection
 import android.media.projection.MediaProjectionManager
 import android.os.Build
 import android.os.Handler
@@ -19,7 +20,7 @@ class ScreenshotManager(private val context: Context) {
     companion object {
         private const val TAG = "ScreenshotManager"
         const val REQUEST_MEDIA_PROJECTION = 1001
-        private const val MAX_RETRY_COUNT = 10
+        private const val MAX_RETRY_COUNT = 3
         private const val RETRY_DELAY_MS = 500L
         
         // Singleton instance
@@ -40,22 +41,23 @@ class ScreenshotManager(private val context: Context) {
     private var resultData: Intent? = null
     private val handler = Handler(Looper.getMainLooper())
     
-    // Flag to track if we need to request new permission
-    private var needNewPermission = true
-    
     // Service connection
     private val serviceConnection = object : ServiceConnection {
         override fun onServiceConnected(name: ComponentName?, service: IBinder?) {
-            val binder = service as ScreenshotService.LocalBinder
-            screenshotService = binder.getService()
-            isBound = true
-            Log.d(TAG, "Service connected")
-            
-            // If there's a pending screenshot request, execute it now
-            pendingScreenshotCallback?.let { callback ->
-                Log.d(TAG, "Executing pending screenshot request")
-                takeScreenshotWithRetry(callback, 0)
-                pendingScreenshotCallback = null
+            val binder = service as? ScreenshotService.LocalBinder
+            if (binder != null) {
+                screenshotService = binder.getService()
+                isBound = true
+                Log.d(TAG, "Service connected")
+                
+                // If there's a pending screenshot request, execute it now
+                pendingScreenshotCallback?.let { callback ->
+                    Log.d(TAG, "Executing pending screenshot request")
+                    takeScreenshotWithRetry(callback, 0)
+                    pendingScreenshotCallback = null
+                }
+            } else {
+                Log.e(TAG, "Service binder is null")
             }
         }
         
@@ -77,8 +79,6 @@ class ScreenshotManager(private val context: Context) {
                 mediaProjectionManager.createScreenCaptureIntent(),
                 REQUEST_MEDIA_PROJECTION
             )
-            // Reset the flag since we're requesting new permission
-            needNewPermission = false
         } catch (e: Exception) {
             Log.e(TAG, "Error requesting screenshot permission: ${e.message}")
             Toast.makeText(context, "Failed to request screenshot permission", Toast.LENGTH_SHORT).show()
@@ -101,40 +101,26 @@ class ScreenshotManager(private val context: Context) {
         this.resultData = data
         
         try {
-            // For Android 14+, we need to stop any existing service before starting a new one
-            // to ensure we get a fresh MediaProjection instance
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
-                try {
-                    val stopIntent = Intent(context, ScreenshotService::class.java).apply {
-                        action = ScreenshotService.ACTION_STOP
-                    }
-                    context.startService(stopIntent)
-                    
-                    // Unbind if bound
-                    if (isBound) {
-                        unbindService()
-                    }
-                    
-                    // Small delay to ensure service is properly stopped
-                    Thread.sleep(100)
-                } catch (e: Exception) {
-                    Log.e(TAG, "Error stopping existing service: ${e.message}")
-                }
-            }
+            // Stop any existing service first
+            stopScreenshotService()
             
-            // Start the foreground service
+            // Start the foreground service with the new permission data
             val serviceIntent = Intent(context, ScreenshotService::class.java).apply {
                 action = ScreenshotService.ACTION_START
                 putExtra(ScreenshotService.EXTRA_RESULT_CODE, resultCode)
                 putExtra(ScreenshotService.EXTRA_DATA, data)
             }
-            context.startForegroundService(serviceIntent)
+            
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                context.startForegroundService(serviceIntent)
+            } else {
+                context.startService(serviceIntent)
+            }
+            
+            Log.d(TAG, "Started screenshot service")
             
             // Bind to the service
             bindService()
-            
-            // Reset the flag since we've successfully handled new permission
-            needNewPermission = false
             
             return true
         } catch (e: Exception) {
@@ -182,6 +168,25 @@ class ScreenshotManager(private val context: Context) {
     }
     
     /**
+     * Stop the screenshot service
+     */
+    private fun stopScreenshotService() {
+        try {
+            // Unbind first
+            unbindService()
+            
+            // Then stop the service
+            val serviceIntent = Intent(context, ScreenshotService::class.java).apply {
+                action = ScreenshotService.ACTION_STOP
+            }
+            context.startService(serviceIntent)
+            Log.d(TAG, "Stop service request sent")
+        } catch (e: Exception) {
+            Log.e(TAG, "Error stopping service: ${e.message}")
+        }
+    }
+    
+    /**
      * Take a screenshot with retry mechanism
      * @param callback Callback function that will be called with the screenshot bitmap
      * @param retryCount Current retry count
@@ -194,24 +199,12 @@ class ScreenshotManager(private val context: Context) {
             }
         }
         
-        // For Android 14+, we need to request new permission for each screenshot
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE && needNewPermission) {
-            Log.d(TAG, "Android 14+ requires new permission for each screenshot")
-            mainThreadCallback(null)
-            return
-        }
-        
         if (isBound && screenshotService != null) {
             // Check if MediaProjection is ready
             if (screenshotService?.isMediaProjectionReady() == true) {
                 Log.d(TAG, "Taking screenshot via service")
                 try {
                     screenshotService?.takeScreenshot(mainThreadCallback)
-                    
-                    // For Android 14+, mark that we need new permission for next screenshot
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
-                        needNewPermission = true
-                    }
                 } catch (e: Exception) {
                     Log.e(TAG, "Error taking screenshot: ${e.message}")
                     mainThreadCallback(null)
@@ -223,10 +216,25 @@ class ScreenshotManager(private val context: Context) {
                     takeScreenshotWithRetry(callback, retryCount + 1)
                 }, RETRY_DELAY_MS)
             } else {
-                // Max retries reached
+                // Max retries reached, try to reinitialize the service
                 Log.e(TAG, "Max retries reached, MediaProjection still not initialized")
-                Toast.makeText(context, "Failed to initialize screenshot service", Toast.LENGTH_SHORT).show()
-                mainThreadCallback(null)
+                
+                if (resultCode != Activity.RESULT_CANCELED && resultData != null) {
+                    Log.d(TAG, "Attempting to reinitialize the service")
+                    
+                    // Stop the current service
+                    stopScreenshotService()
+                    
+                    // Start a new service with the saved permission data
+                    handlePermissionResult(resultCode, resultData)
+                    
+                    // Store the callback to execute after service is reinitialized
+                    pendingScreenshotCallback = callback
+                } else {
+                    Log.e(TAG, "Cannot reinitialize service, no permission data available")
+                    Toast.makeText(context, "Failed to initialize screenshot service", Toast.LENGTH_SHORT).show()
+                    mainThreadCallback(null)
+                }
             }
         } else {
             // Store the callback and execute it when the service is connected
@@ -250,6 +258,17 @@ class ScreenshotManager(private val context: Context) {
      */
     fun takeScreenshot(callback: (Bitmap?) -> Unit) {
         Log.d(TAG, "takeScreenshot called, isBound=$isBound")
+        
+        // For Android 14+, we need to check if we need to request new permission
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+            // If the service is not ready, we need to request new permission
+            if (isBound && screenshotService?.isMediaProjectionReady() != true) {
+                Log.d(TAG, "Android 14+ requires new permission for each screenshot session")
+                callback(null)
+                return
+            }
+        }
+        
         takeScreenshotWithRetry(callback, 0)
     }
     
@@ -276,19 +295,7 @@ class ScreenshotManager(private val context: Context) {
      * Release all resources
      */
     fun release() {
-        // Stop the service
-        try {
-            val serviceIntent = Intent(context, ScreenshotService::class.java).apply {
-                action = ScreenshotService.ACTION_STOP
-            }
-            context.startService(serviceIntent)
-            Log.d(TAG, "Stop service request sent")
-        } catch (e: Exception) {
-            Log.e(TAG, "Error stopping service: ${e.message}")
-        }
-        
-        // Unbind from the service
-        unbindService()
+        stopScreenshotService()
         
         // Clear references
         screenshotService = null
