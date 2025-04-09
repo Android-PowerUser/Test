@@ -67,8 +67,13 @@ import coil.request.SuccessResult
 import com.google.ai.sample.GenerativeViewModelFactory
 import coil.size.Precision
 import com.google.ai.sample.R
+import com.google.ai.sample.ScreenOperatorAccessibilityService
 import com.google.ai.sample.util.UriSaver
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import java.io.File
+import android.content.Context
+import android.util.Log
 
 @Composable
 internal fun PhotoReasoningRoute(
@@ -79,30 +84,63 @@ internal fun PhotoReasoningRoute(
     val coroutineScope = rememberCoroutineScope()
     val imageRequestBuilder = ImageRequest.Builder(LocalContext.current)
     val imageLoader = ImageLoader.Builder(LocalContext.current).build()
+    val context = LocalContext.current
 
     PhotoReasoningScreen(
         uiState = photoReasoningUiState,
         onReasonClicked = { inputText, selectedItems ->
             coroutineScope.launch {
-                val bitmaps = selectedItems.mapNotNull {
-                    val imageRequest = imageRequestBuilder
-                        .data(it)
-                        // Scale the image down to 768px for faster uploads deaktiviert um genaue Auflösungen feedback zu bekommen
-                        // .size(size = 768)
-                        .precision(Precision.EXACT)
-                        .build()
-                    try {
-                        val result = imageLoader.execute(imageRequest)
-                        if (result is SuccessResult) {
-                            return@mapNotNull (result.drawable as BitmapDrawable).bitmap
-                        } else {
-                            return@mapNotNull null
+                // Take a screenshot first
+                ScreenOperatorAccessibilityService.takeScreenshot {
+                    // This will be called after the screenshot is taken
+                    coroutineScope.launch {
+                        // Give some time for the screenshot to be saved
+                        delay(1500)
+                        
+                        // Get the latest screenshot
+                        val screenshotFile = ScreenOperatorAccessibilityService.getLatestScreenshot()
+                        val updatedItems = selectedItems.toMutableList()
+                        
+                        // Add the screenshot to the list if it exists
+                        if (screenshotFile != null && screenshotFile.exists()) {
+                            try {
+                                val screenshotUri = Uri.fromFile(screenshotFile)
+                                updatedItems.add(screenshotUri)
+                                Log.d("PhotoReasoningScreen", "Added screenshot: ${screenshotFile.absolutePath}")
+                            } catch (e: Exception) {
+                                Log.e("PhotoReasoningScreen", "Error adding screenshot: ${e.message}")
+                            }
                         }
-                    } catch (e: Exception) {
-                        return@mapNotNull null
+                        
+                        // Process all images including the screenshot
+                        val bitmaps = updatedItems.mapNotNull {
+                            val imageRequest = imageRequestBuilder
+                                .data(it)
+                                // Scale the image down to 768px for faster uploads deaktiviert um genaue Auflösungen feedback zu bekommen
+                                // .size(size = 768)
+                                .precision(Precision.EXACT)
+                                .build()
+                            try {
+                                val result = imageLoader.execute(imageRequest)
+                                if (result is SuccessResult) {
+                                    return@mapNotNull (result.drawable as BitmapDrawable).bitmap
+                                } else {
+                                    return@mapNotNull null
+                                }
+                            } catch (e: Exception) {
+                                Log.e("PhotoReasoningScreen", "Error processing image: ${e.message}")
+                                return@mapNotNull null
+                            }
+                        }
+                        
+                        // Send to AI
+                        viewModel.reason(inputText, bitmaps)
                     }
                 }
-                viewModel.reason(inputText, bitmaps)
+                
+                // Trigger the screenshot
+                val service = ScreenOperatorAccessibilityService()
+                service.performScreenshot()
             }
         }
     )
