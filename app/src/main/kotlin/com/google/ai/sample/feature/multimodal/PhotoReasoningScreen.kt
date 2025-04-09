@@ -74,6 +74,7 @@ import kotlinx.coroutines.launch
 import java.io.File
 import android.content.Context
 import android.util.Log
+import android.widget.Toast
 
 @Composable
 internal fun PhotoReasoningRoute(
@@ -90,12 +91,19 @@ internal fun PhotoReasoningRoute(
         uiState = photoReasoningUiState,
         onReasonClicked = { inputText, selectedItems ->
             coroutineScope.launch {
+                Log.d("PhotoReasoningScreen", "Go button clicked, taking screenshot")
+                
+                // Show a toast to indicate we're taking a screenshot
+                Toast.makeText(context, "Taking screenshot...", Toast.LENGTH_SHORT).show()
+                
                 // Take a screenshot first
                 ScreenOperatorAccessibilityService.takeScreenshot {
                     // This will be called after the screenshot is taken
                     coroutineScope.launch {
-                        // Give some time for the screenshot to be saved
-                        delay(1500)
+                        Log.d("PhotoReasoningScreen", "Screenshot callback triggered")
+                        
+                        // Give some time for the screenshot to be saved and processed
+                        delay(2500)
                         
                         // Get the latest screenshot
                         val screenshotFile = ScreenOperatorAccessibilityService.getLatestScreenshot()
@@ -107,13 +115,29 @@ internal fun PhotoReasoningRoute(
                                 val screenshotUri = Uri.fromFile(screenshotFile)
                                 updatedItems.add(screenshotUri)
                                 Log.d("PhotoReasoningScreen", "Added screenshot: ${screenshotFile.absolutePath}")
+                                
+                                // Show a toast to indicate the screenshot was added
+                                Toast.makeText(context, "Screenshot added", Toast.LENGTH_SHORT).show()
                             } catch (e: Exception) {
                                 Log.e("PhotoReasoningScreen", "Error adding screenshot: ${e.message}")
+                                Toast.makeText(context, "Error adding screenshot: ${e.message}", Toast.LENGTH_SHORT).show()
+                            }
+                        } else {
+                            Log.e("PhotoReasoningScreen", "Screenshot file not found or doesn't exist")
+                            Toast.makeText(context, "Screenshot not found", Toast.LENGTH_SHORT).show()
+                            
+                            // Try to get the URI directly as a fallback
+                            val screenshotUri = ScreenOperatorAccessibilityService.getLatestScreenshotUri()
+                            if (screenshotUri != null) {
+                                updatedItems.add(screenshotUri)
+                                Log.d("PhotoReasoningScreen", "Added screenshot from URI")
+                                Toast.makeText(context, "Screenshot added from URI", Toast.LENGTH_SHORT).show()
                             }
                         }
                         
                         // Process all images including the screenshot
                         val bitmaps = updatedItems.mapNotNull {
+                            Log.d("PhotoReasoningScreen", "Processing image: $it")
                             val imageRequest = imageRequestBuilder
                                 .data(it)
                                 // Scale the image down to 768px for faster uploads deaktiviert um genaue Auflösungen feedback zu bekommen
@@ -123,8 +147,10 @@ internal fun PhotoReasoningRoute(
                             try {
                                 val result = imageLoader.execute(imageRequest)
                                 if (result is SuccessResult) {
+                                    Log.d("PhotoReasoningScreen", "Successfully processed image")
                                     return@mapNotNull (result.drawable as BitmapDrawable).bitmap
                                 } else {
+                                    Log.e("PhotoReasoningScreen", "Failed to process image: result is not SuccessResult")
                                     return@mapNotNull null
                                 }
                             } catch (e: Exception) {
@@ -132,6 +158,8 @@ internal fun PhotoReasoningRoute(
                                 return@mapNotNull null
                             }
                         }
+                        
+                        Log.d("PhotoReasoningScreen", "Processed ${bitmaps.size} images")
                         
                         // Send to AI
                         viewModel.reason(inputText, bitmaps)
