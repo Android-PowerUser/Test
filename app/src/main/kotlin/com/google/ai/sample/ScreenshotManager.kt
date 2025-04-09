@@ -6,7 +6,6 @@ import android.content.Context
 import android.content.Intent
 import android.content.ServiceConnection
 import android.graphics.Bitmap
-import android.media.projection.MediaProjection
 import android.media.projection.MediaProjectionManager
 import android.os.Build
 import android.os.Handler
@@ -20,8 +19,6 @@ class ScreenshotManager(private val context: Context) {
     companion object {
         private const val TAG = "ScreenshotManager"
         const val REQUEST_MEDIA_PROJECTION = 1001
-        private const val MAX_RETRY_COUNT = 3
-        private const val RETRY_DELAY_MS = 500L
         
         // Singleton instance
         @Volatile
@@ -37,8 +34,6 @@ class ScreenshotManager(private val context: Context) {
     private var screenshotService: ScreenshotService? = null
     private var isBound = false
     private var pendingScreenshotCallback: ((Bitmap?) -> Unit)? = null
-    private var resultCode: Int = Activity.RESULT_CANCELED
-    private var resultData: Intent? = null
     private val handler = Handler(Looper.getMainLooper())
     
     // Service connection
@@ -53,7 +48,7 @@ class ScreenshotManager(private val context: Context) {
                 // If there's a pending screenshot request, execute it now
                 pendingScreenshotCallback?.let { callback ->
                     Log.d(TAG, "Executing pending screenshot request")
-                    takeScreenshotWithRetry(callback, 0)
+                    takeScreenshot(callback)
                     pendingScreenshotCallback = null
                 }
             } else {
@@ -97,19 +92,12 @@ class ScreenshotManager(private val context: Context) {
             return false
         }
         
-        this.resultCode = resultCode
-        this.resultData = data
-        
         try {
             // Stop any existing service first
             stopScreenshotService()
             
-            // Start the foreground service with the new permission data
-            val serviceIntent = Intent(context, ScreenshotService::class.java).apply {
-                action = ScreenshotService.ACTION_START
-                putExtra(ScreenshotService.EXTRA_RESULT_CODE, resultCode)
-                putExtra(ScreenshotService.EXTRA_DATA, data)
-            }
+            // Start the service with the new permission data
+            val serviceIntent = ScreenshotService.getStartIntent(context, resultCode, data)
             
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                 context.startForegroundService(serviceIntent)
@@ -176,79 +164,11 @@ class ScreenshotManager(private val context: Context) {
             unbindService()
             
             // Then stop the service
-            val serviceIntent = Intent(context, ScreenshotService::class.java).apply {
-                action = ScreenshotService.ACTION_STOP
-            }
+            val serviceIntent = ScreenshotService.getStopIntent(context)
             context.startService(serviceIntent)
             Log.d(TAG, "Stop service request sent")
         } catch (e: Exception) {
             Log.e(TAG, "Error stopping service: ${e.message}")
-        }
-    }
-    
-    /**
-     * Take a screenshot with retry mechanism
-     * @param callback Callback function that will be called with the screenshot bitmap
-     * @param retryCount Current retry count
-     */
-    private fun takeScreenshotWithRetry(callback: (Bitmap?) -> Unit, retryCount: Int) {
-        // Create a wrapper callback that always runs on the main thread
-        val mainThreadCallback: (Bitmap?) -> Unit = { bitmap ->
-            handler.post {
-                callback(bitmap)
-            }
-        }
-        
-        if (isBound && screenshotService != null) {
-            // Check if MediaProjection is ready
-            if (screenshotService?.isMediaProjectionReady() == true) {
-                Log.d(TAG, "Taking screenshot via service")
-                try {
-                    screenshotService?.takeScreenshot(mainThreadCallback)
-                } catch (e: Exception) {
-                    Log.e(TAG, "Error taking screenshot: ${e.message}")
-                    mainThreadCallback(null)
-                }
-            } else if (retryCount < MAX_RETRY_COUNT) {
-                // Retry after delay
-                Log.d(TAG, "MediaProjection not ready, retrying in ${RETRY_DELAY_MS}ms (attempt ${retryCount + 1}/${MAX_RETRY_COUNT})")
-                handler.postDelayed({
-                    takeScreenshotWithRetry(callback, retryCount + 1)
-                }, RETRY_DELAY_MS)
-            } else {
-                // Max retries reached, try to reinitialize the service
-                Log.e(TAG, "Max retries reached, MediaProjection still not initialized")
-                
-                if (resultCode != Activity.RESULT_CANCELED && resultData != null) {
-                    Log.d(TAG, "Attempting to reinitialize the service")
-                    
-                    // Stop the current service
-                    stopScreenshotService()
-                    
-                    // Start a new service with the saved permission data
-                    handlePermissionResult(resultCode, resultData)
-                    
-                    // Store the callback to execute after service is reinitialized
-                    pendingScreenshotCallback = callback
-                } else {
-                    Log.e(TAG, "Cannot reinitialize service, no permission data available")
-                    Toast.makeText(context, "Failed to initialize screenshot service", Toast.LENGTH_SHORT).show()
-                    mainThreadCallback(null)
-                }
-            }
-        } else {
-            // Store the callback and execute it when the service is connected
-            Log.d(TAG, "Service not bound, storing callback and binding")
-            pendingScreenshotCallback = callback
-            
-            // Try to bind to the service if not already bound
-            if (!isBound) {
-                bindService()
-            } else {
-                // If binding failed or service is null, return null
-                Log.e(TAG, "Service is bound but null, cannot take screenshot")
-                mainThreadCallback(null)
-            }
         }
     }
     
@@ -269,13 +189,40 @@ class ScreenshotManager(private val context: Context) {
             }
         }
         
-        takeScreenshotWithRetry(callback, 0)
+        if (isBound && screenshotService != null) {
+            // Check if MediaProjection is ready
+            if (screenshotService?.isMediaProjectionReady() == true) {
+                Log.d(TAG, "Taking screenshot via service")
+                try {
+                    screenshotService?.takeScreenshot(callback)
+                } catch (e: Exception) {
+                    Log.e(TAG, "Error taking screenshot: ${e.message}")
+                    handler.post { callback(null) }
+                }
+            } else {
+                Log.e(TAG, "MediaProjection not ready")
+                handler.post { callback(null) }
+            }
+        } else {
+            // Store the callback and execute it when the service is connected
+            Log.d(TAG, "Service not bound, storing callback and binding")
+            pendingScreenshotCallback = callback
+            
+            // Try to bind to the service if not already bound
+            if (!isBound) {
+                bindService()
+            } else {
+                // If binding failed or service is null, return null
+                Log.e(TAG, "Service is bound but null, cannot take screenshot")
+                handler.post { callback(null) }
+            }
+        }
     }
     
     /**
      * Save bitmap to file
      * @param bitmap The bitmap to save
-     * @return The URI of the saved file, or null if saving failed
+     * @return The file where the bitmap was saved, or null if saving failed
      */
     fun saveBitmapToFile(bitmap: Bitmap): File? {
         return if (isBound && screenshotService != null) {
@@ -299,6 +246,5 @@ class ScreenshotManager(private val context: Context) {
         
         // Clear references
         screenshotService = null
-        resultData = null
     }
 }
