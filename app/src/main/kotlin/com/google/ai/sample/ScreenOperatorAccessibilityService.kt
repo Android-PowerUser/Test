@@ -1,9 +1,11 @@
+package com.google.ai.sample
+
 import android.accessibilityservice.AccessibilityService
+import android.content.Context
 import android.content.Intent
 import android.media.MediaActionSound
 import android.os.Handler
 import android.os.Looper
-import android.provider.MediaStore
 import android.view.accessibility.AccessibilityEvent
 import android.util.Log
 import java.io.File
@@ -13,15 +15,21 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
     
     companion object {
         // Flag to indicate if a screenshot should be taken
-        var shouldTakeScreenshot = false
+        private var shouldTakeScreenshot = false
         
         // Callback to be executed after screenshot is taken
-        var onScreenshotTaken: (() -> Unit)? = null
+        private var onScreenshotTaken: (() -> Unit)? = null
+        
+        // Instance of the service
+        private var instance: ScreenOperatorAccessibilityService? = null
         
         // Method to trigger screenshot from outside the service
         fun takeScreenshot(callback: () -> Unit) {
             shouldTakeScreenshot = true
             onScreenshotTaken = callback
+            
+            // If we have an instance, trigger the screenshot
+            instance?.performScreenshot()
         }
         
         // Get the most recent screenshot from the Screenshots directory
@@ -48,12 +56,15 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
 
     override fun onServiceConnected() {
         super.onServiceConnected()
-        // Service is connected, perform any initial setup here
+        // Service is connected, store instance
+        instance = this
         Log.d(TAG, "Accessibility service connected")
     }
     
     // Method to take a screenshot using the global action
     fun performScreenshot() {
+        if (!shouldTakeScreenshot) return
+        
         Log.d(TAG, "Taking screenshot...")
         
         // Play the camera shutter sound
@@ -78,5 +89,10 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
                 Log.d(TAG, "Screenshot taken: ${file.absolutePath}")
             }
         }, 1000) // Wait 1 second for the screenshot to be saved
+    }
+    
+    override fun onDestroy() {
+        super.onDestroy()
+        instance = null
     }
 }
