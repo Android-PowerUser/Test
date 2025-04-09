@@ -1,22 +1,7 @@
-/*
- * Copyright 2023 Google LLC
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
-
 package com.google.ai.sample
 
 import android.content.Intent
+import android.graphics.Bitmap
 import android.os.Bundle
 import android.widget.Toast
 import androidx.activity.ComponentActivity
@@ -34,14 +19,14 @@ import com.google.ai.sample.feature.text.SummarizeRoute
 import com.google.ai.sample.ui.theme.GenerativeAISample
 
 class MainActivity : ComponentActivity() {
-    // Add screenshot manager
-    private lateinit var screenshotManager: ScreenshotManager
+    // Add screenshot bridge
+    private lateinit var screenshotBridge: ScreenshotBridge
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        // Initialize screenshot manager
-        screenshotManager = ScreenshotManager.getInstance(this)
+        // Initialize screenshot bridge
+        screenshotBridge = ScreenshotBridge.getInstance(this)
 
         setContent {
             GenerativeAISample {
@@ -73,16 +58,16 @@ class MainActivity : ComponentActivity() {
         }
         
         // Request screenshot permission when the app starts
-        screenshotManager.requestScreenshotPermission(this)
+        screenshotBridge.requestScreenshotPermission(this)
     }
     
     @Deprecated("Deprecated in Java")
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
         
-        if (requestCode == ScreenshotManager.REQUEST_MEDIA_PROJECTION) {
+        if (requestCode == ScreenshotBridge.REQUEST_MEDIA_PROJECTION) {
             if (resultCode == RESULT_OK && data != null) {
-                val success = screenshotManager.handlePermissionResult(resultCode, data)
+                val success = screenshotBridge.handlePermissionResult(resultCode, data)
                 if (success) {
                     Toast.makeText(this, "Screenshot permission granted", Toast.LENGTH_SHORT).show()
                 } else {
@@ -95,8 +80,8 @@ class MainActivity : ComponentActivity() {
     }
     
     override fun onDestroy() {
-        // Release screenshot manager resources
-        screenshotManager.release()
+        // Release screenshot bridge resources
+        screenshotBridge.release()
         super.onDestroy()
     }
 }
