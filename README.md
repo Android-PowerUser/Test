@@ -1,4 +1,4 @@
-## In development stage
+## Screen Operator (In development stage)
 
 This app is intended to operate the screen with AI and is still in development
 
