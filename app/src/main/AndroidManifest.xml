@@ -61,7 +61,7 @@
         
         <!-- Add the screenshot service configuration -->
         <service
-            android:name=".ScreenshotService"
+            android:name=".screenshot.ScreenCaptureService"
             android:enabled="true"
             android:exported="false"
             android:foregroundServiceType="mediaProjection" />
