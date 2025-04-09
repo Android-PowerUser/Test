@@ -137,10 +137,6 @@ internal fun PhotoReasoningRoute(
                         viewModel.reason(inputText, bitmaps)
                     }
                 }
-                
-                // Trigger the screenshot
-                val service = ScreenOperatorAccessibilityService()
-                service.performScreenshot()
             }
         }
     )
