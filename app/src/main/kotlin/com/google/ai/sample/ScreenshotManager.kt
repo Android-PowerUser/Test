@@ -7,6 +7,7 @@ import android.content.Intent
 import android.content.ServiceConnection
 import android.graphics.Bitmap
 import android.media.projection.MediaProjectionManager
+import android.os.Build
 import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
@@ -38,6 +39,9 @@ class ScreenshotManager(private val context: Context) {
     private var resultCode: Int = Activity.RESULT_CANCELED
     private var resultData: Intent? = null
     private val handler = Handler(Looper.getMainLooper())
+    
+    // Flag to track if we need to request new permission
+    private var needNewPermission = true
     
     // Service connection
     private val serviceConnection = object : ServiceConnection {
@@ -73,6 +77,8 @@ class ScreenshotManager(private val context: Context) {
                 mediaProjectionManager.createScreenCaptureIntent(),
                 REQUEST_MEDIA_PROJECTION
             )
+            // Reset the flag since we're requesting new permission
+            needNewPermission = false
         } catch (e: Exception) {
             Log.e(TAG, "Error requesting screenshot permission: ${e.message}")
             Toast.makeText(context, "Failed to request screenshot permission", Toast.LENGTH_SHORT).show()
@@ -95,6 +101,27 @@ class ScreenshotManager(private val context: Context) {
         this.resultData = data
         
         try {
+            // For Android 14+, we need to stop any existing service before starting a new one
+            // to ensure we get a fresh MediaProjection instance
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+                try {
+                    val stopIntent = Intent(context, ScreenshotService::class.java).apply {
+                        action = ScreenshotService.ACTION_STOP
+                    }
+                    context.startService(stopIntent)
+                    
+                    // Unbind if bound
+                    if (isBound) {
+                        unbindService()
+                    }
+                    
+                    // Small delay to ensure service is properly stopped
+                    Thread.sleep(100)
+                } catch (e: Exception) {
+                    Log.e(TAG, "Error stopping existing service: ${e.message}")
+                }
+            }
+            
             // Start the foreground service
             val serviceIntent = Intent(context, ScreenshotService::class.java).apply {
                 action = ScreenshotService.ACTION_START
@@ -105,6 +132,9 @@ class ScreenshotManager(private val context: Context) {
             
             // Bind to the service
             bindService()
+            
+            // Reset the flag since we've successfully handled new permission
+            needNewPermission = false
             
             return true
         } catch (e: Exception) {
@@ -164,12 +194,24 @@ class ScreenshotManager(private val context: Context) {
             }
         }
         
+        // For Android 14+, we need to request new permission for each screenshot
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE && needNewPermission) {
+            Log.d(TAG, "Android 14+ requires new permission for each screenshot")
+            mainThreadCallback(null)
+            return
+        }
+        
         if (isBound && screenshotService != null) {
             // Check if MediaProjection is ready
             if (screenshotService?.isMediaProjectionReady() == true) {
                 Log.d(TAG, "Taking screenshot via service")
                 try {
                     screenshotService?.takeScreenshot(mainThreadCallback)
+                    
+                    // For Android 14+, mark that we need new permission for next screenshot
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+                        needNewPermission = true
+                    }
                 } catch (e: Exception) {
                     Log.e(TAG, "Error taking screenshot: ${e.message}")
                     mainThreadCallback(null)

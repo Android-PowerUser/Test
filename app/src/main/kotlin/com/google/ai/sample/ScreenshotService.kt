@@ -59,6 +59,9 @@ class ScreenshotService : Service() {
     // Flag to track if MediaProjection is initialized
     private val isMediaProjectionInitialized = AtomicBoolean(false)
     
+    // Flag to track if MediaProjection has been used for virtual display
+    private val hasCreatedVirtualDisplay = AtomicBoolean(false)
+    
     inner class LocalBinder : Binder() {
         fun getService(): ScreenshotService = this@ScreenshotService
     }
@@ -87,17 +90,15 @@ class ScreenshotService : Service() {
                     // CRITICAL: Start foreground immediately to avoid ANR
                     startForeground(NOTIFICATION_ID, createNotification())
                     
-                    // Initialize MediaProjection in a background thread to avoid ANR
-                    Thread {
-                        try {
-                            initializeMediaProjection(resultCode, data)
-                            isMediaProjectionInitialized.set(true)
-                            Log.d(TAG, "MediaProjection initialized successfully")
-                        } catch (e: Exception) {
-                            Log.e(TAG, "Failed to initialize MediaProjection: ${e.message}")
-                            isMediaProjectionInitialized.set(false)
-                        }
-                    }.start()
+                    // Initialize MediaProjection synchronously to ensure it's ready
+                    try {
+                        initializeMediaProjection(resultCode, data)
+                        isMediaProjectionInitialized.set(true)
+                        Log.d(TAG, "MediaProjection initialized successfully")
+                    } catch (e: Exception) {
+                        Log.e(TAG, "Failed to initialize MediaProjection: ${e.message}")
+                        isMediaProjectionInitialized.set(false)
+                    }
                 }
             }
             ACTION_STOP -> {
@@ -145,7 +146,31 @@ class ScreenshotService : Service() {
     
     private fun initializeMediaProjection(resultCode: Int, data: Intent) {
         val mediaProjectionManager = getSystemService(Context.MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
-        mediaProjection = mediaProjectionManager.getMediaProjection(resultCode, data)
+        
+        // Release previous MediaProjection if it exists
+        mediaProjection?.stop()
+        mediaProjection = null
+        
+        // Reset the virtual display creation flag
+        hasCreatedVirtualDisplay.set(false)
+        
+        // Create a new MediaProjection instance
+        mediaProjection = mediaProjectionManager.getMediaProjection(resultCode, data).apply {
+            // Register callback to handle MediaProjection stop events
+            registerCallback(object : MediaProjection.Callback() {
+                override fun onStop() {
+                    Log.d(TAG, "MediaProjection stopped by system or user")
+                    isMediaProjectionInitialized.set(false)
+                    hasCreatedVirtualDisplay.set(false)
+                    tearDownVirtualDisplay()
+                    
+                    // Notify UI if needed
+                    handler.post {
+                        // Any UI updates can go here
+                    }
+                }
+            }, handler)
+        }
     }
     
     fun isMediaProjectionReady(): Boolean {
@@ -168,6 +193,14 @@ class ScreenshotService : Service() {
             return
         }
         
+        // Check if we've already created a virtual display with this MediaProjection
+        if (hasCreatedVirtualDisplay.get() && Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+            Log.e(TAG, "This MediaProjection has already been used to create a virtual display")
+            screenshotInProgress.set(false)
+            handler.post { callback(null) }
+            return
+        }
+        
         try {
             // Create ImageReader
             imageReader = ImageReader.newInstance(
@@ -177,6 +210,50 @@ class ScreenshotService : Service() {
                 2  // Increased buffer size
             )
             
+            // Set up image listener before creating virtual display
+            imageReader?.setOnImageAvailableListener({ reader ->
+                var image: Image? = null
+                var bitmap: Bitmap? = null
+                
+                try {
+                    image = reader.acquireLatestImage()
+                    if (image != null) {
+                        val planes = image.planes
+                        val buffer = planes[0].buffer
+                        val pixelStride = planes[0].pixelStride
+                        val rowStride = planes[0].rowStride
+                        val rowPadding = rowStride - pixelStride * screenWidth
+                        
+                        // Create bitmap
+                        bitmap = Bitmap.createBitmap(
+                            screenWidth + rowPadding / pixelStride,
+                            screenHeight,
+                            Bitmap.Config.ARGB_8888
+                        )
+                        bitmap.copyPixelsFromBuffer(buffer)
+                        
+                        // Crop bitmap to exact screen size if needed
+                        if (bitmap.width > screenWidth || bitmap.height > screenHeight) {
+                            bitmap = Bitmap.createBitmap(
+                                bitmap,
+                                0,
+                                0,
+                                screenWidth,
+                                screenHeight
+                            )
+                        }
+                    }
+                } catch (e: Exception) {
+                    Log.e(TAG, "Error capturing screen: ${e.message}")
+                    bitmap = null
+                } finally {
+                    image?.close()
+                    tearDownVirtualDisplay()
+                    screenshotInProgress.set(false)
+                    callback(bitmap)
+                }
+            }, handler)
+            
             // Create virtual display
             virtualDisplay = mediaProjection?.createVirtualDisplay(
                 "ScreenCapture",
@@ -185,75 +262,26 @@ class ScreenshotService : Service() {
                 screenDensity,
                 DisplayManager.VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR,
                 imageReader?.surface,
-                null,
+                object : VirtualDisplay.Callback() {
+                    override fun onStopped() {
+                        Log.d(TAG, "VirtualDisplay stopped")
+                    }
+                },
                 handler
             )
             
-            // Add a delay to ensure the virtual display is set up
+            // Mark that we've created a virtual display with this MediaProjection
+            hasCreatedVirtualDisplay.set(true)
+            
+            // Add a timeout to prevent hanging
             handler.postDelayed({
-                if (imageReader?.surface == null) {
-                    Log.e(TAG, "Surface is null")
+                if (screenshotInProgress.get()) {
+                    Log.e(TAG, "Screenshot timed out")
                     tearDownVirtualDisplay()
                     screenshotInProgress.set(false)
                     callback(null)
-                    return@postDelayed
                 }
-                
-                // Set up image listener
-                imageReader?.setOnImageAvailableListener({ reader ->
-                    var image: Image? = null
-                    var bitmap: Bitmap? = null
-                    
-                    try {
-                        image = reader.acquireLatestImage()
-                        if (image != null) {
-                            val planes = image.planes
-                            val buffer = planes[0].buffer
-                            val pixelStride = planes[0].pixelStride
-                            val rowStride = planes[0].rowStride
-                            val rowPadding = rowStride - pixelStride * screenWidth
-                            
-                            // Create bitmap
-                            bitmap = Bitmap.createBitmap(
-                                screenWidth + rowPadding / pixelStride,
-                                screenHeight,
-                                Bitmap.Config.ARGB_8888
-                            )
-                            bitmap.copyPixelsFromBuffer(buffer)
-                            
-                            // Crop bitmap to exact screen size if needed
-                            if (bitmap.width > screenWidth || bitmap.height > screenHeight) {
-                                bitmap = Bitmap.createBitmap(
-                                    bitmap,
-                                    0,
-                                    0,
-                                    screenWidth,
-                                    screenHeight
-                                )
-                            }
-                        }
-                    } catch (e: Exception) {
-                        Log.e(TAG, "Error capturing screen: ${e.message}")
-                        bitmap = null
-                    } finally {
-                        image?.close()
-                        tearDownVirtualDisplay()
-                        screenshotInProgress.set(false)
-                        callback(bitmap)
-                    }
-                }, handler)
-                
-                // Add a timeout to prevent hanging
-                handler.postDelayed({
-                    if (screenshotInProgress.get()) {
-                        Log.e(TAG, "Screenshot timed out")
-                        tearDownVirtualDisplay()
-                        screenshotInProgress.set(false)
-                        callback(null)
-                    }
-                }, 3000) // 3 second timeout
-                
-            }, 300)  // Increased delay for virtual display setup
+            }, 3000) // 3 second timeout
             
         } catch (e: Exception) {
             Log.e(TAG, "Error setting up screenshot: ${e.message}")
@@ -297,6 +325,8 @@ class ScreenshotService : Service() {
             tearDownVirtualDisplay()
             mediaProjection?.stop()
             mediaProjection = null
+            isMediaProjectionInitialized.set(false)
+            hasCreatedVirtualDisplay.set(false)
         } catch (e: Exception) {
             Log.e(TAG, "Error tearing down resources: ${e.message}")
         }
