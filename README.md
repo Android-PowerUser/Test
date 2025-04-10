@@ -10,7 +10,7 @@ Correct implementation of MediaProjection (Create screenshots for Gemini). Almos
 
 
 ### Waiting list
-Get notified with an E-Mail. https://docs.google.com/forms/d/1wQiKmP9R2PTmZQe_1ZAp3KCv9M8_d9nlqoLsLot2M-I/edit?
+Get notified with an E-Mail. https://docs.google.com/forms/d/1wQiKmP9R2PTmZQe_1ZAp3KCv9M8_d9nlqoLsLot2M-I/edit
 
 #### Free API
 
