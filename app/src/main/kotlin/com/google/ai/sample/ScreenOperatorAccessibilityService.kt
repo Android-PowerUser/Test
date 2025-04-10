@@ -18,8 +18,12 @@ import android.provider.MediaStore
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
 import android.util.Log
+import android.widget.Toast
 import androidx.annotation.RequiresApi
 import com.google.ai.sample.util.Command
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import java.io.File
 import java.util.concurrent.TimeUnit
 
@@ -33,7 +37,7 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
         private var shouldTakeScreenshot = false
         
         // Callback to be executed after screenshot is taken
-        private var onScreenshotTaken: (() -> Unit)? = null
+        private var onScreenshotTaken: ((Uri?) -> Unit)? = null
         
         // Instance of the service
         private var instance: ScreenOperatorAccessibilityService? = null
@@ -45,7 +49,7 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
         private var screenshotTimestamp: Long = 0
         
         // Method to trigger screenshot from outside the service
-        fun takeScreenshot(callback: () -> Unit) {
+        fun takeScreenshot(callback: (Uri?) -> Unit) {
             Log.d(TAG, "takeScreenshot called")
             shouldTakeScreenshot = true
             onScreenshotTaken = callback
@@ -61,7 +65,7 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
                 Log.e(TAG, "No service instance available. Make sure the accessibility service is enabled in settings.")
                 // Still call the callback to prevent blocking the UI
                 Handler(Looper.getMainLooper()).postDelayed({
-                    onScreenshotTaken?.invoke()
+                    onScreenshotTaken?.invoke(null)
                     onScreenshotTaken = null
                 }, 500)
             }
@@ -240,6 +244,44 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
                     Log.d(TAG, "Executing tapAtCoordinates command: ${command.x}, ${command.y}")
                     instance?.tapAtCoordinates(command.x, command.y)
                 }
+                is Command.TakeScreenshot -> {
+                    Log.d(TAG, "Executing takeScreenshot command")
+                    // Take a screenshot and add it to the current conversation
+                    takeScreenshotAndAddToConversation()
+                }
+            }
+        }
+        
+        // Take a screenshot and add it to the current conversation
+        private fun takeScreenshotAndAddToConversation() {
+            // Show a toast to indicate we're taking a screenshot
+            instance?.applicationContext?.let { context ->
+                Toast.makeText(context, "Taking screenshot...", Toast.LENGTH_SHORT).show()
+            }
+            
+            // Take the screenshot
+            takeScreenshot { screenshotUri ->
+                // This will be called after the screenshot is taken
+                CoroutineScope(Dispatchers.Main).launch {
+                    if (screenshotUri != null) {
+                        Log.d(TAG, "Screenshot taken and will be added to conversation: $screenshotUri")
+                        
+                        // Show a toast to indicate the screenshot was added
+                        instance?.applicationContext?.let { context ->
+                            Toast.makeText(context, "Screenshot added to conversation", Toast.LENGTH_SHORT).show()
+                        }
+                        
+                        // The PhotoReasoningViewModel will handle adding the screenshot to the conversation
+                        // in its next interaction with the AI
+                    } else {
+                        Log.e(TAG, "Failed to take screenshot or get URI")
+                        
+                        // Show a toast to indicate the failure
+                        instance?.applicationContext?.let { context ->
+                            Toast.makeText(context, "Failed to take screenshot", Toast.LENGTH_SHORT).show()
+                        }
+                    }
+                }
             }
         }
     }
@@ -283,15 +325,17 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
             // Reset the flag
             shouldTakeScreenshot = false
             
-            // Execute the callback
-            Log.d(TAG, "Executing screenshot callback")
-            onScreenshotTaken?.invoke()
+            // Get the latest screenshot URI
+            val screenshotUri = getLatestScreenshotUri()
+            
+            // Execute the callback with the screenshot URI
+            Log.d(TAG, "Executing screenshot callback with URI: $screenshotUri")
+            onScreenshotTaken?.invoke(screenshotUri)
             onScreenshotTaken = null
             
             // Broadcast that a screenshot was taken to refresh media scanner
-            val intent = Intent(Intent.ACTION_MEDIA_SCANNER_SCAN_FILE)
-            getLatestScreenshotUri()?.let { uri ->
-                Log.d(TAG, "Screenshot URI: $uri")
+            screenshotUri?.let { uri ->
+                val intent = Intent(Intent.ACTION_MEDIA_SCANNER_SCAN_FILE)
                 intent.data = uri
                 sendBroadcast(intent)
             }
