@@ -28,6 +28,19 @@ import com.google.ai.sample.ui.theme.GenerativeAISample
 
 class MainActivity : ComponentActivity() {
 
+    // PhotoReasoningViewModel instance
+    private var photoReasoningViewModel: com.google.ai.sample.feature.multimodal.PhotoReasoningViewModel? = null
+    
+    // Function to get the PhotoReasoningViewModel
+    fun getPhotoReasoningViewModel(): com.google.ai.sample.feature.multimodal.PhotoReasoningViewModel? {
+        return photoReasoningViewModel
+    }
+    
+    // Function to set the PhotoReasoningViewModel
+    fun setPhotoReasoningViewModel(viewModel: com.google.ai.sample.feature.multimodal.PhotoReasoningViewModel) {
+        photoReasoningViewModel = viewModel
+    }
+
     private val requiredPermissions = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
         arrayOf(
             Manifest.permission.READ_MEDIA_IMAGES,
@@ -137,5 +150,28 @@ class MainActivity : ComponentActivity() {
 
     companion object {
         private const val TAG = "MainActivity"
+        
+        // Static instance of MainActivity for accessibility service access
+        private var instance: MainActivity? = null
+        
+        // Method to get the MainActivity instance
+        fun getInstance(): MainActivity? {
+            return instance
+        }
+    }
+    
+    override fun onResume() {
+        super.onResume()
+        // Set the instance when activity is resumed
+        instance = this
+    }
+    
+    override fun onPause() {
+        super.onPause()
+        // Clear the instance when activity is paused
+        // Only clear if this instance is the current one
+        if (instance == this) {
+            instance = null
+        }
     }
 }

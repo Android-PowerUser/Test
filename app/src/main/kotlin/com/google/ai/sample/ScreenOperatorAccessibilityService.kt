@@ -269,10 +269,25 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
                         // Show a toast to indicate the screenshot was added
                         instance?.applicationContext?.let { context ->
                             Toast.makeText(context, "Screenshot added to conversation", Toast.LENGTH_SHORT).show()
+                            
+                            // Get the current activity context
+                            val currentActivity = MainActivity.getInstance()
+                            if (currentActivity != null) {
+                                // Get the PhotoReasoningViewModel and add the screenshot to the conversation
+                                val viewModel = currentActivity.getPhotoReasoningViewModel()
+                                if (viewModel != null) {
+                                    // Add the screenshot to the conversation after 1 second
+                                    Handler(Looper.getMainLooper()).postDelayed({
+                                        viewModel.addScreenshotToConversation(screenshotUri, context)
+                                        Log.d(TAG, "Automatically sent screenshot to AI after 1 second")
+                                    }, 1000) // 1 second delay
+                                } else {
+                                    Log.e(TAG, "PhotoReasoningViewModel is null")
+                                }
+                            } else {
+                                Log.e(TAG, "MainActivity instance is null")
+                            }
                         }
-                        
-                        // The PhotoReasoningViewModel will handle adding the screenshot to the conversation
-                        // in its next interaction with the AI
                     } else {
                         Log.e(TAG, "Failed to take screenshot or get URI")
                         
@@ -383,6 +398,11 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
                     val centerX = rect.exactCenterX()
                     val centerY = rect.exactCenterY()
                     Log.d(TAG, "No clickable parent found, tapping at center coordinates: $centerX, $centerY")
+                    
+                    // Use tapAtCoordinates to click at the center of the node
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+                        return tapAtCoordinates(centerX, centerY)
+                    }
                     return tapAtCoordinates(centerX, centerY)
                 }
             } else {
@@ -424,24 +444,52 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
             return false
         }
         
-        val path = Path()
-        path.moveTo(x, y)
-        
-        val gesture = GestureDescription.Builder()
-            .addStroke(GestureDescription.StrokeDescription(path, 0, 100))
-            .build()
-        
-        return dispatchGesture(gesture, object : GestureResultCallback() {
-            override fun onCompleted(gestureDescription: GestureDescription) {
-                super.onCompleted(gestureDescription)
-                Log.d(TAG, "Tap gesture completed")
+        try {
+            // Create a path for the tap gesture
+            val path = Path()
+            path.moveTo(x, y)
+            
+            // Create a stroke description with longer duration for better recognition
+            val strokeDescription = GestureDescription.StrokeDescription(path, 0, 150)
+            
+            // Build the gesture with the stroke
+            val gestureBuilder = GestureDescription.Builder()
+            gestureBuilder.addStroke(strokeDescription)
+            val gesture = gestureBuilder.build()
+            
+            // Create a callback to handle the result
+            val callback = object : GestureResultCallback() {
+                override fun onCompleted(gestureDescription: GestureDescription) {
+                    super.onCompleted(gestureDescription)
+                    Log.d(TAG, "Tap gesture completed successfully at coordinates: $x, $y")
+                    
+                    // Show a toast to indicate the tap was performed
+                    Handler(Looper.getMainLooper()).post {
+                        applicationContext?.let { context ->
+                            Toast.makeText(context, "Tap performed at: $x, $y", Toast.LENGTH_SHORT).show()
+                        }
+                    }
+                }
+                
+                override fun onCancelled(gestureDescription: GestureDescription) {
+                    super.onCancelled(gestureDescription)
+                    Log.e(TAG, "Tap gesture cancelled at coordinates: $x, $y")
+                    
+                    // Show a toast to indicate the tap was cancelled
+                    Handler(Looper.getMainLooper()).post {
+                        applicationContext?.let { context ->
+                            Toast.makeText(context, "Tap cancelled at: $x, $y", Toast.LENGTH_SHORT).show()
+                        }
+                    }
+                }
             }
             
-            override fun onCancelled(gestureDescription: GestureDescription) {
-                super.onCancelled(gestureDescription)
-                Log.e(TAG, "Tap gesture cancelled")
-            }
-        }, null)
+            // Dispatch the gesture with the callback
+            return dispatchGesture(gesture, callback, null)
+        } catch (e: Exception) {
+            Log.e(TAG, "Error performing tap at coordinates: $x, $y", e)
+            return false
+        }
     }
     
     override fun onDestroy() {
