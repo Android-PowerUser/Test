@@ -12,6 +12,7 @@ object CommandParser {
     // Command patterns
     private val CLICK_BUTTON_PATTERN = Pattern.compile("clickOnButton\\(\\s*\"([^\"]+)\"\\s*\\)")
     private val TAP_COORDINATES_PATTERN = Pattern.compile("tapAtCoordinates\\(\\s*([0-9.]+)\\s*,\\s*([0-9.]+)\\s*\\)")
+    private val TAKE_SCREENSHOT_PATTERN = Pattern.compile("takeScreenshot\\(\\s*\\)")
     
     /**
      * Parse commands from AI response text
@@ -46,6 +47,13 @@ object CommandParser {
             }
         }
         
+        // Find takeScreenshot commands
+        val screenshotMatcher = TAKE_SCREENSHOT_PATTERN.matcher(text)
+        while (screenshotMatcher.find()) {
+            Log.d(TAG, "Found takeScreenshot command")
+            commands.add(Command.TakeScreenshot)
+        }
+        
         return commands
     }
 }
@@ -63,4 +71,9 @@ sealed class Command {
      * Command to tap at specific coordinates
      */
     data class TapCoordinates(val x: Float, val y: Float) : Command()
+    
+    /**
+     * Command to take a screenshot
+     */
+    object TakeScreenshot : Command()
 }
