@@ -4,12 +4,14 @@ This app is intended to operate the screen with AI and is still in development
 
 ### Help with development
 
-Current development steps:
+Current development step:
 
-Correct implementation of MediaProjection. (Create screenshots for Gemini) in the screenshot branch.
+Correct implementation of MediaProjection (Create screenshots for Gemini). Almost finished code in the screenshot branch.
 
 
-<br>
+### Waiting list
+Get notified with an E-Mail. https://docs.google.com/forms/d/1wQiKmP9R2PTmZQe_1ZAp3KCv9M8_d9nlqoLsLot2M-I/edit?
+
 
 #### Free API
 
