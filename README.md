@@ -1,6 +1,6 @@
 ## Screen Operator (In development stage)
 
-This app is intended to operate the screen with AI
+This app is intended to operate the screen with AI.
 
 ### Help with development
 
