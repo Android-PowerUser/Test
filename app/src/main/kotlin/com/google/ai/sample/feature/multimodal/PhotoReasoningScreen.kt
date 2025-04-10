@@ -67,14 +67,9 @@ import coil.request.SuccessResult
 import com.google.ai.sample.GenerativeViewModelFactory
 import coil.size.Precision
 import com.google.ai.sample.R
-import com.google.ai.sample.ScreenOperatorAccessibilityService
 import com.google.ai.sample.util.UriSaver
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-import java.io.File
-import android.content.Context
 import android.util.Log
-import android.widget.Toast
 
 @Composable
 internal fun PhotoReasoningRoute(
@@ -91,71 +86,34 @@ internal fun PhotoReasoningRoute(
         uiState = photoReasoningUiState,
         onReasonClicked = { inputText, selectedItems ->
             coroutineScope.launch {
-                Log.d("PhotoReasoningScreen", "Go button clicked, taking screenshot")
+                Log.d("PhotoReasoningScreen", "Go button clicked, processing images")
                 
-                // Show a toast to indicate we're taking a screenshot
-                Toast.makeText(context, "Taking screenshot...", Toast.LENGTH_SHORT).show()
-                
-                // Take a screenshot first
-                ScreenOperatorAccessibilityService.takeScreenshot {
-                    // This will be called after the screenshot is taken
-                    coroutineScope.launch {
-                        Log.d("PhotoReasoningScreen", "Screenshot callback triggered")
-                        
-                        // Give some time for the screenshot to be saved and processed
-                        delay(1000)
-                        
-                        // Get the latest screenshot URI directly
-                        val screenshotUri = ScreenOperatorAccessibilityService.getLatestScreenshotUri()
-                        val updatedItems = selectedItems.toMutableList()
-                        
-                        // Add the screenshot to the list if it exists
-                        if (screenshotUri != null) {
-                            try {
-                                updatedItems.add(screenshotUri)
-                                Log.d("PhotoReasoningScreen", "Added screenshot URI: $screenshotUri")
-                                
-                                // Show a toast to indicate the screenshot was added
-                                Toast.makeText(context, "Screenshot added", Toast.LENGTH_SHORT).show()
-                            } catch (e: Exception) {
-                                Log.e("PhotoReasoningScreen", "Error adding screenshot URI: ${e.message}")
-                                Toast.makeText(context, "Error adding screenshot: ${e.message}", Toast.LENGTH_SHORT).show()
-                            }
+                // Process all selected images
+                val bitmaps = selectedItems.mapNotNull {
+                    Log.d("PhotoReasoningScreen", "Processing image: $it")
+                    val imageRequest = imageRequestBuilder
+                        .data(it)
+                        .precision(Precision.EXACT)
+                        .build()
+                    try {
+                        val result = imageLoader.execute(imageRequest)
+                        if (result is SuccessResult) {
+                            Log.d("PhotoReasoningScreen", "Successfully processed image")
+                            return@mapNotNull (result.drawable as BitmapDrawable).bitmap
                         } else {
-                            Log.e("PhotoReasoningScreen", "Screenshot URI not found")
-                            Toast.makeText(context, "Screenshot not found", Toast.LENGTH_SHORT).show()
+                            Log.e("PhotoReasoningScreen", "Failed to process image: result is not SuccessResult")
+                            return@mapNotNull null
                         }
-                        
-                        // Process all images including the screenshot
-                        val bitmaps = updatedItems.mapNotNull {
-                            Log.d("PhotoReasoningScreen", "Processing image: $it")
-                            val imageRequest = imageRequestBuilder
-                                .data(it)
-                                // Scale the image down to 768px for faster uploads deaktiviert um genaue Auflösungen feedback zu bekommen
-                                // .size(size = 768)
-                                .precision(Precision.EXACT)
-                                .build()
-                            try {
-                                val result = imageLoader.execute(imageRequest)
-                                if (result is SuccessResult) {
-                                    Log.d("PhotoReasoningScreen", "Successfully processed image")
-                                    return@mapNotNull (result.drawable as BitmapDrawable).bitmap
-                                } else {
-                                    Log.e("PhotoReasoningScreen", "Failed to process image: result is not SuccessResult")
-                                    return@mapNotNull null
-                                }
-                            } catch (e: Exception) {
-                                Log.e("PhotoReasoningScreen", "Error processing image: ${e.message}")
-                                return@mapNotNull null
-                            }
-                        }
-                        
-                        Log.d("PhotoReasoningScreen", "Processed ${bitmaps.size} images")
-                        
-                        // Send to AI
-                        viewModel.reason(inputText, bitmaps)
+                    } catch (e: Exception) {
+                        Log.e("PhotoReasoningScreen", "Error processing image: ${e.message}")
+                        return@mapNotNull null
                     }
                 }
+                
+                Log.d("PhotoReasoningScreen", "Processed ${bitmaps.size} images")
+                
+                // Send to AI
+                viewModel.reason(inputText, bitmaps)
             }
         }
     )

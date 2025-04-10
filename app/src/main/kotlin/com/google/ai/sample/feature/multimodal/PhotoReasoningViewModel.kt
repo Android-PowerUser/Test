@@ -17,9 +17,16 @@
 package com.google.ai.sample.feature.multimodal
 
 import android.graphics.Bitmap
+import android.graphics.drawable.BitmapDrawable
+import android.net.Uri
 import android.util.Log
+import android.widget.Toast
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import coil.ImageLoader
+import coil.request.ImageRequest
+import coil.request.SuccessResult
+import coil.size.Precision
 import com.google.ai.client.generativeai.GenerativeModel
 import com.google.ai.client.generativeai.type.content
 import com.google.ai.sample.ScreenOperatorAccessibilityService
@@ -39,6 +46,19 @@ class PhotoReasoningViewModel(
         MutableStateFlow(PhotoReasoningUiState.Initial)
     val uiState: StateFlow<PhotoReasoningUiState> =
         _uiState.asStateFlow()
+        
+    // Keep track of the latest screenshot URI
+    private var latestScreenshotUri: Uri? = null
+    
+    // Keep track of the current selected images
+    private var currentSelectedImages: List<Bitmap> = emptyList()
+    
+    // Keep track of the current user input
+    private var currentUserInput: String = ""
+    
+    // ImageLoader and ImageRequestBuilder for processing images
+    private var imageLoader: ImageLoader? = null
+    private var imageRequestBuilder: ImageRequest.Builder? = null
 
     fun reason(
         userInput: String,
@@ -46,6 +66,10 @@ class PhotoReasoningViewModel(
     ) {
         _uiState.value = PhotoReasoningUiState.Loading
         val prompt = "Look at the image(s), and then answer the following question: $userInput"
+        
+        // Store the current user input and selected images
+        currentUserInput = userInput
+        currentSelectedImages = selectedImages
 
         viewModelScope.launch(Dispatchers.IO) {
             try {
@@ -97,6 +121,64 @@ class PhotoReasoningViewModel(
                 }
             } catch (e: Exception) {
                 Log.e(TAG, "Error processing commands: ${e.message}", e)
+            }
+        }
+    }
+    
+    /**
+     * Add a screenshot to the conversation
+     */
+    fun addScreenshotToConversation(screenshotUri: Uri, context: android.content.Context) {
+        viewModelScope.launch(Dispatchers.Main) {
+            try {
+                Log.d(TAG, "Adding screenshot to conversation: $screenshotUri")
+                
+                // Store the latest screenshot URI
+                latestScreenshotUri = screenshotUri
+                
+                // Initialize ImageLoader and ImageRequestBuilder if needed
+                if (imageLoader == null) {
+                    imageLoader = ImageLoader.Builder(context).build()
+                }
+                if (imageRequestBuilder == null) {
+                    imageRequestBuilder = ImageRequest.Builder(context)
+                }
+                
+                // Process the screenshot
+                val imageRequest = imageRequestBuilder!!
+                    .data(screenshotUri)
+                    .precision(Precision.EXACT)
+                    .build()
+                
+                try {
+                    val result = imageLoader!!.execute(imageRequest)
+                    if (result is SuccessResult) {
+                        Log.d(TAG, "Successfully processed screenshot")
+                        val bitmap = (result.drawable as BitmapDrawable).bitmap
+                        
+                        // Add the screenshot to the current images
+                        val updatedImages = currentSelectedImages.toMutableList()
+                        updatedImages.add(bitmap)
+                        
+                        // Update the current selected images
+                        currentSelectedImages = updatedImages
+                        
+                        // Re-send the query with the updated images
+                        reason(currentUserInput, updatedImages)
+                        
+                        // Show a toast to indicate the screenshot was added
+                        Toast.makeText(context, "Screenshot added to conversation", Toast.LENGTH_SHORT).show()
+                    } else {
+                        Log.e(TAG, "Failed to process screenshot: result is not SuccessResult")
+                        Toast.makeText(context, "Failed to process screenshot", Toast.LENGTH_SHORT).show()
+                    }
+                } catch (e: Exception) {
+                    Log.e(TAG, "Error processing screenshot: ${e.message}", e)
+                    Toast.makeText(context, "Error processing screenshot: ${e.message}", Toast.LENGTH_SHORT).show()
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Error adding screenshot to conversation: ${e.message}", e)
+                Toast.makeText(context, "Error adding screenshot: ${e.message}", Toast.LENGTH_SHORT).show()
             }
         }
     }
