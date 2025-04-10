@@ -17,10 +17,13 @@
 package com.google.ai.sample.feature.multimodal
 
 import android.graphics.Bitmap
+import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.google.ai.client.generativeai.GenerativeModel
 import com.google.ai.client.generativeai.type.content
+import com.google.ai.sample.ScreenOperatorAccessibilityService
+import com.google.ai.sample.util.CommandParser
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -30,6 +33,7 @@ import kotlinx.coroutines.launch
 class PhotoReasoningViewModel(
     private val generativeModel: GenerativeModel
 ) : ViewModel() {
+    private val TAG = "PhotoReasoningViewModel"
 
     private val _uiState: MutableStateFlow<PhotoReasoningUiState> =
         MutableStateFlow(PhotoReasoningUiState.Initial)
@@ -56,11 +60,43 @@ class PhotoReasoningViewModel(
 
                 generativeModel.generateContentStream(inputContent)
                     .collect { response ->
-                        outputContent += response.text
+                        val newText = response.text ?: ""
+                        outputContent += newText
                         _uiState.value = PhotoReasoningUiState.Success(outputContent)
+                        
+                        // Parse and execute commands from the response
+                        processCommands(newText)
                     }
             } catch (e: Exception) {
-                _uiState.value = PhotoReasoningUiState.Error(e.localizedMessage ?: "")
+                Log.e(TAG, "Error generating content: ${e.message}", e)
+                _uiState.value = PhotoReasoningUiState.Error(e.localizedMessage ?: "Unknown error")
+            }
+        }
+    }
+    
+    /**
+     * Process commands found in the AI response
+     */
+    private fun processCommands(text: String) {
+        viewModelScope.launch(Dispatchers.Main) {
+            try {
+                // Parse commands from the text
+                val commands = CommandParser.parseCommands(text)
+                
+                if (commands.isNotEmpty()) {
+                    Log.d(TAG, "Found ${commands.size} commands in response")
+                    
+                    // Execute each command
+                    commands.forEach { command ->
+                        Log.d(TAG, "Executing command: $command")
+                        ScreenOperatorAccessibilityService.executeCommand(command)
+                        
+                        // Add a small delay between commands to avoid overwhelming the system
+                        kotlinx.coroutines.delay(500)
+                    }
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Error processing commands: ${e.message}", e)
             }
         }
     }
