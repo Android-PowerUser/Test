@@ -24,9 +24,11 @@ import java.io.File
 import java.util.concurrent.TimeUnit
 
 class ScreenOperatorAccessibilityService : AccessibilityService() {
-    private val TAG = "ScreenOperatorService"
     
     companion object {
+        // Log tag
+        private const val TAG = "ScreenOperatorService"
+        
         // Flag to indicate if a screenshot should be taken
         private var shouldTakeScreenshot = false
         
@@ -44,7 +46,7 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
         
         // Method to trigger screenshot from outside the service
         fun takeScreenshot(callback: () -> Unit) {
-            Log.d("ScreenOperatorService", "takeScreenshot called")
+            Log.d(TAG, "takeScreenshot called")
             shouldTakeScreenshot = true
             onScreenshotTaken = callback
             
@@ -53,10 +55,10 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
             
             // If we have an instance, trigger the screenshot
             if (instance != null) {
-                Log.d("ScreenOperatorService", "Instance available, triggering screenshot")
+                Log.d(TAG, "Instance available, triggering screenshot")
                 instance?.performScreenshot()
             } else {
-                Log.e("ScreenOperatorService", "No service instance available. Make sure the accessibility service is enabled in settings.")
+                Log.e(TAG, "No service instance available. Make sure the accessibility service is enabled in settings.")
                 // Still call the callback to prevent blocking the UI
                 Handler(Looper.getMainLooper()).postDelayed({
                     onScreenshotTaken?.invoke()
@@ -69,7 +71,7 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
         fun getLatestScreenshotUri(): Uri? {
             // If we already have a URI from a recent screenshot, return it
             if (lastScreenshotUri != null) {
-                Log.d("ScreenOperatorService", "Returning cached screenshot URI: $lastScreenshotUri")
+                Log.d(TAG, "Returning cached screenshot URI: $lastScreenshotUri")
                 return lastScreenshotUri
             }
             
@@ -83,7 +85,7 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
                         return uri
                     }
                 } catch (e: Exception) {
-                    Log.e("ScreenOperatorService", "Error getting image from MediaStore: ${e.message}")
+                    Log.e(TAG, "Error getting image from MediaStore: ${e.message}")
                 }
             }
             
@@ -117,7 +119,7 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
             for (path in possiblePaths) {
                 val dir = File(path)
                 if (dir.exists() && dir.isDirectory) {
-                    Log.d("ScreenOperatorService", "Checking directory: $path")
+                    Log.d(TAG, "Checking directory: $path")
                     val files = dir.listFiles()
                     if (files != null && files.isNotEmpty()) {
                         // Filter for image files
@@ -133,7 +135,7 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
                             if (mostRecent != null && mostRecent.lastModified() > latestModified) {
                                 latestFile = mostRecent
                                 latestModified = mostRecent.lastModified()
-                                Log.d("ScreenOperatorService", "Found newer file: ${mostRecent.absolutePath}, Modified: ${mostRecent.lastModified()}")
+                                Log.d(TAG, "Found newer file: ${mostRecent.absolutePath}, Modified: ${mostRecent.lastModified()}")
                             }
                         }
                     }
@@ -141,11 +143,11 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
             }
             
             if (latestFile != null) {
-                Log.d("ScreenOperatorService", "Latest screenshot file: ${latestFile.absolutePath}")
+                Log.d(TAG, "Latest screenshot file: ${latestFile.absolutePath}")
                 return latestFile
             }
             
-            Log.e("ScreenOperatorService", "No screenshot files found in any location")
+            Log.e(TAG, "No screenshot files found in any location")
             return null
         }
         
@@ -182,12 +184,12 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
                     val path = cursor.getString(dataColumn)
                     val date = cursor.getLong(dateColumn)
                     
-                    Log.d("ScreenOperatorService", "Found image in MediaStore: $path, Date: $date")
+                    Log.d(TAG, "Found image in MediaStore: $path, Date: $date")
                     
                     return ContentUris.withAppendedId(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, id)
                 }
             } catch (e: Exception) {
-                Log.e("ScreenOperatorService", "Error querying MediaStore: ${e.message}")
+                Log.e(TAG, "Error querying MediaStore: ${e.message}")
             } finally {
                 cursor?.close()
             }
@@ -209,12 +211,12 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
                     val id = cursor.getLong(idColumn)
                     val path = cursor.getString(dataColumn)
                     
-                    Log.d("ScreenOperatorService", "Found most recent image in MediaStore: $path")
+                    Log.d(TAG, "Found most recent image in MediaStore: $path")
                     
                     return ContentUris.withAppendedId(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, id)
                 }
             } catch (e: Exception) {
-                Log.e("ScreenOperatorService", "Error querying MediaStore for most recent: ${e.message}")
+                Log.e(TAG, "Error querying MediaStore for most recent: ${e.message}")
             } finally {
                 cursor?.close()
             }
