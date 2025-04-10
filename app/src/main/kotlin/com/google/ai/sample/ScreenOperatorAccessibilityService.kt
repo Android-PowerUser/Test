@@ -1,18 +1,25 @@
 package com.google.ai.sample
 
 import android.accessibilityservice.AccessibilityService
+import android.accessibilityservice.GestureDescription
 import android.content.ContentUris
 import android.content.Context
 import android.content.Intent
 import android.database.Cursor
+import android.graphics.Path
+import android.graphics.Rect
 import android.media.MediaActionSound
 import android.net.Uri
+import android.os.Build
 import android.os.Environment
 import android.os.Handler
 import android.os.Looper
 import android.provider.MediaStore
 import android.view.accessibility.AccessibilityEvent
+import android.view.accessibility.AccessibilityNodeInfo
 import android.util.Log
+import androidx.annotation.RequiresApi
+import com.google.ai.sample.util.Command
 import java.io.File
 import java.util.concurrent.TimeUnit
 
@@ -214,6 +221,25 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
             
             return null
         }
+        
+        // Execute a command using the accessibility service
+        fun executeCommand(command: Command) {
+            if (instance == null) {
+                Log.e(TAG, "Cannot execute command: No service instance available")
+                return
+            }
+            
+            when (command) {
+                is Command.ClickButton -> {
+                    Log.d(TAG, "Executing clickOnButton command: ${command.buttonText}")
+                    instance?.findAndClickButtonByText(command.buttonText)
+                }
+                is Command.TapCoordinates -> {
+                    Log.d(TAG, "Executing tapAtCoordinates command: ${command.x}, ${command.y}")
+                    instance?.tapAtCoordinates(command.x, command.y)
+                }
+            }
+        }
     }
 
     override fun onAccessibilityEvent(event: AccessibilityEvent) {
@@ -268,6 +294,108 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
                 sendBroadcast(intent)
             }
         }, 500) // Reduced wait time to 500ms
+    }
+    
+    // Find and click a button by its text
+    private fun findAndClickButtonByText(buttonText: String): Boolean {
+        Log.d(TAG, "Looking for button with text: $buttonText")
+        val rootNode = rootInActiveWindow ?: return false
+        
+        try {
+            // Find the node with the specified text
+            val node = findNodeByText(rootNode, buttonText)
+            
+            if (node != null) {
+                Log.d(TAG, "Found node with text: $buttonText")
+                
+                // Check if the node is clickable
+                if (node.isClickable) {
+                    Log.d(TAG, "Node is clickable, performing click")
+                    val result = node.performAction(AccessibilityNodeInfo.ACTION_CLICK)
+                    Log.d(TAG, "Click result: $result")
+                    return result
+                } else {
+                    Log.d(TAG, "Node is not clickable, trying to find a clickable parent")
+                    
+                    // Try to find a clickable parent
+                    var parent = node.parent
+                    while (parent != null) {
+                        if (parent.isClickable) {
+                            Log.d(TAG, "Found clickable parent, performing click")
+                            val result = parent.performAction(AccessibilityNodeInfo.ACTION_CLICK)
+                            Log.d(TAG, "Click result: $result")
+                            return result
+                        }
+                        val temp = parent
+                        parent = parent.parent
+                        temp.recycle()
+                    }
+                    
+                    // If no clickable parent found, try to click at the node's center coordinates
+                    val rect = Rect()
+                    node.getBoundsInScreen(rect)
+                    val centerX = rect.exactCenterX()
+                    val centerY = rect.exactCenterY()
+                    Log.d(TAG, "No clickable parent found, tapping at center coordinates: $centerX, $centerY")
+                    return tapAtCoordinates(centerX, centerY)
+                }
+            } else {
+                Log.e(TAG, "No node found with text: $buttonText")
+                return false
+            }
+        } finally {
+            rootNode.recycle()
+        }
+    }
+    
+    // Find a node by its text
+    private fun findNodeByText(node: AccessibilityNodeInfo, text: String): AccessibilityNodeInfo? {
+        // Check if this node has the text we're looking for
+        if (node.text != null && node.text.toString().contains(text, ignoreCase = true)) {
+            return node
+        }
+        
+        // Check child nodes
+        for (i in 0 until node.childCount) {
+            val child = node.getChild(i) ?: continue
+            val result = findNodeByText(child, text)
+            if (result != null) {
+                return result
+            }
+            child.recycle()
+        }
+        
+        return null
+    }
+    
+    // Tap at specific coordinates
+    @RequiresApi(Build.VERSION_CODES.N)
+    fun tapAtCoordinates(x: Float, y: Float): Boolean {
+        Log.d(TAG, "Tapping at coordinates: $x, $y")
+        
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.N) {
+            Log.e(TAG, "Tap at coordinates requires API level 24 or higher")
+            return false
+        }
+        
+        val path = Path()
+        path.moveTo(x, y)
+        
+        val gesture = GestureDescription.Builder()
+            .addStroke(GestureDescription.StrokeDescription(path, 0, 100))
+            .build()
+        
+        return dispatchGesture(gesture, object : GestureResultCallback() {
+            override fun onCompleted(gestureDescription: GestureDescription) {
+                super.onCompleted(gestureDescription)
+                Log.d(TAG, "Tap gesture completed")
+            }
+            
+            override fun onCancelled(gestureDescription: GestureDescription) {
+                super.onCancelled(gestureDescription)
+                Log.e(TAG, "Tap gesture cancelled")
+            }
+        }, null)
     }
     
     override fun onDestroy() {
