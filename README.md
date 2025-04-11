@@ -1,33 +1,24 @@
-# Test (Kotlin)
+## Screen Operator (In development stage)
 
-This Android sample app demonstrates how to use state-of-the-art 
-generative AI models (like Gemini) to build AI-powered features and applications.
+This app is intended to operate the screen with AI.
 
-To try out this sample app, you need to use latest stable version of Android Studio. 
-However, if you want to latest lint checks and AI productivity features in Android 
-Studio use the latest preview version of [Android Studio](https://developer.android.com/studio/preview).
+### Help with development
 
-You can clone this repository or import the project from Android Studio following the steps
-[here](https://developer.android.com/jetpack/compose/setup#sample).
+Current development step:
 
-## Screenshots
+Fix a unknown bug that prevent that the AI can click on the screen. (branch Screen_Operation)
 
-<img src="screenshots/screenshots.png" alt="Screenshot">
 
-## Requirements
+Correct implementation of MediaProjection (Create screenshots for Gemini). Almost finished code in the screenshot branch. The current workaround is to trigger a screenshot via the accessibility service. However, this leads to the thumbnail.
+
+
+### Waiting list
+Get notified with an E-Mail. https://docs.google.com/forms/d/1wQiKmP9R2PTmZQe_1ZAp3KCv9M8_d9nlqoLsLot2M-I/edit
+
+#### Free API
 
 Follow the instructions on Google AI Studio [setup page](https://makersuite.google.com/app/apikey) to obtain an API key.
 
 ```txt
 apiKey=YOUR_API_KEY
 ```
-## Features
-
-This sample showcases the following API capablilites:
-* Generate Text - demonstrates the Text feature from the SDK
-* Photo Reasoning - demonstrates the MultiModal feature from the SDK
-* Chat - demonstrates the Multi-turn Conversations feature from the SDK
-
-## Documentation
-
-You can find the quick start documentation for the Android Generative AI API [here](https://ai.google.dev/tutorials/android_quickstart).
