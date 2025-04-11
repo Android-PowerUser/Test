@@ -40,6 +40,7 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
         private var onScreenshotTaken: ((Uri?) -> Unit)? = null
         
         // Instance of the service
+        @Volatile
         private var instance: ScreenOperatorAccessibilityService? = null
         
         // Last screenshot URI
@@ -230,39 +231,60 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
         
         // Execute a command using the accessibility service
         fun executeCommand(command: Command) {
-            if (instance == null) {
-                Log.e(TAG, "Cannot execute command: No service instance available")
-                return
-            }
+            Log.d(TAG, "Command received: $command")
             
-            // Important: Execute commands on the main thread to ensure proper synchronization
+            // Wichtig: Führen Sie die Befehle auf dem Hauptthread aus
             Handler(Looper.getMainLooper()).post {
                 Log.d(TAG, "Executing command on main thread: $command")
                 
-                // Get the current instance again to ensure it's still valid
+                // Holen Sie die aktuelle Instanz
                 val currentInstance = instance
                 if (currentInstance == null) {
-                    Log.e(TAG, "Instance became null before command execution")
+                    Log.e(TAG, "No service instance available. Make sure the accessibility service is enabled in settings.")
                     return@post
                 }
                 
-                when (command) {
-                    is Command.ClickButton -> {
-                        Log.d(TAG, "Executing clickOnButton command: ${command.buttonText}")
-                        currentInstance.findAndClickButtonByText(command.buttonText)
-                    }
-                    is Command.TapCoordinates -> {
-                        Log.d(TAG, "Executing tapAtCoordinates command: ${command.x}, ${command.y}")
-                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
-                            currentInstance.tapAtCoordinates(command.x, command.y)
-                        } else {
-                            Log.e(TAG, "Tap at coordinates requires API level 24 or higher")
+                try {
+                    when (command) {
+                        is Command.ClickButton -> {
+                            Log.d(TAG, "Executing clickOnButton command: ${command.buttonText}")
+                            // Direkter Aufruf der Methode auf der Instanz
+                            val result = currentInstance.findAndClickButtonByText(command.buttonText)
+                            Log.d(TAG, "Click result: $result")
+                            
+                            // Zeigen Sie ein Toast an, um Feedback zu geben
+                            currentInstance.applicationContext?.let { context ->
+                                Toast.makeText(context, "Button click attempted: ${command.buttonText}", Toast.LENGTH_SHORT).show()
+                            }
+                        }
+                        is Command.TapCoordinates -> {
+                            Log.d(TAG, "Executing tapAtCoordinates command: ${command.x}, ${command.y}")
+                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+                                // Direkter Aufruf der Methode auf der Instanz
+                                val result = currentInstance.tapAtCoordinates(command.x, command.y)
+                                Log.d(TAG, "Tap result: $result")
+                                
+                                // Zeigen Sie ein Toast an, um Feedback zu geben
+                                currentInstance.applicationContext?.let { context ->
+                                    Toast.makeText(context, "Tap attempted at: ${command.x}, ${command.y}", Toast.LENGTH_SHORT).show()
+                                }
+                            } else {
+                                Log.e(TAG, "Tap at coordinates requires API level 24 or higher")
+                                currentInstance.applicationContext?.let { context ->
+                                    Toast.makeText(context, "Tap requires Android 7.0+", Toast.LENGTH_SHORT).show()
+                                }
+                            }
+                        }
+                        is Command.TakeScreenshot -> {
+                            Log.d(TAG, "Executing takeScreenshot command")
+                            // Take a screenshot and add it to the current conversation
+                            takeScreenshotAndAddToConversation()
                         }
                     }
-                    is Command.TakeScreenshot -> {
-                        Log.d(TAG, "Executing takeScreenshot command")
-                        // Take a screenshot and add it to the current conversation
-                        takeScreenshotAndAddToConversation()
+                } catch (e: Exception) {
+                    Log.e(TAG, "Error executing command: ${e.message}", e)
+                    currentInstance.applicationContext?.let { context ->
+                        Toast.makeText(context, "Error: ${e.message}", Toast.LENGTH_SHORT).show()
                     }
                 }
             }
@@ -334,6 +356,21 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
         // Service is connected, store instance
         instance = this
         Log.d(TAG, "Accessibility service connected")
+        
+        // Notify that the service is ready
+        applicationContext?.let { context ->
+            Toast.makeText(context, "Screen Operator Service Connected", Toast.LENGTH_SHORT).show()
+        }
+        
+        // Set service capabilities
+        val info = serviceInfo
+        info.flags = info.flags or AccessibilityServiceInfo.FLAG_REQUEST_TOUCH_EXPLORATION_MODE
+        info.flags = info.flags or AccessibilityServiceInfo.FLAG_REQUEST_ENHANCED_WEB_ACCESSIBILITY
+        info.flags = info.flags or AccessibilityServiceInfo.FLAG_REPORT_VIEW_IDS
+        info.flags = info.flags or AccessibilityServiceInfo.FLAG_RETRIEVE_INTERACTIVE_WINDOWS
+        serviceInfo = info
+        
+        Log.d(TAG, "Service capabilities set")
     }
     
     // Method to take a screenshot using the global action
@@ -376,9 +413,13 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
     }
     
     // Find and click a button by its text
-    internal fun findAndClickButtonByText(buttonText: String): Boolean {
+    fun findAndClickButtonByText(buttonText: String): Boolean {
         Log.d(TAG, "Looking for button with text: $buttonText")
-        val rootNode = rootInActiveWindow ?: return false
+        val rootNode = rootInActiveWindow
+        if (rootNode == null) {
+            Log.e(TAG, "Root node is null, cannot find button")
+            return false
+        }
         
         try {
             // Find the node with the specified text
@@ -428,7 +469,11 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
         } catch (e: Exception) {
             Log.e(TAG, "Error finding and clicking button: ${e.message}", e)
         } finally {
-            rootNode.recycle()
+            try {
+                rootNode.recycle()
+            } catch (e: Exception) {
+                Log.e(TAG, "Error recycling root node: ${e.message}", e)
+            }
         }
         
         return false
@@ -456,7 +501,7 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
     
     // Tap at specific coordinates
     @RequiresApi(Build.VERSION_CODES.N)
-    internal fun tapAtCoordinates(x: Float, y: Float): Boolean {
+    fun tapAtCoordinates(x: Float, y: Float): Boolean {
         Log.d(TAG, "Tapping at coordinates: $x, $y")
         
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.N) {
@@ -470,7 +515,7 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
             path.moveTo(x, y)
             
             // Create a stroke description with longer duration for better recognition
-            val strokeDescription = GestureDescription.StrokeDescription(path, 0, 150)
+            val strokeDescription = GestureDescription.StrokeDescription(path, 0, 300)
             
             // Build the gesture with the stroke
             val gestureBuilder = GestureDescription.Builder()
@@ -505,7 +550,9 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
             }
             
             // Dispatch the gesture with the callback
-            return dispatchGesture(gesture, callback, null)
+            val dispatchResult = dispatchGesture(gesture, callback, null)
+            Log.d(TAG, "Gesture dispatch result: $dispatchResult")
+            return dispatchResult
         } catch (e: Exception) {
             Log.e(TAG, "Error performing tap at coordinates: $x, $y", e)
             return false
@@ -514,6 +561,7 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
     
     override fun onDestroy() {
         super.onDestroy()
+        Log.d(TAG, "Accessibility service destroyed")
         instance = null
     }
 }
