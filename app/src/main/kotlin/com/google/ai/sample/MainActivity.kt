@@ -33,11 +33,13 @@ class MainActivity : ComponentActivity() {
     
     // Function to get the PhotoReasoningViewModel
     fun getPhotoReasoningViewModel(): com.google.ai.sample.feature.multimodal.PhotoReasoningViewModel? {
+        Log.d(TAG, "getPhotoReasoningViewModel called, returning: ${photoReasoningViewModel != null}")
         return photoReasoningViewModel
     }
     
     // Function to set the PhotoReasoningViewModel
     fun setPhotoReasoningViewModel(viewModel: com.google.ai.sample.feature.multimodal.PhotoReasoningViewModel) {
+        Log.d(TAG, "setPhotoReasoningViewModel called with viewModel: $viewModel")
         photoReasoningViewModel = viewModel
     }
 
@@ -73,6 +75,10 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        
+        // Set the instance immediately when created
+        instance = this
+        Log.d(TAG, "onCreate: Setting MainActivity instance")
 
         // Check and request permissions
         checkAndRequestPermissions()
@@ -156,6 +162,7 @@ class MainActivity : ComponentActivity() {
         
         // Method to get the MainActivity instance
         fun getInstance(): MainActivity? {
+            Log.d(TAG, "getInstance called, returning: ${instance != null}")
             return instance
         }
     }
@@ -164,6 +171,7 @@ class MainActivity : ComponentActivity() {
         super.onResume()
         // Set the instance when activity is resumed
         instance = this
+        Log.d(TAG, "onResume: Setting MainActivity instance")
     }
     
     override fun onPause() {
@@ -171,6 +179,17 @@ class MainActivity : ComponentActivity() {
         // Clear the instance when activity is paused
         // Only clear if this instance is the current one
         if (instance == this) {
+            Log.d(TAG, "onPause: Clearing MainActivity instance")
+            instance = null
+        }
+    }
+    
+    override fun onDestroy() {
+        super.onDestroy()
+        // Clear the instance when activity is destroyed
+        // Only clear if this instance is the current one
+        if (instance == this) {
+            Log.d(TAG, "onDestroy: Clearing MainActivity instance")
             instance = null
         }
     }

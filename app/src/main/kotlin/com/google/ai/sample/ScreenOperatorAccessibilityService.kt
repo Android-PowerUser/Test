@@ -273,9 +273,11 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
                             // Get the current activity context
                             val currentActivity = MainActivity.getInstance()
                             if (currentActivity != null) {
+                                Log.d(TAG, "MainActivity instance found")
                                 // Get the PhotoReasoningViewModel and add the screenshot to the conversation
                                 val viewModel = currentActivity.getPhotoReasoningViewModel()
                                 if (viewModel != null) {
+                                    Log.d(TAG, "PhotoReasoningViewModel found, adding screenshot to conversation")
                                     // Add the screenshot to the conversation after 1 second
                                     Handler(Looper.getMainLooper()).postDelayed({
                                         viewModel.addScreenshotToConversation(screenshotUri, context)
@@ -403,15 +405,17 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
                         return tapAtCoordinates(centerX, centerY)
                     }
-                    return tapAtCoordinates(centerX, centerY)
                 }
             } else {
                 Log.e(TAG, "No node found with text: $buttonText")
-                return false
             }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error finding and clicking button: ${e.message}", e)
         } finally {
             rootNode.recycle()
         }
+        
+        return false
     }
     
     // Find a node by its text
