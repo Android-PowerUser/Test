@@ -235,19 +235,35 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
                 return
             }
             
-            when (command) {
-                is Command.ClickButton -> {
-                    Log.d(TAG, "Executing clickOnButton command: ${command.buttonText}")
-                    instance?.findAndClickButtonByText(command.buttonText)
+            // Important: Execute commands on the main thread to ensure proper synchronization
+            Handler(Looper.getMainLooper()).post {
+                Log.d(TAG, "Executing command on main thread: $command")
+                
+                // Get the current instance again to ensure it's still valid
+                val currentInstance = instance
+                if (currentInstance == null) {
+                    Log.e(TAG, "Instance became null before command execution")
+                    return@post
                 }
-                is Command.TapCoordinates -> {
-                    Log.d(TAG, "Executing tapAtCoordinates command: ${command.x}, ${command.y}")
-                    instance?.tapAtCoordinates(command.x, command.y)
-                }
-                is Command.TakeScreenshot -> {
-                    Log.d(TAG, "Executing takeScreenshot command")
-                    // Take a screenshot and add it to the current conversation
-                    takeScreenshotAndAddToConversation()
+                
+                when (command) {
+                    is Command.ClickButton -> {
+                        Log.d(TAG, "Executing clickOnButton command: ${command.buttonText}")
+                        currentInstance.findAndClickButtonByText(command.buttonText)
+                    }
+                    is Command.TapCoordinates -> {
+                        Log.d(TAG, "Executing tapAtCoordinates command: ${command.x}, ${command.y}")
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+                            currentInstance.tapAtCoordinates(command.x, command.y)
+                        } else {
+                            Log.e(TAG, "Tap at coordinates requires API level 24 or higher")
+                        }
+                    }
+                    is Command.TakeScreenshot -> {
+                        Log.d(TAG, "Executing takeScreenshot command")
+                        // Take a screenshot and add it to the current conversation
+                        takeScreenshotAndAddToConversation()
+                    }
                 }
             }
         }
