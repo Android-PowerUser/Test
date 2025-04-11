@@ -6,6 +6,9 @@ This app is intended to operate the screen with AI and is still in development
 
 Current development step:
 
+##### high priority
+Fix a unknown bug that prevent that the AI can click on the screen. (branch Screen_Operation)
+
 Correct implementation of MediaProjection (Create screenshots for Gemini). Almost finished code in the screenshot branch. The current workaround is to trigger a screenshot via the accessibility service. However, this leads to the thumbnail.
 
 
