@@ -376,7 +376,7 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
     }
     
     // Find and click a button by its text
-    private fun findAndClickButtonByText(buttonText: String): Boolean {
+    internal fun findAndClickButtonByText(buttonText: String): Boolean {
         Log.d(TAG, "Looking for button with text: $buttonText")
         val rootNode = rootInActiveWindow ?: return false
         
@@ -456,7 +456,7 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
     
     // Tap at specific coordinates
     @RequiresApi(Build.VERSION_CODES.N)
-    fun tapAtCoordinates(x: Float, y: Float): Boolean {
+    internal fun tapAtCoordinates(x: Float, y: Float): Boolean {
         Log.d(TAG, "Tapping at coordinates: $x, $y")
         
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.N) {
