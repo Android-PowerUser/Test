@@ -81,6 +81,22 @@ internal fun PhotoReasoningRoute(
     val imageRequestBuilder = ImageRequest.Builder(LocalContext.current)
     val imageLoader = ImageLoader.Builder(LocalContext.current).build()
     val context = LocalContext.current
+    
+    // Get the MainActivity instance from the context and share the ViewModel
+    val mainActivity = context as? MainActivity
+    
+    // Share the ViewModel with MainActivity for AccessibilityService access
+    DisposableEffect(viewModel) {
+        // Set the ViewModel in MainActivity when the composable is first composed
+        mainActivity?.setPhotoReasoningViewModel(viewModel)
+        Log.d("PhotoReasoningRoute", "ViewModel shared with MainActivity: ${mainActivity != null}")
+        
+        // When the composable is disposed, clear the reference if needed
+        onDispose {
+            // Optional: clear the reference when navigating away
+            // mainActivity?.clearPhotoReasoningViewModel()
+        }
+    }
 
     PhotoReasoningScreen(
         uiState = photoReasoningUiState,
