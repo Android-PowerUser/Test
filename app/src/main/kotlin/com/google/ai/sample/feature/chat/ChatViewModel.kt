@@ -22,6 +22,7 @@ import androidx.lifecycle.viewModelScope
 import com.google.ai.client.generativeai.GenerativeModel
 import com.google.ai.client.generativeai.type.asTextOrNull
 import com.google.ai.client.generativeai.type.content
+import com.google.ai.sample.MainActivity
 import com.google.ai.sample.ScreenOperatorAccessibilityService
 import com.google.ai.sample.util.CommandParser
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -32,6 +33,8 @@ import kotlinx.coroutines.launch
 class ChatViewModel(
     generativeModel: GenerativeModel
 ) : ViewModel() {
+    private val TAG = "ChatViewModel"
+    
     private val chat = generativeModel.startChat(
         history = listOf(
             content(role = "user") { text("Hello, I have 2 dogs in my house.") },
@@ -58,12 +61,46 @@ class ChatViewModel(
         
         // If commands were found, execute them
         if (commands.isNotEmpty()) {
-            Log.d("ChatViewModel", "Found ${commands.size} commands in response")
+            Log.d(TAG, "Found ${commands.size} commands in response")
+            
+            // Check if accessibility service is enabled
+            val context = MainActivity.getInstance()?.applicationContext
+            if (context != null) {
+                val isServiceEnabled = ScreenOperatorAccessibilityService.isAccessibilityServiceEnabled(context)
+                if (!isServiceEnabled) {
+                    Log.e(TAG, "Accessibility service is not enabled. Commands will not work.")
+                    MainActivity.getInstance()?.updateStatusMessage(
+                        "Accessibility service is not enabled. Please enable it in settings to use click commands.",
+                        true
+                    )
+                    return
+                }
+            }
             
             // Execute each command
             for (command in commands) {
+                Log.d(TAG, "Executing command: $command")
+                
+                // Notify user about command execution
+                val commandText = when (command) {
+                    is com.google.ai.sample.util.Command.ClickButton -> 
+                        "clickOnButton(\"${command.buttonText}\")"
+                    is com.google.ai.sample.util.Command.TapCoordinates -> 
+                        "tapAtCoordinates(${command.x}, ${command.y})"
+                    is com.google.ai.sample.util.Command.TakeScreenshot -> 
+                        "takeScreenshot()"
+                }
+                
+                MainActivity.getInstance()?.updateStatusMessage(
+                    "AI is attempting to execute: $commandText",
+                    false
+                )
+                
+                // Execute the command
                 ScreenOperatorAccessibilityService.executeCommand(command)
             }
+        } else {
+            Log.d(TAG, "No commands found in response")
         }
     }
 
@@ -96,12 +133,19 @@ class ChatViewModel(
                     processCommandsInResponse(modelResponse)
                 }
             } catch (e: Exception) {
+                Log.e(TAG, "Error sending message: ${e.message}", e)
                 _uiState.value.replaceLastPendingMessage()
                 _uiState.value.addMessage(
                     ChatMessage(
                         text = e.localizedMessage ?: "An error occurred",
                         participant = Participant.ERROR
                     )
+                )
+                
+                // Notify user about the error
+                MainActivity.getInstance()?.updateStatusMessage(
+                    "Error communicating with AI: ${e.message}",
+                    true
                 )
             }
         }
