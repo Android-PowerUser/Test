@@ -16,11 +16,14 @@
 
 package com.google.ai.sample.feature.chat
 
+import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.google.ai.client.generativeai.GenerativeModel
 import com.google.ai.client.generativeai.type.asTextOrNull
 import com.google.ai.client.generativeai.type.content
+import com.google.ai.sample.ScreenOperatorAccessibilityService
+import com.google.ai.sample.util.CommandParser
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -48,6 +51,21 @@ class ChatViewModel(
     val uiState: StateFlow<ChatUiState> =
         _uiState.asStateFlow()
 
+    // Process commands found in the AI response
+    private fun processCommandsInResponse(modelResponse: String) {
+        // Parse commands from the response
+        val commands = CommandParser.parseCommands(modelResponse)
+        
+        // If commands were found, execute them
+        if (commands.isNotEmpty()) {
+            Log.d("ChatViewModel", "Found ${commands.size} commands in response")
+            
+            // Execute each command
+            for (command in commands) {
+                ScreenOperatorAccessibilityService.executeCommand(command)
+            }
+        }
+    }
 
     fun sendMessage(userMessage: String) {
         // Add a pending message
@@ -73,12 +91,15 @@ class ChatViewModel(
                             isPending = false
                         )
                     )
+                    
+                    // Process commands in the response
+                    processCommandsInResponse(modelResponse)
                 }
             } catch (e: Exception) {
                 _uiState.value.replaceLastPendingMessage()
                 _uiState.value.addMessage(
                     ChatMessage(
-                        text = e.localizedMessage,
+                        text = e.localizedMessage ?: "An error occurred",
                         participant = Participant.ERROR
                     )
                 )
