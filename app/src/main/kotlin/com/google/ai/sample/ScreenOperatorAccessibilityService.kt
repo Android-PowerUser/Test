@@ -1,6 +1,7 @@
 package com.google.ai.sample
 
 import android.accessibilityservice.AccessibilityService
+import android.accessibilityservice.AccessibilityServiceInfo
 import android.accessibilityservice.GestureDescription
 import android.content.ContentUris
 import android.content.Context
