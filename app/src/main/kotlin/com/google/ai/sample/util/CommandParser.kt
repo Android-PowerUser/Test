@@ -10,95 +10,87 @@ object CommandParser {
     
     // Regex patterns for different command formats
     
-    // Click button patterns - reorganized by priority
+    // Click button patterns - significantly expanded to catch more variations
     private val CLICK_BUTTON_PATTERNS = listOf(
-        // Function-like patterns (highest priority)
-        Regex("(?i)\\b(?:clickOnButton|tapOnButton|pressButton)\\([\"']([^\"']+)[\"']\\)"),
-        
-        // Standard patterns with quotes (high priority)
-        Regex("(?i)\\b(?:click|tap|press|klick|tippe auf|drücke|klicke auf|drücke auf) (?:on )?(?:the )?(?:button|knopf|schaltfläche)?(?: labeled| mit text)? [\"']([^\"']+)[\"']"),
+        // Standard patterns with quotes
+        Regex("(?i)\\b(?:click|tap|press|klick|tippe auf|drücke|klicke auf|drücke auf) (?:on )?(?:the )?(?:button|knopf|schaltfläche|button labeled|knopf mit text|schaltfläche mit text)? [\"']([^\"']+)[\"']"),
         Regex("(?i)\\b(?:click|tap|press|klick|tippe auf|drücke|klicke auf|drücke auf) (?:on )?(?:the )?[\"']([^\"']+)[\"'] (?:button|knopf|schaltfläche)?"),
         
-        // Patterns with "labeled" keyword (medium priority)
-        Regex("(?i)\\b(?:click|tap|press|klick|tippe auf|drücke|klicke auf|drücke auf) (?:on )?(?:the )?(?:button|knopf|schaltfläche) labeled ([\\w\\s\\-]+)(?:\\b|$)"),
+        // Patterns without quotes
+        Regex("(?i)\\b(?:click|tap|press|klick|tippe auf|drücke|klicke auf|drücke auf) (?:on )?(?:the )?(?:button|knopf|schaltfläche) ([\\w\\s\\-]+)\\b"),
+        Regex("(?i)\\b(?:click|tap|press|klick|tippe auf|drücke|klicke auf|drücke auf) (?:on )?(?:the )?(?:button|knopf|schaltfläche) labeled ([\\w\\s\\-]+)\\b"),
         
-        // Direct command patterns (lower priority)
-        Regex("(?i)\\b(?:click|tap|press|klick|tippe auf|drücke|klicke auf|drücke auf) (?:on )?(?:the )?([\\w\\s\\-]+) (?:button|knopf|schaltfläche)\\b"),
+        // Direct command patterns
+        Regex("(?i)\\b(?:click|tap|press|klick|tippe auf|drücke|klicke auf|drücke auf) ([\\w\\s\\-]+) (?:button|knopf|schaltfläche)\\b"),
         
-        // Patterns without quotes (lowest priority)
-        Regex("(?i)\\b(?:click|tap|press|klick|tippe auf|drücke|klicke auf|drücke auf) (?:on )?(?:the )?(?:button|knopf|schaltfläche) ([\\w\\s\\-]+)(?:\\b|$)")
+        // Function-like patterns
+        Regex("(?i)\\bclickOnButton\\([\"']([^\"']+)[\"']\\)"),
+        Regex("(?i)\\btapOnButton\\([\"']([^\"']+)[\"']\\)"),
+        Regex("(?i)\\bpressButton\\([\"']([^\"']+)[\"']\\)")
     )
     
-    // Tap coordinates patterns - updated to support decimal numbers
+    // Tap coordinates patterns - expanded to catch more variations
     private val TAP_COORDINATES_PATTERNS = listOf(
-        // Function-like patterns
-        Regex("(?i)\\b(?:tapAtCoordinates|clickAtPosition|tapAt)\\(\\s*(\\d+(?:\\.\\d+)?)\\s*,\\s*(\\d+(?:\\.\\d+)?)\\s*\\)"),
-        
         // Standard patterns
         Regex("(?i)\\b(?:tap|click|press|tippe|klicke|tippe auf|klicke auf) (?:at|on|auf) (?:coordinates?|koordinaten|position|stelle|punkt)[:\\s]\\s*\\(?\\s*(\\d+(?:\\.\\d+)?)\\s*,\\s*(\\d+(?:\\.\\d+)?)\\s*\\)?"),
-        Regex("(?i)\\b(?:tap|click|press|tippe|klicke|tippe auf|klicke auf) (?:at|on|auf) \\(?\\s*(\\d+(?:\\.\\d+)?)\\s*,\\s*(\\d+(?:\\.\\d+)?)\\s*\\)?")
-    )
-    
-    // Take screenshot patterns - expanded German language support
-    private val TAKE_SCREENSHOT_PATTERNS = listOf(
-        // English patterns
-        Regex("(?i)\\b(?:take|capture|make) (?:a )?(?:screenshot|screen shot|screen-shot)(?:\\s|$)"),
-        
-        // German patterns (expanded)
-        Regex("(?i)\\b(?:nimm|erstelle|mache|nehme|erzeuge) (?:ein(?:e)? )?(?:bildschirmfoto|screenshot|bildschirmaufnahme|bildschirmabbild)(?:\\s|$)"),
+        Regex("(?i)\\b(?:tap|click|press|tippe|klicke|tippe auf|klicke auf) (?:at|on|auf) \\(?\\s*(\\d+(?:\\.\\d+)?)\\s*,\\s*(\\d+(?:\\.\\d+)?)\\s*\\)?"),
         
         // Function-like patterns
-        Regex("(?i)\\b(?:takeScreenshot|captureScreen)\\(\\)")
+        Regex("(?i)\\btapAtCoordinates\\(\\s*(\\d+(?:\\.\\d+)?)\\s*,\\s*(\\d+(?:\\.\\d+)?)\\s*\\)"),
+        Regex("(?i)\\bclickAtPosition\\(\\s*(\\d+(?:\\.\\d+)?)\\s*,\\s*(\\d+(?:\\.\\d+)?)\\s*\\)"),
+        Regex("(?i)\\btapAt\\(\\s*(\\d+(?:\\.\\d+)?)\\s*,\\s*(\\d+(?:\\.\\d+)?)\\s*\\)")
     )
+    
+    // Screenshot patterns - expanded for consistency
+    private val TAKE_SCREENSHOT_PATTERNS = listOf(
+        Regex("(?i)\\b(?:take|capture|make|nimm|erstelle|mache|nehme|erzeuge) (?:a |ein(?:e)? )?(?:screenshot|bildschirmfoto|bildschirmaufnahme|bildschirmabbild)"),
+        Regex("(?i)\\btakeScreenshot\\(\\)"),
+        Regex("(?i)\\bcaptureScreen\\(\\)")
+    )
+    
+    // Buffer for storing partial text between calls
+    private var textBuffer = ""
+    
+    // Flag to indicate if we should clear the buffer on next call
+    private var shouldClearBuffer = false
     
     /**
      * Parse commands from the given text
      * 
      * @param text The text to parse for commands
+     * @param clearBuffer Whether to clear the buffer before parsing (default: false)
      * @return A list of commands found in the text
      */
-    fun parseCommands(text: String): List<Command> {
+    fun parseCommands(text: String, clearBuffer: Boolean = false): List<Command> {
         val commands = mutableListOf<Command>()
         
         try {
-            // Debug the input text
-            Log.d(TAG, "Parsing text for commands: $text")
+            // Clear buffer if requested or if flag is set
+            if (clearBuffer || shouldClearBuffer) {
+                textBuffer = ""
+                shouldClearBuffer = false
+                Log.d(TAG, "Buffer cleared")
+            }
             
-            // Process the text line by line to improve context separation
-            val lines = text.split("\n")
-            for (line in lines) {
-                // Skip empty lines
-                if (line.trim().isEmpty()) continue
-                
-                // Track if we found a command in this line
-                var commandFoundInLine = false
-                
-                // Look for click button commands
-                val clickButtonCommand = findClickButtonCommand(line)
-                if (clickButtonCommand != null) {
-                    commands.add(clickButtonCommand)
-                    commandFoundInLine = true
-                    Log.d(TAG, "Found click button command in line: $line")
-                    continue  // Move to next line after finding a command
-                }
-                
-                // Look for tap coordinates commands
-                val tapCoordinatesCommand = findTapCoordinatesCommand(line)
-                if (tapCoordinatesCommand != null) {
-                    commands.add(tapCoordinatesCommand)
-                    commandFoundInLine = true
-                    Log.d(TAG, "Found tap coordinates command in line: $line")
-                    continue  // Move to next line after finding a command
-                }
-                
-                // Look for take screenshot commands
-                val takeScreenshotCommand = findTakeScreenshotCommand(line)
-                if (takeScreenshotCommand != null) {
-                    commands.add(takeScreenshotCommand)
-                    commandFoundInLine = true
-                    Log.d(TAG, "Found take screenshot command in line: $line")
-                    continue  // Move to next line after finding a command
-                }
+            // Normalize the text (trim whitespace, normalize line breaks)
+            val normalizedText = normalizeText(text)
+            
+            // Append to buffer
+            textBuffer += normalizedText
+            
+            // Debug the buffer
+            Log.d(TAG, "Current buffer for command parsing: $textBuffer")
+            
+            // Process the buffer line by line
+            val lines = textBuffer.split("\n")
+            
+            // Process each line and the combined buffer
+            processText(textBuffer, commands)
+            
+            // If we found commands, clear the buffer for next time
+            if (commands.isNotEmpty()) {
+                shouldClearBuffer = true
+                Log.d(TAG, "Commands found, buffer will be cleared on next call")
             }
             
             Log.d(TAG, "Found ${commands.size} commands in text")
@@ -119,115 +111,130 @@ object CommandParser {
     }
     
     /**
-     * Find a click button command in the text
-     * Returns the first valid match or null if none found
+     * Process text to find commands
      */
-    private fun findClickButtonCommand(text: String): Command.ClickButton? {
-        for (pattern in CLICK_BUTTON_PATTERNS) {
-            val match = pattern.find(text)
-            if (match != null && match.groupValues.size > 1) {
-                val buttonText = match.groupValues[1].trim()
-                if (buttonText.isNotEmpty()) {
-                    Log.d(TAG, "Found click button command with pattern ${pattern.pattern}: \"$buttonText\"")
-                    return Command.ClickButton(buttonText)
-                }
-            }
-        }
-        return null
+    private fun processText(text: String, commands: MutableList<Command>) {
+        // Look for click button commands
+        findClickButtonCommands(text, commands)
+        
+        // Look for tap coordinates commands
+        findTapCoordinatesCommands(text, commands)
+        
+        // Look for take screenshot commands
+        findTakeScreenshotCommands(text, commands)
     }
     
     /**
-     * Find a tap coordinates command in the text
-     * Returns the first valid match or null if none found
+     * Normalize text by trimming whitespace and normalizing line breaks
      */
-    private fun findTapCoordinatesCommand(text: String): Command.TapCoordinates? {
-        for (pattern in TAP_COORDINATES_PATTERNS) {
-            val match = pattern.find(text)
-            if (match != null && match.groupValues.size > 2) {
+    private fun normalizeText(text: String): String {
+        // Replace multiple spaces with a single space
+        var normalized = text.replace(Regex("\\s+"), " ")
+        
+        // Ensure consistent line breaks
+        normalized = normalized.replace(Regex("\\r\\n|\\r"), "\n")
+        
+        return normalized
+    }
+    
+    /**
+     * Find click button commands in the text
+     */
+    private fun findClickButtonCommands(text: String, commands: MutableList<Command>) {
+        // Try each pattern
+        for (pattern in CLICK_BUTTON_PATTERNS) {
+            val matches = pattern.findAll(text)
+            for (match in matches) {
                 try {
-                    val x = match.groupValues[1].trim().toFloat()
-                    val y = match.groupValues[2].trim().toFloat()
-                    Log.d(TAG, "Found tap coordinates command with pattern ${pattern.pattern}: ($x, $y)")
-                    return Command.TapCoordinates(x, y)
+                    if (match.groupValues.size > 1) {
+                        val buttonText = match.groupValues[1].trim()
+                        if (buttonText.isNotEmpty()) {
+                            // Check if this command is already in the list (avoid duplicates)
+                            if (!commands.any { it is Command.ClickButton && it.buttonText == buttonText }) {
+                                Log.d(TAG, "Found click button command with pattern ${pattern.pattern}: \"$buttonText\"")
+                                commands.add(Command.ClickButton(buttonText))
+                            }
+                        }
+                    }
+                } catch (e: Exception) {
+                    Log.e(TAG, "Error processing click button match: ${e.message}", e)
+                }
+            }
+        }
+    }
+    
+    /**
+     * Find tap coordinates commands in the text
+     */
+    private fun findTapCoordinatesCommands(text: String, commands: MutableList<Command>) {
+        // Try each pattern
+        for (pattern in TAP_COORDINATES_PATTERNS) {
+            val matches = pattern.findAll(text)
+            for (match in matches) {
+                try {
+                    if (match.groupValues.size > 2) {
+                        val x = match.groupValues[1].trim().toFloat()
+                        val y = match.groupValues[2].trim().toFloat()
+                        
+                        // Check if this command is already in the list (avoid duplicates)
+                        if (!commands.any { it is Command.TapCoordinates && it.x == x && it.y == y }) {
+                            Log.d(TAG, "Found tap coordinates command with pattern ${pattern.pattern}: ($x, $y)")
+                            commands.add(Command.TapCoordinates(x, y))
+                        }
+                    }
                 } catch (e: Exception) {
                     Log.e(TAG, "Error processing tap coordinates match: ${e.message}", e)
                 }
             }
         }
-        return null
     }
     
     /**
-     * Find a take screenshot command in the text
-     * Returns a command if found or null if none found
+     * Find take screenshot commands in the text
      */
-    private fun findTakeScreenshotCommand(text: String): Command.TakeScreenshot? {
+    private fun findTakeScreenshotCommands(text: String, commands: MutableList<Command>) {
+        // Try each pattern
         for (pattern in TAKE_SCREENSHOT_PATTERNS) {
             if (pattern.containsMatchIn(text)) {
-                Log.d(TAG, "Found take screenshot command with pattern ${pattern.pattern}")
-                return Command.TakeScreenshot
+                // Check if this command is already in the list (avoid duplicates)
+                if (!commands.any { it is Command.TakeScreenshot }) {
+                    Log.d(TAG, "Found take screenshot command with pattern ${pattern.pattern}")
+                    commands.add(Command.TakeScreenshot)
+                    // Only add one screenshot command even if multiple matches are found
+                    break
+                }
             }
         }
-        return null
+    }
+    
+    /**
+     * Clear the text buffer
+     */
+    fun clearBuffer() {
+        textBuffer = ""
+        shouldClearBuffer = false
+        Log.d(TAG, "Buffer manually cleared")
     }
     
     /**
      * Debug method to test if a specific command would be recognized
-     * Returns detailed information about the matching process
      */
-    fun testCommandRecognition(commandText: String): String {
-        val result = StringBuilder()
-        result.append("Testing command recognition for: \"$commandText\"\n")
+    fun testCommandRecognition(commandText: String): List<Command> {
+        Log.d(TAG, "Testing command recognition for: \"$commandText\"")
         
-        // Test click button patterns
-        result.append("\nTesting Click Button Patterns:\n")
-        for (i in CLICK_BUTTON_PATTERNS.indices) {
-            val pattern = CLICK_BUTTON_PATTERNS[i]
-            val match = pattern.find(commandText)
-            if (match != null && match.groupValues.size > 1) {
-                val buttonText = match.groupValues[1].trim()
-                result.append("  Pattern ${i+1}: Matched button text: \"$buttonText\"\n")
-            } else if (match != null) {
-                result.append("  Pattern ${i+1}: Matched but no capture group\n")
-            }
-        }
+        // Clear buffer for testing
+        clearBuffer()
         
-        // Test tap coordinates patterns
-        result.append("\nTesting Tap Coordinates Patterns:\n")
-        for (i in TAP_COORDINATES_PATTERNS.indices) {
-            val pattern = TAP_COORDINATES_PATTERNS[i]
-            val match = pattern.find(commandText)
-            if (match != null && match.groupValues.size > 2) {
-                val x = match.groupValues[1].trim()
-                val y = match.groupValues[2].trim()
-                result.append("  Pattern ${i+1}: Matched coordinates: x=$x, y=$y\n")
-            } else if (match != null) {
-                result.append("  Pattern ${i+1}: Matched but insufficient capture groups\n")
-            }
-        }
-        
-        // Test take screenshot patterns
-        result.append("\nTesting Take Screenshot Patterns:\n")
-        for (i in TAKE_SCREENSHOT_PATTERNS.indices) {
-            val pattern = TAKE_SCREENSHOT_PATTERNS[i]
-            val match = pattern.find(commandText)
-            if (match != null) {
-                result.append("  Pattern ${i+1}: Matched\n")
-            }
-        }
-        
-        // Parse commands using the normal method
         val commands = parseCommands(commandText)
-        result.append("\nFinal Recognition Result: ${commands.size} commands found\n")
-        commands.forEach { command ->
-            when (command) {
-                is Command.ClickButton -> result.append("  Command: ClickButton(\"${command.buttonText}\")\n")
-                is Command.TapCoordinates -> result.append("  Command: TapCoordinates(${command.x}, ${command.y})\n")
-                is Command.TakeScreenshot -> result.append("  Command: TakeScreenshot\n")
-            }
-        }
-        
-        return result.toString()
+        Log.d(TAG, "Recognition test result: ${commands.size} commands found")
+        return commands
+    }
+    
+    /**
+     * Get the current buffer content (for debugging)
+     */
+    fun getBufferContent(): String {
+        return textBuffer
     }
 }
 
