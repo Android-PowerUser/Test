@@ -63,6 +63,9 @@ android {
 }
 
 dependencies {
+    // Required for Android Accessibility Service
+    implementation("androidx.core:core:1.9.0")
+
     implementation("androidx.core:core-ktx:1.9.0")
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.6.2")
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.6.2")
