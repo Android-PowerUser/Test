@@ -1,11 +1,17 @@
 package com.google.ai.sample
 
 import android.Manifest
+import android.accessibilityservice.AccessibilityManager
+import android.app.AlertDialog
+import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.os.Environment
+import android.os.Handler
+import android.os.Looper
 import android.provider.Settings
 import android.util.Log
 import android.widget.Toast
@@ -82,6 +88,12 @@ class MainActivity : ComponentActivity() {
 
         // Check and request permissions
         checkAndRequestPermissions()
+        
+        // Check if accessibility service is enabled
+        checkAccessibilityServiceEnabled()
+        
+        // Check accessibility service status periodically
+        checkServiceAvailability()
 
         setContent {
             GenerativeAISample {
@@ -153,11 +165,107 @@ class MainActivity : ComponentActivity() {
             }
         }
     }
+    
+    // Check if accessibility service is enabled and prompt user to enable it if not
+    private fun checkAccessibilityServiceEnabled() {
+        val accessibilityEnabled = isAccessibilityServiceEnabled()
+        if (!accessibilityEnabled) {
+            // Show dialog to prompt user to enable the service
+            val builder = AlertDialog.Builder(this)
+            builder.setTitle("Accessibility Service Required")
+                .setMessage("Screen Operator requires accessibility service to be enabled to perform click operations. Would you like to enable it now?")
+                .setPositiveButton("Enable") { _, _ ->
+                    // Open accessibility settings
+                    val intent = Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)
+                    startActivity(intent)
+                    Toast.makeText(this, "Please enable Screen Operator in the Accessibility Services list", Toast.LENGTH_LONG).show()
+                }
+                .setNegativeButton("Cancel") { dialog, _ ->
+                    dialog.dismiss()
+                    Toast.makeText(this, "Click functionality will not work without accessibility service enabled", Toast.LENGTH_LONG).show()
+                }
+                .setCancelable(false)
+                .show()
+        }
+    }
+
+    // Helper function to check if the accessibility service is enabled
+    private fun isAccessibilityServiceEnabled(): Boolean {
+        val accessibilityManager = getSystemService(Context.ACCESSIBILITY_SERVICE) as AccessibilityManager
+        val enabledServices = Settings.Secure.getString(
+            contentResolver,
+            Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES
+        )
+        val serviceName = packageName + "/" + ScreenOperatorAccessibilityService::class.java.canonicalName
+        return enabledServices?.contains(serviceName) == true
+    }
+    
+    // Check if all required permissions are granted
+    fun areAllPermissionsGranted(): Boolean {
+        for (permission in requiredPermissions) {
+            if (ContextCompat.checkSelfPermission(this, permission) != PackageManager.PERMISSION_GRANTED) {
+                return false
+            }
+        }
+        
+        // For Android 11+, check MANAGE_EXTERNAL_STORAGE separately
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            return Environment.isExternalStorageManager()
+        }
+        
+        return true
+    }
+    
+    // Periodically check if the accessibility service is available
+    private fun checkServiceAvailability() {
+        val handler = Handler(Looper.getMainLooper())
+        val runnable = object : Runnable {
+            override fun run() {
+                val isAvailable = ScreenOperatorAccessibilityService.isServiceAvailable()
+                if (isAvailable) {
+                    Log.d(TAG, "Accessibility service is available")
+                    // Update UI to indicate service is available
+                    updateServiceStatusUI(true)
+                } else {
+                    Log.d(TAG, "Accessibility service is not available")
+                    // Update UI to indicate service is not available
+                    updateServiceStatusUI(false)
+                    // Schedule next check
+                    handler.postDelayed(this, 2000)
+                }
+            }
+        }
+        
+        // Start checking
+        handler.post(runnable)
+    }
+
+    // Update UI to show service status
+    fun updateServiceStatusUI(isAvailable: Boolean) {
+        // Update UI to show service status
+        runOnUiThread {
+            val statusMessage = if (isAvailable) 
+                "Screen Operator service is active" 
+            else 
+                "Screen Operator service is not active"
+            
+            Toast.makeText(this, statusMessage, Toast.LENGTH_SHORT).show()
+        }
+    }
+    
+    // Update UI with status message
+    fun updateStatusMessage(message: String, isError: Boolean) {
+        // Update UI with status message
+        runOnUiThread {
+            Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
+        }
+    }
 
     companion object {
         private const val TAG = "MainActivity"
         
         // Static instance of MainActivity for accessibility service access
+        @Volatile
         private var instance: MainActivity? = null
         
         // Method to get the MainActivity instance
@@ -174,23 +282,22 @@ class MainActivity : ComponentActivity() {
         Log.d(TAG, "onResume: Setting MainActivity instance")
     }
     
+    // Do not clear instance in onPause
     override fun onPause() {
         super.onPause()
-        // Clear the instance when activity is paused
-        // Only clear if this instance is the current one
-        if (instance == this) {
-            Log.d(TAG, "onPause: Clearing MainActivity instance")
-            instance = null
-        }
+        // Do not clear the instance when activity is paused
+        Log.d(TAG, "onPause: Keeping MainActivity instance")
     }
     
+    // Only clear instance in onDestroy if isFinishing is true
     override fun onDestroy() {
         super.onDestroy()
-        // Clear the instance when activity is destroyed
-        // Only clear if this instance is the current one
-        if (instance == this) {
-            Log.d(TAG, "onDestroy: Clearing MainActivity instance")
+        // Only clear the instance when activity is truly being destroyed (not during configuration changes)
+        if (isFinishing && instance == this) {
+            Log.d(TAG, "onDestroy: Clearing MainActivity instance (app is finishing)")
             instance = null
+        } else {
+            Log.d(TAG, "onDestroy: Keeping MainActivity instance (configuration change)")
         }
     }
 }
