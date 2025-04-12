@@ -1,19 +1,3 @@
-/*
- * Copyright 2023 Google LLC
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
-
 package com.google.ai.sample.feature.multimodal
 
 import android.graphics.drawable.BitmapDrawable
@@ -24,7 +8,9 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.requiredSize
 import androidx.compose.foundation.lazy.LazyRow
@@ -37,6 +23,7 @@ import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Divider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -69,6 +56,8 @@ import com.google.ai.sample.GenerativeViewModelFactory
 import com.google.ai.sample.MainActivity
 import coil.size.Precision
 import com.google.ai.sample.R
+import com.google.ai.sample.ScreenOperatorAccessibilityService
+import com.google.ai.sample.util.Command
 import com.google.ai.sample.util.UriSaver
 import kotlinx.coroutines.launch
 import android.util.Log
@@ -78,6 +67,8 @@ internal fun PhotoReasoningRoute(
     viewModel: PhotoReasoningViewModel = viewModel(factory = GenerativeViewModelFactory)
 ) {
     val photoReasoningUiState by viewModel.uiState.collectAsState()
+    val commandExecutionStatus by viewModel.commandExecutionStatus.collectAsState()
+    val detectedCommands by viewModel.detectedCommands.collectAsState()
 
     val coroutineScope = rememberCoroutineScope()
     val imageRequestBuilder = ImageRequest.Builder(LocalContext.current)
@@ -93,6 +84,9 @@ internal fun PhotoReasoningRoute(
         mainActivity?.setPhotoReasoningViewModel(viewModel)
         Log.d("PhotoReasoningRoute", "ViewModel shared with MainActivity: ${mainActivity != null}")
         
+        // Check if accessibility service is enabled
+        mainActivity?.checkAccessibilityServiceEnabled()
+        
         // When the composable is disposed, clear the reference if needed
         onDispose {
             // Optional: clear the reference when navigating away
@@ -102,6 +96,8 @@ internal fun PhotoReasoningRoute(
 
     PhotoReasoningScreen(
         uiState = photoReasoningUiState,
+        commandExecutionStatus = commandExecutionStatus,
+        detectedCommands = detectedCommands,
         onReasonClicked = { inputText, selectedItems ->
             coroutineScope.launch {
                 Log.d("PhotoReasoningScreen", "Go button clicked, processing images")
@@ -133,14 +129,24 @@ internal fun PhotoReasoningRoute(
                 // Send to AI
                 viewModel.reason(inputText, bitmaps)
             }
+        },
+        isAccessibilityServiceEnabled = mainActivity?.let {
+            ScreenOperatorAccessibilityService.isAccessibilityServiceEnabled(it)
+        } ?: false,
+        onEnableAccessibilityService = {
+            mainActivity?.checkAccessibilityServiceEnabled()
         }
     )
 }
 
 @Composable
 fun PhotoReasoningScreen(
-    uiState: PhotoReasoningUiState = PhotoReasoningUiState.Loading,
-    onReasonClicked: (String, List<Uri>) -> Unit = { _, _ -> }
+    uiState: PhotoReasoningUiState = PhotoReasoningUiState.Initial,
+    commandExecutionStatus: String = "",
+    detectedCommands: List<Command> = emptyList(),
+    onReasonClicked: (String, List<Uri>) -> Unit = { _, _ -> },
+    isAccessibilityServiceEnabled: Boolean = false,
+    onEnableAccessibilityService: () -> Unit = {}
 ) {
     var userQuestion by rememberSaveable { mutableStateOf("") }
     val imageUris = rememberSaveable(saver = UriSaver()) { mutableStateListOf() }
@@ -158,6 +164,40 @@ fun PhotoReasoningScreen(
             .padding(all = 16.dp)
             .verticalScroll(rememberScrollState())
     ) {
+        // Accessibility Service Status Card
+        if (!isAccessibilityServiceEnabled) {
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 16.dp),
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.errorContainer
+                )
+            ) {
+                Column(
+                    modifier = Modifier.padding(16.dp)
+                ) {
+                    Text(
+                        text = "Accessibility Service ist nicht aktiviert",
+                        color = MaterialTheme.colorScheme.error,
+                        style = MaterialTheme.typography.titleMedium
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        text = "Die Klick-Funktionalität benötigt den Accessibility Service. Bitte aktivieren Sie ihn in den Einstellungen.",
+                        color = MaterialTheme.colorScheme.error
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    TextButton(
+                        onClick = onEnableAccessibilityService
+                    ) {
+                        Text("Accessibility Service aktivieren")
+                    }
+                }
+            }
+        }
+
+        // Input Card
         Card(
             modifier = Modifier.fillMaxWidth()
         ) {
@@ -214,6 +254,75 @@ fun PhotoReasoningScreen(
                 }
             }
         }
+        
+        // Command Execution Status
+        if (commandExecutionStatus.isNotEmpty()) {
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 8.dp),
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.secondaryContainer
+                )
+            ) {
+                Column(
+                    modifier = Modifier.padding(16.dp)
+                ) {
+                    Text(
+                        text = "Befehlsstatus:",
+                        style = MaterialTheme.typography.titleMedium
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        text = commandExecutionStatus,
+                        color = MaterialTheme.colorScheme.onSecondaryContainer
+                    )
+                }
+            }
+        }
+        
+        // Detected Commands
+        if (detectedCommands.isNotEmpty()) {
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 8.dp),
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.tertiaryContainer
+                )
+            ) {
+                Column(
+                    modifier = Modifier.padding(16.dp)
+                ) {
+                    Text(
+                        text = "Erkannte Befehle:",
+                        style = MaterialTheme.typography.titleMedium
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+                    
+                    detectedCommands.forEachIndexed { index, command ->
+                        val commandText = when (command) {
+                            is Command.ClickButton -> "Klick auf Button: \"${command.buttonText}\""
+                            is Command.TapCoordinates -> "Tippen auf Koordinaten: (${command.x}, ${command.y})"
+                            is Command.TakeScreenshot -> "Screenshot aufnehmen"
+                        }
+                        
+                        Text(
+                            text = "${index + 1}. $commandText",
+                            color = MaterialTheme.colorScheme.onTertiaryContainer
+                        )
+                        
+                        if (index < detectedCommands.size - 1) {
+                            Divider(
+                                modifier = Modifier.padding(vertical = 4.dp),
+                                color = MaterialTheme.colorScheme.onTertiaryContainer.copy(alpha = 0.2f)
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
         when (uiState) {
             PhotoReasoningUiState.Initial -> {
                 // Nothing is shown
@@ -256,7 +365,7 @@ fun PhotoReasoningScreen(
                                 }
                         )
                         Text(
-                            text = uiState.outputText, // TODO(thatfiredev): Figure out Markdown support
+                            text = uiState.outputText,
                             color = MaterialTheme.colorScheme.onSecondary,
                             modifier = Modifier
                                 .padding(start = 16.dp)
