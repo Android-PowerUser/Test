@@ -17,6 +17,7 @@ import android.os.Environment
 import android.os.Handler
 import android.os.Looper
 import android.provider.MediaStore
+import android.provider.Settings
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
 import android.util.Log
@@ -58,7 +59,21 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
         
         // Method to check if service is available
         fun isServiceAvailable(): Boolean {
-            return instance != null && isServiceConnected
+            val available = instance != null && isServiceConnected
+            Log.d(TAG, "Service availability check: $available")
+            return available
+        }
+        
+        // Method to check if accessibility service is enabled in system settings
+        fun isAccessibilityServiceEnabled(context: Context): Boolean {
+            val enabledServices = Settings.Secure.getString(
+                context.contentResolver,
+                Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES
+            )
+            val serviceName = context.packageName + "/" + ScreenOperatorAccessibilityService::class.java.canonicalName
+            val isEnabled = enabledServices?.contains(serviceName) == true
+            Log.d(TAG, "Accessibility service enabled check: $isEnabled")
+            return isEnabled
         }
         
         // Method to trigger screenshot from outside the service
@@ -70,12 +85,25 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
             // Record the timestamp when screenshot was requested
             screenshotTimestamp = System.currentTimeMillis()
             
+            // Check if service is available
+            if (!isServiceAvailable()) {
+                Log.e(TAG, "Accessibility service is not available for taking screenshot")
+                showGlobalNotification("Accessibility service is not available. Please enable it in settings.", true)
+                // Still call the callback to prevent blocking the UI
+                Handler(Looper.getMainLooper()).postDelayed({
+                    onScreenshotTaken?.invoke(null)
+                    onScreenshotTaken = null
+                }, 500)
+                return
+            }
+            
             // If we have an instance, trigger the screenshot
             if (instance != null) {
                 Log.d(TAG, "Instance available, triggering screenshot")
                 instance?.performScreenshot()
             } else {
                 Log.e(TAG, "No service instance available. Make sure the accessibility service is enabled in settings.")
+                showGlobalNotification("No service instance available. Please enable accessibility service in settings.", true)
                 // Still call the callback to prevent blocking the UI
                 Handler(Looper.getMainLooper()).postDelayed({
                     onScreenshotTaken?.invoke(null)
@@ -241,9 +269,43 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
             return null
         }
         
+        // Global notification method that works even if instance is null
+        private fun showGlobalNotification(message: String, isError: Boolean) {
+            Handler(Looper.getMainLooper()).post {
+                val activity = MainActivity.getInstance()
+                if (activity != null) {
+                    activity.updateStatusMessage(message, isError)
+                } else {
+                    // If activity is not available, at least log the message
+                    if (isError) {
+                        Log.e(TAG, message)
+                    } else {
+                        Log.d(TAG, message)
+                    }
+                }
+            }
+        }
+        
         // Execute a command using the accessibility service with retry logic
         fun executeCommand(command: Command) {
             Log.d(TAG, "Command received: $command")
+            
+            // Show notification that a command is being attempted
+            val commandType = when (command) {
+                is Command.ClickButton -> "clickOnButton(\"${command.buttonText}\")"
+                is Command.TapCoordinates -> "tapAtCoordinates(${command.x}, ${command.y})"
+                is Command.TakeScreenshot -> "takeScreenshot()"
+            }
+            
+            showGlobalNotification("Attempting to execute: $commandType", false)
+            
+            // Check if service is available
+            if (!isServiceAvailable()) {
+                val errorMsg = "Accessibility service is not available. Please enable it in settings."
+                Log.e(TAG, errorMsg)
+                showGlobalNotification(errorMsg, true)
+                return
+            }
             
             // Use a coroutine to handle potential waiting
             CoroutineScope(Dispatchers.Main).launch {
@@ -251,6 +313,7 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
                 var retryCount = 0
                 while (!isServiceConnected && retryCount < 5) {
                     Log.d(TAG, "Service not connected, waiting... (attempt ${retryCount + 1})")
+                    showGlobalNotification("Service not connected, waiting... (attempt ${retryCount + 1})", false)
                     delay(500)
                     retryCount++
                 }
@@ -258,7 +321,9 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
                 // Get the current instance
                 val currentInstance = instance
                 if (currentInstance == null) {
-                    Log.e(TAG, "No service instance available after waiting. Make sure the accessibility service is enabled in settings.")
+                    val errorMsg = "No service instance available after waiting. Make sure the accessibility service is enabled in settings."
+                    Log.e(TAG, errorMsg)
+                    showGlobalNotification(errorMsg, true)
                     return@launch
                 }
                 
@@ -266,22 +331,34 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
                     when (command) {
                         is Command.ClickButton -> {
                             Log.d(TAG, "Executing clickOnButton command: ${command.buttonText}")
+                            showGlobalNotification("Executing: clickOnButton(\"${command.buttonText}\")", false)
+                            
                             // Direct call to the method on the instance
                             val result = currentInstance.findAndClickButtonByText(command.buttonText)
                             Log.d(TAG, "Click result: $result")
                             
                             // Show a Toast to provide feedback
-                            currentInstance.notifyUser("Button click attempted: ${command.buttonText}", !result)
+                            if (result) {
+                                currentInstance.notifyUser("Button click successful: ${command.buttonText}", false)
+                            } else {
+                                currentInstance.notifyUser("Button click failed: ${command.buttonText}", true)
+                            }
                         }
                         is Command.TapCoordinates -> {
                             Log.d(TAG, "Executing tapAtCoordinates command: ${command.x}, ${command.y}")
+                            showGlobalNotification("Executing: tapAtCoordinates(${command.x}, ${command.y})", false)
+                            
                             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
                                 // Direct call to the method on the instance
                                 val result = currentInstance.tapAtCoordinates(command.x, command.y)
                                 Log.d(TAG, "Tap result: $result")
                                 
                                 // Show a Toast to provide feedback
-                                currentInstance.notifyUser("Tap attempted at: ${command.x}, ${command.y}", !result)
+                                if (result) {
+                                    currentInstance.notifyUser("Tap successful at: ${command.x}, ${command.y}", false)
+                                } else {
+                                    currentInstance.notifyUser("Tap failed at: ${command.x}, ${command.y}", true)
+                                }
                             } else {
                                 Log.e(TAG, "Tap at coordinates requires API level 24 or higher")
                                 currentInstance.notifyUser("Tap requires Android 7.0+", true)
@@ -289,13 +366,15 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
                         }
                         is Command.TakeScreenshot -> {
                             Log.d(TAG, "Executing takeScreenshot command")
+                            showGlobalNotification("Executing: takeScreenshot()", false)
+                            
                             // Take a screenshot and add it to the current conversation
                             takeScreenshotAndAddToConversation()
                         }
                     }
                 } catch (e: Exception) {
                     Log.e(TAG, "Error executing command: ${e.message}", e)
-                    currentInstance.notifyUser("Error: ${e.message}", true)
+                    currentInstance.notifyUser("Error executing command: ${e.message}", true)
                 }
             }
         }
@@ -346,10 +425,11 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
     }
     
     // Notify user with a message
-    private fun notifyUser(message: String, isError: Boolean = false) {
+    fun notifyUser(message: String, isError: Boolean = false) {
         Handler(Looper.getMainLooper()).post {
             applicationContext?.let { context ->
-                Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
+                val toastLength = if (isError) Toast.LENGTH_LONG else Toast.LENGTH_SHORT
+                Toast.makeText(context, message, toastLength).show()
                 
                 // Log the message
                 if (isError) {
@@ -368,19 +448,43 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
     private fun checkPermissionsBeforeOperation(): Boolean {
         val mainActivity = MainActivity.getInstance()
         if (mainActivity != null) {
-            return mainActivity.areAllPermissionsGranted()
+            val permissionsGranted = mainActivity.areAllPermissionsGranted()
+            if (!permissionsGranted) {
+                Log.e(TAG, "Required permissions are not granted")
+                notifyUser("Required permissions are not granted. Please grant all permissions in settings.", true)
+            }
+            return permissionsGranted
         }
+        Log.e(TAG, "MainActivity instance is null, cannot check permissions")
+        notifyUser("Cannot check permissions: MainActivity instance is null", true)
         return false
     }
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
-        // Handle accessibility events
-        // Not needed for basic click functionality
+        // Log accessibility events for debugging
+        event?.let {
+            when (it.eventType) {
+                AccessibilityEvent.TYPE_VIEW_CLICKED -> {
+                    Log.d(TAG, "Accessibility event: View clicked")
+                }
+                AccessibilityEvent.TYPE_VIEW_FOCUSED -> {
+                    Log.d(TAG, "Accessibility event: View focused")
+                }
+                AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED -> {
+                    Log.d(TAG, "Accessibility event: Window state changed")
+                }
+                AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED -> {
+                    Log.d(TAG, "Accessibility event: Window content changed")
+                }
+            }
+        }
     }
 
     override fun onInterrupt() {
         // Handle interruption of the accessibility service
         Log.d(TAG, "Accessibility service interrupted")
+        isServiceConnected = false
+        notifyUser("Accessibility service interrupted", true)
     }
 
     override fun onServiceConnected() {
@@ -485,6 +589,8 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
     // Find and click a button by its text
     fun findAndClickButtonByText(buttonText: String): Boolean {
         Log.d(TAG, "Looking for button with text: $buttonText")
+        notifyUser("Looking for button with text: $buttonText", false)
+        
         val rootNode = rootInActiveWindow
         if (rootNode == null) {
             Log.e(TAG, "Root node is null, cannot find button")
@@ -498,34 +604,40 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
             
             if (node != null) {
                 Log.d(TAG, "Found node with text: $buttonText")
+                notifyUser("Found button: $buttonText", false)
                 
                 // Check if the node is clickable
                 if (node.isClickable) {
                     Log.d(TAG, "Node is clickable, performing click")
+                    notifyUser("Button is clickable, performing click", false)
                     val result = node.performAction(AccessibilityNodeInfo.ACTION_CLICK)
                     Log.d(TAG, "Click result: $result")
                     if (!result) {
                         notifyUser("Click action failed on button: $buttonText", true)
+                    } else {
+                        notifyUser("Click action succeeded on button: $buttonText", false)
                     }
                     return result
                 } else {
                     Log.d(TAG, "Node is not clickable, trying to find a clickable parent")
+                    notifyUser("Button is not clickable, trying to find a clickable parent", false)
                     
                     // Try to find a clickable parent
                     var parent = node.parent
                     while (parent != null) {
                         if (parent.isClickable) {
                             Log.d(TAG, "Found clickable parent, performing click")
+                            notifyUser("Found clickable parent, performing click", false)
                             val result = parent.performAction(AccessibilityNodeInfo.ACTION_CLICK)
                             Log.d(TAG, "Click result: $result")
                             if (!result) {
                                 notifyUser("Click action failed on parent of button: $buttonText", true)
+                            } else {
+                                notifyUser("Click action succeeded on parent of button: $buttonText", false)
                             }
                             return result
                         }
-                        val temp = parent
                         parent = parent.parent
-                        // No need to explicitly recycle in modern Android
                     }
                     
                     // If no clickable parent found, try to click at the node's center coordinates
@@ -534,6 +646,7 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
                     val centerX = rect.exactCenterX()
                     val centerY = rect.exactCenterY()
                     Log.d(TAG, "No clickable parent found, tapping at center coordinates: $centerX, $centerY")
+                    notifyUser("No clickable parent found, tapping at center coordinates: $centerX, $centerY", false)
                     
                     // Use tapAtCoordinates to click at the center of the node
                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
@@ -550,6 +663,12 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
         } catch (e: Exception) {
             Log.e(TAG, "Error finding and clicking button: ${e.message}", e)
             notifyUser("Error finding button: ${e.message}", true)
+        } finally {
+            try {
+                rootNode.recycle()
+            } catch (e: Exception) {
+                Log.e(TAG, "Error recycling root node: ${e.message}", e)
+            }
         }
         
         return false
@@ -569,7 +688,12 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
             if (result != null) {
                 return result
             }
-            // No need to explicitly recycle in modern Android
+            // Explicitly recycle child nodes we're done with
+            try {
+                child.recycle()
+            } catch (e: Exception) {
+                Log.e(TAG, "Error recycling child node: ${e.message}", e)
+            }
         }
         
         return null
@@ -579,6 +703,7 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
     @RequiresApi(Build.VERSION_CODES.N)
     fun tapAtCoordinates(x: Float, y: Float): Boolean {
         Log.d(TAG, "Tapping at coordinates: $x, $y")
+        notifyUser("Tapping at coordinates: $x, $y", false)
         
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.N) {
             Log.e(TAG, "Tap at coordinates requires API level 24 or higher")
@@ -606,7 +731,7 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
                     Log.d(TAG, "Tap gesture completed successfully at coordinates: $x, $y")
                     
                     // Show a toast to indicate the tap was performed
-                    notifyUser("Tap performed at: $x, $y", false)
+                    notifyUser("Tap performed successfully at: $x, $y", false)
                 }
                 
                 override fun onCancelled(gestureDescription: GestureDescription) {
@@ -634,5 +759,6 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
         Log.d(TAG, "Accessibility service destroyed")
         isServiceConnected = false
         instance = null
+        notifyUser("Accessibility service destroyed", true)
     }
 }

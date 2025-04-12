@@ -190,7 +190,6 @@ class MainActivity : ComponentActivity() {
 
     // Helper function to check if the accessibility service is enabled
     private fun isAccessibilityServiceEnabled(): Boolean {
-        val accessibilityManager = getSystemService(Context.ACCESSIBILITY_SERVICE) as android.view.accessibility.AccessibilityManager
         val enabledServices = Settings.Secure.getString(
             contentResolver,
             Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES
@@ -256,7 +255,8 @@ class MainActivity : ComponentActivity() {
     fun updateStatusMessage(message: String, isError: Boolean) {
         // Update UI with status message
         runOnUiThread {
-            Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
+            val toastLength = if (isError) Toast.LENGTH_LONG else Toast.LENGTH_SHORT
+            Toast.makeText(this, message, toastLength).show()
         }
     }
 
