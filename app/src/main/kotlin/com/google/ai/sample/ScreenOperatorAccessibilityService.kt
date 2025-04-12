@@ -57,10 +57,24 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
         // Timestamp when screenshot was taken
         private var screenshotTimestamp: Long = 0
         
+        // Debug mode for extra logging
+        private var debugMode = true
+        
         // Method to check if service is available
         fun isServiceAvailable(): Boolean {
             val available = instance != null && isServiceConnected
             Log.d(TAG, "Service availability check: $available")
+            
+            if (!available) {
+                // Log detailed information about why service is not available
+                if (instance == null) {
+                    Log.e(TAG, "Service instance is null - service may not be running")
+                }
+                if (!isServiceConnected) {
+                    Log.e(TAG, "Service is not connected - onServiceConnected may not have been called")
+                }
+            }
+            
             return available
         }
         
@@ -72,7 +86,32 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
             )
             val serviceName = context.packageName + "/" + ScreenOperatorAccessibilityService::class.java.canonicalName
             val isEnabled = enabledServices?.contains(serviceName) == true
+            
             Log.d(TAG, "Accessibility service enabled check: $isEnabled")
+            Log.d(TAG, "Service name: $serviceName")
+            Log.d(TAG, "Enabled services: $enabledServices")
+            
+            if (!isEnabled) {
+                // Show a notification to the user
+                showGlobalNotification(
+                    "Accessibility service is not enabled. Please enable it in Settings > Accessibility > Screen Operator.",
+                    true
+                )
+                
+                // Open accessibility settings if we have a MainActivity instance
+                val mainActivity = MainActivity.getInstance()
+                if (mainActivity != null) {
+                    Handler(Looper.getMainLooper()).post {
+                        try {
+                            val intent = Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)
+                            mainActivity.startActivity(intent)
+                        } catch (e: Exception) {
+                            Log.e(TAG, "Failed to open accessibility settings: ${e.message}")
+                        }
+                    }
+                }
+            }
+            
             return isEnabled
         }
         
@@ -304,6 +343,18 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
                 val errorMsg = "Accessibility service is not available. Please enable it in settings."
                 Log.e(TAG, errorMsg)
                 showGlobalNotification(errorMsg, true)
+                
+                // Try to check if the service is enabled
+                val context = MainActivity.getInstance()?.applicationContext
+                if (context != null) {
+                    val isEnabled = isAccessibilityServiceEnabled(context)
+                    if (!isEnabled) {
+                        showGlobalNotification("Accessibility service is not enabled. Please enable it in settings.", true)
+                    } else {
+                        showGlobalNotification("Accessibility service is enabled but not connected. Please restart the app.", true)
+                    }
+                }
+                
                 return
             }
             
@@ -333,6 +384,9 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
                             Log.d(TAG, "Executing clickOnButton command: ${command.buttonText}")
                             showGlobalNotification("Executing: clickOnButton(\"${command.buttonText}\")", false)
                             
+                            // Add a small delay before attempting to find and click
+                            delay(300)
+                            
                             // Direct call to the method on the instance
                             val result = currentInstance.findAndClickButtonByText(command.buttonText)
                             Log.d(TAG, "Click result: $result")
@@ -341,7 +395,22 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
                             if (result) {
                                 currentInstance.notifyUser("Button click successful: ${command.buttonText}", false)
                             } else {
-                                currentInstance.notifyUser("Button click failed: ${command.buttonText}", true)
+                                // If direct click failed, try alternative methods
+                                showGlobalNotification("Direct click failed, trying alternative methods...", false)
+                                
+                                // Try to find by content description
+                                val contentDescResult = currentInstance.findAndClickButtonByContentDescription(command.buttonText)
+                                if (contentDescResult) {
+                                    currentInstance.notifyUser("Button click by content description successful: ${command.buttonText}", false)
+                                } else {
+                                    // Try to find by class name that contains the text
+                                    val classNameResult = currentInstance.findAndClickButtonByClassName(command.buttonText)
+                                    if (classNameResult) {
+                                        currentInstance.notifyUser("Button click by class name successful: ${command.buttonText}", false)
+                                    } else {
+                                        currentInstance.notifyUser("All button click attempts failed: ${command.buttonText}", true)
+                                    }
+                                }
                             }
                         }
                         is Command.TapCoordinates -> {
@@ -349,6 +418,9 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
                             showGlobalNotification("Executing: tapAtCoordinates(${command.x}, ${command.y})", false)
                             
                             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+                                // Add a small delay before attempting to tap
+                                delay(300)
+                                
                                 // Direct call to the method on the instance
                                 val result = currentInstance.tapAtCoordinates(command.x, command.y)
                                 Log.d(TAG, "Tap result: $result")
@@ -357,7 +429,14 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
                                 if (result) {
                                     currentInstance.notifyUser("Tap successful at: ${command.x}, ${command.y}", false)
                                 } else {
-                                    currentInstance.notifyUser("Tap failed at: ${command.x}, ${command.y}", true)
+                                    // If direct tap failed, try with longer duration
+                                    showGlobalNotification("Direct tap failed, trying with longer duration...", false)
+                                    val longTapResult = currentInstance.tapAtCoordinatesWithLongerDuration(command.x, command.y)
+                                    if (longTapResult) {
+                                        currentInstance.notifyUser("Long-duration tap successful at: ${command.x}, ${command.y}", false)
+                                    } else {
+                                        currentInstance.notifyUser("All tap attempts failed at: ${command.x}, ${command.y}", true)
+                                    }
                                 }
                             } else {
                                 Log.e(TAG, "Tap at coordinates requires API level 24 or higher")
@@ -476,6 +555,10 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
                 AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED -> {
                     Log.d(TAG, "Accessibility event: Window content changed")
                 }
+                else -> {
+                    // Handle all other event types
+                    Log.d(TAG, "Accessibility event: Other event type: ${it.eventType}")
+                }
             }
         }
     }
@@ -514,6 +597,24 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
         serviceInfo = info
         
         Log.d(TAG, "Service capabilities set")
+        
+        // Refresh the root node to ensure we have access to the current window
+        refreshRootNode()
+    }
+    
+    // Refresh the root node to ensure we have access to the current window
+    private fun refreshRootNode() {
+        try {
+            val rootNode = rootInActiveWindow
+            if (rootNode != null) {
+                Log.d(TAG, "Root node refreshed successfully")
+                rootNode.recycle()
+            } else {
+                Log.e(TAG, "Root node is null after refresh attempt")
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error refreshing root node: ${e.message}")
+        }
     }
     
     // Method to take a screenshot using the global action
@@ -591,10 +692,28 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
         Log.d(TAG, "Looking for button with text: $buttonText")
         notifyUser("Looking for button with text: $buttonText", false)
         
-        val rootNode = rootInActiveWindow
+        // Refresh the root node to ensure we have the latest UI state
+        refreshRootNode()
+        
+        // Get the root node with retry logic
+        var rootNode: AccessibilityNodeInfo? = null
+        var retryCount = 0
+        while (rootNode == null && retryCount < 3) {
+            rootNode = rootInActiveWindow
+            if (rootNode == null) {
+                Log.e(TAG, "Root node is null, retrying... (attempt ${retryCount + 1})")
+                try {
+                    Thread.sleep(300) // Short delay before retry
+                } catch (e: InterruptedException) {
+                    Log.e(TAG, "Sleep interrupted: ${e.message}")
+                }
+                retryCount++
+            }
+        }
+        
         if (rootNode == null) {
-            Log.e(TAG, "Root node is null, cannot find button")
-            notifyUser("Cannot find button: No active window", true)
+            Log.e(TAG, "Root node is still null after retries, cannot find button")
+            notifyUser("Cannot find button: No active window after multiple attempts", true)
             return false
         }
         
@@ -610,10 +729,29 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
                 if (node.isClickable) {
                     Log.d(TAG, "Node is clickable, performing click")
                     notifyUser("Button is clickable, performing click", false)
+                    
+                    // Add a small delay before clicking
+                    try {
+                        Thread.sleep(200)
+                    } catch (e: InterruptedException) {
+                        Log.e(TAG, "Sleep interrupted: ${e.message}")
+                    }
+                    
                     val result = node.performAction(AccessibilityNodeInfo.ACTION_CLICK)
                     Log.d(TAG, "Click result: $result")
+                    
                     if (!result) {
                         notifyUser("Click action failed on button: $buttonText", true)
+                        
+                        // Try alternative click action
+                        Log.d(TAG, "Trying alternative click action")
+                        val altResult = node.performAction(AccessibilityNodeInfo.ACTION_SELECT)
+                        Log.d(TAG, "Alternative click (select) result: $altResult")
+                        
+                        if (altResult) {
+                            notifyUser("Alternative click action succeeded on button: $buttonText", false)
+                            return true
+                        }
                     } else {
                         notifyUser("Click action succeeded on button: $buttonText", false)
                     }
@@ -624,16 +762,171 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
                     
                     // Try to find a clickable parent
                     var parent = node.parent
+                    var parentFound = false
+                    
+                    while (parent != null) {
+                        if (parent.isClickable) {
+                            parentFound = true
+                            Log.d(TAG, "Found clickable parent, performing click")
+                            notifyUser("Found clickable parent, performing click", false)
+                            
+                            // Add a small delay before clicking
+                            try {
+                                Thread.sleep(200)
+                            } catch (e: InterruptedException) {
+                                Log.e(TAG, "Sleep interrupted: ${e.message}")
+                            }
+                            
+                            val result = parent.performAction(AccessibilityNodeInfo.ACTION_CLICK)
+                            Log.d(TAG, "Click result: $result")
+                            
+                            if (!result) {
+                                notifyUser("Click action failed on parent of button: $buttonText", true)
+                                
+                                // Try alternative click action
+                                Log.d(TAG, "Trying alternative click action on parent")
+                                val altResult = parent.performAction(AccessibilityNodeInfo.ACTION_SELECT)
+                                Log.d(TAG, "Alternative click (select) result on parent: $altResult")
+                                
+                                if (altResult) {
+                                    notifyUser("Alternative click action succeeded on parent of button: $buttonText", false)
+                                    return true
+                                }
+                            } else {
+                                notifyUser("Click action succeeded on parent of button: $buttonText", false)
+                            }
+                            
+                            // Clean up parent node
+                            val tempParent = parent
+                            parent = null
+                            try {
+                                tempParent.recycle()
+                            } catch (e: Exception) {
+                                Log.e(TAG, "Error recycling parent node: ${e.message}")
+                            }
+                            
+                            return result
+                        }
+                        
+                        val tempParent = parent
+                        parent = parent.parent
+                        
+                        // Recycle the previous parent if we're moving up the tree
+                        if (parent != null) {
+                            try {
+                                tempParent.recycle()
+                            } catch (e: Exception) {
+                                Log.e(TAG, "Error recycling intermediate parent node: ${e.message}")
+                            }
+                        }
+                    }
+                    
+                    // If no clickable parent found, try to click at the node's center coordinates
+                    if (!parentFound) {
+                        val rect = Rect()
+                        node.getBoundsInScreen(rect)
+                        val centerX = rect.exactCenterX()
+                        val centerY = rect.exactCenterY()
+                        Log.d(TAG, "No clickable parent found, tapping at center coordinates: $centerX, $centerY")
+                        notifyUser("No clickable parent found, tapping at center coordinates: $centerX, $centerY", false)
+                        
+                        // Use tapAtCoordinates to click at the center of the node
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+                            return tapAtCoordinates(centerX, centerY)
+                        } else {
+                            notifyUser("Tap at coordinates requires Android 7.0+", true)
+                            return false
+                        }
+                    }
+                }
+            } else {
+                Log.e(TAG, "No node found with text: $buttonText")
+                notifyUser("No button found with text: $buttonText", true)
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error finding and clicking button: ${e.message}", e)
+            notifyUser("Error finding button: ${e.message}", true)
+        } finally {
+            try {
+                rootNode.recycle()
+            } catch (e: Exception) {
+                Log.e(TAG, "Error recycling root node: ${e.message}")
+            }
+        }
+        
+        return false
+    }
+    
+    // Find and click a button by its content description
+    fun findAndClickButtonByContentDescription(contentDesc: String): Boolean {
+        Log.d(TAG, "Looking for button with content description: $contentDesc")
+        notifyUser("Looking for button with content description: $contentDesc", false)
+        
+        // Refresh the root node to ensure we have the latest UI state
+        refreshRootNode()
+        
+        val rootNode = rootInActiveWindow
+        if (rootNode == null) {
+            Log.e(TAG, "Root node is null, cannot find button by content description")
+            notifyUser("Cannot find button: No active window", true)
+            return false
+        }
+        
+        try {
+            // Find the node with the specified content description
+            val node = findNodeByContentDescription(rootNode, contentDesc)
+            
+            if (node != null) {
+                Log.d(TAG, "Found node with content description: $contentDesc")
+                notifyUser("Found button with content description: $contentDesc", false)
+                
+                // Check if the node is clickable
+                if (node.isClickable) {
+                    Log.d(TAG, "Node is clickable, performing click")
+                    notifyUser("Button is clickable, performing click", false)
+                    
+                    // Add a small delay before clicking
+                    try {
+                        Thread.sleep(200)
+                    } catch (e: InterruptedException) {
+                        Log.e(TAG, "Sleep interrupted: ${e.message}")
+                    }
+                    
+                    val result = node.performAction(AccessibilityNodeInfo.ACTION_CLICK)
+                    Log.d(TAG, "Click result: $result")
+                    
+                    if (!result) {
+                        notifyUser("Click action failed on button with content description: $contentDesc", true)
+                    } else {
+                        notifyUser("Click action succeeded on button with content description: $contentDesc", false)
+                    }
+                    return result
+                } else {
+                    // Similar logic as findAndClickButtonByText for non-clickable nodes
+                    Log.d(TAG, "Node is not clickable, trying to find a clickable parent")
+                    notifyUser("Button is not clickable, trying to find a clickable parent", false)
+                    
+                    // Try to find a clickable parent
+                    var parent = node.parent
                     while (parent != null) {
                         if (parent.isClickable) {
                             Log.d(TAG, "Found clickable parent, performing click")
                             notifyUser("Found clickable parent, performing click", false)
+                            
+                            // Add a small delay before clicking
+                            try {
+                                Thread.sleep(200)
+                            } catch (e: InterruptedException) {
+                                Log.e(TAG, "Sleep interrupted: ${e.message}")
+                            }
+                            
                             val result = parent.performAction(AccessibilityNodeInfo.ACTION_CLICK)
                             Log.d(TAG, "Click result: $result")
+                            
                             if (!result) {
-                                notifyUser("Click action failed on parent of button: $buttonText", true)
+                                notifyUser("Click action failed on parent of button with content description: $contentDesc", true)
                             } else {
-                                notifyUser("Click action succeeded on parent of button: $buttonText", false)
+                                notifyUser("Click action succeeded on parent of button with content description: $contentDesc", false)
                             }
                             return result
                         }
@@ -657,17 +950,127 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
                     }
                 }
             } else {
-                Log.e(TAG, "No node found with text: $buttonText")
-                notifyUser("No button found with text: $buttonText", true)
+                Log.e(TAG, "No node found with content description: $contentDesc")
+                notifyUser("No button found with content description: $contentDesc", true)
             }
         } catch (e: Exception) {
-            Log.e(TAG, "Error finding and clicking button: ${e.message}", e)
-            notifyUser("Error finding button: ${e.message}", true)
+            Log.e(TAG, "Error finding and clicking button by content description: ${e.message}", e)
+            notifyUser("Error finding button by content description: ${e.message}", true)
         } finally {
             try {
                 rootNode.recycle()
             } catch (e: Exception) {
-                Log.e(TAG, "Error recycling root node: ${e.message}", e)
+                Log.e(TAG, "Error recycling root node: ${e.message}")
+            }
+        }
+        
+        return false
+    }
+    
+    // Find and click a button by its class name
+    fun findAndClickButtonByClassName(className: String): Boolean {
+        Log.d(TAG, "Looking for button with class name containing: $className")
+        notifyUser("Looking for button with class name containing: $className", false)
+        
+        // Refresh the root node to ensure we have the latest UI state
+        refreshRootNode()
+        
+        val rootNode = rootInActiveWindow
+        if (rootNode == null) {
+            Log.e(TAG, "Root node is null, cannot find button by class name")
+            notifyUser("Cannot find button: No active window", true)
+            return false
+        }
+        
+        try {
+            // Find the node with the specified class name
+            val node = findNodeByClassName(rootNode, className)
+            
+            if (node != null) {
+                Log.d(TAG, "Found node with class name containing: $className")
+                notifyUser("Found button with class name containing: $className", false)
+                
+                // Similar logic as other find methods
+                if (node.isClickable) {
+                    Log.d(TAG, "Node is clickable, performing click")
+                    notifyUser("Button is clickable, performing click", false)
+                    
+                    // Add a small delay before clicking
+                    try {
+                        Thread.sleep(200)
+                    } catch (e: InterruptedException) {
+                        Log.e(TAG, "Sleep interrupted: ${e.message}")
+                    }
+                    
+                    val result = node.performAction(AccessibilityNodeInfo.ACTION_CLICK)
+                    Log.d(TAG, "Click result: $result")
+                    
+                    if (!result) {
+                        notifyUser("Click action failed on button with class name containing: $className", true)
+                    } else {
+                        notifyUser("Click action succeeded on button with class name containing: $className", false)
+                    }
+                    return result
+                } else {
+                    // Try to find a clickable parent
+                    // Similar logic as other find methods
+                    Log.d(TAG, "Node is not clickable, trying to find a clickable parent")
+                    notifyUser("Button is not clickable, trying to find a clickable parent", false)
+                    
+                    var parent = node.parent
+                    while (parent != null) {
+                        if (parent.isClickable) {
+                            Log.d(TAG, "Found clickable parent, performing click")
+                            notifyUser("Found clickable parent, performing click", false)
+                            
+                            // Add a small delay before clicking
+                            try {
+                                Thread.sleep(200)
+                            } catch (e: InterruptedException) {
+                                Log.e(TAG, "Sleep interrupted: ${e.message}")
+                            }
+                            
+                            val result = parent.performAction(AccessibilityNodeInfo.ACTION_CLICK)
+                            Log.d(TAG, "Click result: $result")
+                            
+                            if (!result) {
+                                notifyUser("Click action failed on parent of button with class name containing: $className", true)
+                            } else {
+                                notifyUser("Click action succeeded on parent of button with class name containing: $className", false)
+                            }
+                            return result
+                        }
+                        parent = parent.parent
+                    }
+                    
+                    // If no clickable parent found, try to click at the node's center coordinates
+                    val rect = Rect()
+                    node.getBoundsInScreen(rect)
+                    val centerX = rect.exactCenterX()
+                    val centerY = rect.exactCenterY()
+                    Log.d(TAG, "No clickable parent found, tapping at center coordinates: $centerX, $centerY")
+                    notifyUser("No clickable parent found, tapping at center coordinates: $centerX, $centerY", false)
+                    
+                    // Use tapAtCoordinates to click at the center of the node
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+                        return tapAtCoordinates(centerX, centerY)
+                    } else {
+                        notifyUser("Tap at coordinates requires Android 7.0+", true)
+                        return false
+                    }
+                }
+            } else {
+                Log.e(TAG, "No node found with class name containing: $className")
+                notifyUser("No button found with class name containing: $className", true)
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error finding and clicking button by class name: ${e.message}", e)
+            notifyUser("Error finding button by class name: ${e.message}", true)
+        } finally {
+            try {
+                rootNode.recycle()
+            } catch (e: Exception) {
+                Log.e(TAG, "Error recycling root node: ${e.message}")
             }
         }
         
@@ -692,7 +1095,59 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
             try {
                 child.recycle()
             } catch (e: Exception) {
-                Log.e(TAG, "Error recycling child node: ${e.message}", e)
+                Log.e(TAG, "Error recycling child node: ${e.message}")
+            }
+        }
+        
+        return null
+    }
+    
+    // Find a node by its content description
+    private fun findNodeByContentDescription(node: AccessibilityNodeInfo, contentDesc: String): AccessibilityNodeInfo? {
+        // Check if this node has the content description we're looking for
+        if (node.contentDescription != null && 
+            node.contentDescription.toString().contains(contentDesc, ignoreCase = true)) {
+            return node
+        }
+        
+        // Check child nodes
+        for (i in 0 until node.childCount) {
+            val child = node.getChild(i) ?: continue
+            val result = findNodeByContentDescription(child, contentDesc)
+            if (result != null) {
+                return result
+            }
+            // Explicitly recycle child nodes we're done with
+            try {
+                child.recycle()
+            } catch (e: Exception) {
+                Log.e(TAG, "Error recycling child node: ${e.message}")
+            }
+        }
+        
+        return null
+    }
+    
+    // Find a node by its class name
+    private fun findNodeByClassName(node: AccessibilityNodeInfo, className: String): AccessibilityNodeInfo? {
+        // Check if this node's class name contains the text we're looking for
+        if (node.className != null && 
+            node.className.toString().contains(className, ignoreCase = true)) {
+            return node
+        }
+        
+        // Check child nodes
+        for (i in 0 until node.childCount) {
+            val child = node.getChild(i) ?: continue
+            val result = findNodeByClassName(child, className)
+            if (result != null) {
+                return result
+            }
+            // Explicitly recycle child nodes we're done with
+            try {
+                child.recycle()
+            } catch (e: Exception) {
+                Log.e(TAG, "Error recycling child node: ${e.message}")
             }
         }
         
@@ -750,6 +1205,62 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
         } catch (e: Exception) {
             Log.e(TAG, "Error performing tap at coordinates: $x, $y", e)
             notifyUser("Error performing tap: ${e.message}", true)
+            return false
+        }
+    }
+    
+    // Tap at specific coordinates with longer duration
+    @RequiresApi(Build.VERSION_CODES.N)
+    fun tapAtCoordinatesWithLongerDuration(x: Float, y: Float): Boolean {
+        Log.d(TAG, "Tapping at coordinates with longer duration: $x, $y")
+        notifyUser("Tapping at coordinates with longer duration: $x, $y", false)
+        
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.N) {
+            Log.e(TAG, "Tap at coordinates requires API level 24 or higher")
+            notifyUser("Tap requires Android 7.0+", true)
+            return false
+        }
+        
+        try {
+            // Create a path for the tap gesture
+            val path = Path()
+            path.moveTo(x, y)
+            
+            // Create a stroke description with much longer duration for better recognition
+            // 800ms duration should be recognized by most apps
+            val strokeDescription = GestureDescription.StrokeDescription(path, 0, 800)
+            
+            // Build the gesture with the stroke
+            val gestureBuilder = GestureDescription.Builder()
+            gestureBuilder.addStroke(strokeDescription)
+            val gesture = gestureBuilder.build()
+            
+            // Create a callback to handle the result
+            val callback = object : GestureResultCallback() {
+                override fun onCompleted(gestureDescription: GestureDescription) {
+                    super.onCompleted(gestureDescription)
+                    Log.d(TAG, "Long-duration tap gesture completed successfully at coordinates: $x, $y")
+                    
+                    // Show a toast to indicate the tap was performed
+                    notifyUser("Long-duration tap performed successfully at: $x, $y", false)
+                }
+                
+                override fun onCancelled(gestureDescription: GestureDescription) {
+                    super.onCancelled(gestureDescription)
+                    Log.e(TAG, "Long-duration tap gesture cancelled at coordinates: $x, $y")
+                    
+                    // Show a toast to indicate the tap was cancelled
+                    notifyUser("Long-duration tap cancelled at: $x, $y", true)
+                }
+            }
+            
+            // Dispatch the gesture with the callback
+            val dispatchResult = dispatchGesture(gesture, callback, null)
+            Log.d(TAG, "Long-duration gesture dispatch result: $dispatchResult")
+            return dispatchResult
+        } catch (e: Exception) {
+            Log.e(TAG, "Error performing long-duration tap at coordinates: $x, $y", e)
+            notifyUser("Error performing long-duration tap: ${e.message}", true)
             return false
         }
     }
