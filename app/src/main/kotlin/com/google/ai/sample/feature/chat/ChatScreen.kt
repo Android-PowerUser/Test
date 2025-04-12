@@ -1,167 +1,311 @@
-/*
- * Copyright 2023 Google LLC
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
-
 package com.google.ai.sample.feature.chat
 
-import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.requiredSize
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Send
+import androidx.compose.material.icons.outlined.Person
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.ElevatedCard
+import androidx.compose.material3.Divider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.input.KeyboardCapitalization
-import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.google.ai.sample.GenerativeViewModelFactory
+import com.google.ai.sample.MainActivity
 import com.google.ai.sample.R
-import com.google.ai.sample.ui.theme.GenerativeAISample
-import kotlinx.coroutines.launch
+import com.google.ai.sample.ScreenOperatorAccessibilityService
+import com.google.ai.sample.util.Command
 
 @Composable
 internal fun ChatRoute(
-    chatViewModel: ChatViewModel = viewModel(factory = GenerativeViewModelFactory)
+    viewModel: ChatViewModel = viewModel(factory = GenerativeViewModelFactory)
 ) {
-    val chatUiState by chatViewModel.uiState.collectAsState()
+    val chatUiState by viewModel.uiState.collectAsState()
+    val commandExecutionStatus by viewModel.commandExecutionStatus.collectAsState()
+    val detectedCommands by viewModel.detectedCommands.collectAsState()
+    
+    val context = LocalContext.current
+    val mainActivity = context as? MainActivity
+    
+    // Check if accessibility service is enabled
+    val isAccessibilityServiceEnabled = remember {
+        mutableStateOf(
+            mainActivity?.let {
+                ScreenOperatorAccessibilityService.isAccessibilityServiceEnabled(it)
+            } ?: false
+        )
+    }
+    
+    // Check accessibility service status when the screen is composed
+    DisposableEffect(Unit) {
+        mainActivity?.checkAccessibilityServiceEnabled()
+        onDispose { }
+    }
+
+    ChatScreen(
+        uiState = chatUiState,
+        commandExecutionStatus = commandExecutionStatus,
+        detectedCommands = detectedCommands,
+        onMessageSent = { messageText ->
+            viewModel.sendMessage(messageText)
+        },
+        isAccessibilityServiceEnabled = isAccessibilityServiceEnabled.value,
+        onEnableAccessibilityService = {
+            mainActivity?.checkAccessibilityServiceEnabled()
+        }
+    )
+}
+
+@Composable
+fun ChatScreen(
+    uiState: ChatUiState,
+    commandExecutionStatus: String = "",
+    detectedCommands: List<Command> = emptyList(),
+    onMessageSent: (String) -> Unit,
+    isAccessibilityServiceEnabled: Boolean = false,
+    onEnableAccessibilityService: () -> Unit = {}
+) {
+    var userMessage by rememberSaveable { mutableStateOf("") }
     val listState = rememberLazyListState()
-    val coroutineScope = rememberCoroutineScope()
 
-    Scaffold(
-        bottomBar = {
-            MessageInput(
-                onSendMessage = { inputText ->
-                    chatViewModel.sendMessage(inputText)
-                },
-                resetScroll = {
-                    coroutineScope.launch {
-                        listState.scrollToItem(0)
-                    }
-                }
-            )
+    // Scroll to the bottom when new messages arrive
+    LaunchedEffect(uiState.messages.size) {
+        if (uiState.messages.isNotEmpty()) {
+            listState.animateScrollToItem(uiState.messages.size - 1)
         }
-    ) { paddingValues ->
-        Column(
-            modifier = Modifier
-                .padding(paddingValues)
-                .fillMaxSize()
-        ) {
-            // Messages List
-            ChatList(chatUiState.messages, listState)
-        }
-    }
-}
-
-@Composable
-fun ChatList(
-    chatMessages: List<ChatMessage>,
-    listState: LazyListState
-) {
-    LazyColumn(
-        reverseLayout = true,
-        state = listState
-    ) {
-        items(chatMessages.reversed()) { message ->
-            ChatBubbleItem(message)
-        }
-    }
-}
-
-@Composable
-fun ChatBubbleItem(
-    chatMessage: ChatMessage
-) {
-    val isModelMessage = chatMessage.participant == Participant.MODEL ||
-            chatMessage.participant == Participant.ERROR
-
-    val backgroundColor = when (chatMessage.participant) {
-        Participant.MODEL -> MaterialTheme.colorScheme.primaryContainer
-        Participant.USER -> MaterialTheme.colorScheme.tertiaryContainer
-        Participant.ERROR -> MaterialTheme.colorScheme.errorContainer
-    }
-
-    val bubbleShape = if (isModelMessage) {
-        RoundedCornerShape(4.dp, 20.dp, 20.dp, 20.dp)
-    } else {
-        RoundedCornerShape(20.dp, 4.dp, 20.dp, 20.dp)
-    }
-
-    val horizontalAlignment = if (isModelMessage) {
-        Alignment.Start
-    } else {
-        Alignment.End
     }
 
     Column(
-        horizontalAlignment = horizontalAlignment,
         modifier = Modifier
-            .padding(horizontal = 8.dp, vertical = 4.dp)
-            .fillMaxWidth()
+            .fillMaxSize()
+            .padding(all = 16.dp)
     ) {
-        Text(
-            text = chatMessage.participant.name,
-            style = MaterialTheme.typography.bodySmall,
-            modifier = Modifier.padding(bottom = 4.dp)
-        )
-        Row {
-            if (chatMessage.isPending) {
-                CircularProgressIndicator(
-                    modifier = Modifier
-                        .align(Alignment.CenterVertically)
-                        .padding(all = 8.dp)
+        // Accessibility Service Status Card
+        if (!isAccessibilityServiceEnabled) {
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 16.dp),
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.errorContainer
                 )
-            }
-            BoxWithConstraints {
-                Card(
-                    colors = CardDefaults.cardColors(containerColor = backgroundColor),
-                    shape = bubbleShape,
-                    modifier = Modifier.widthIn(0.dp, maxWidth * 0.9f)
+            ) {
+                Column(
+                    modifier = Modifier.padding(16.dp)
                 ) {
                     Text(
-                        text = chatMessage.text,
-                        modifier = Modifier.padding(16.dp)
+                        text = "Accessibility Service ist nicht aktiviert",
+                        color = MaterialTheme.colorScheme.error,
+                        style = MaterialTheme.typography.titleMedium
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        text = "Die Klick-Funktionalität benötigt den Accessibility Service. Bitte aktivieren Sie ihn in den Einstellungen.",
+                        color = MaterialTheme.colorScheme.error
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    TextButton(
+                        onClick = onEnableAccessibilityService
+                    ) {
+                        Text("Accessibility Service aktivieren")
+                    }
+                }
+            }
+        }
+        
+        // Command Execution Status
+        if (commandExecutionStatus.isNotEmpty()) {
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 8.dp),
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.secondaryContainer
+                )
+            ) {
+                Column(
+                    modifier = Modifier.padding(16.dp)
+                ) {
+                    Text(
+                        text = "Befehlsstatus:",
+                        style = MaterialTheme.typography.titleMedium
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        text = commandExecutionStatus,
+                        color = MaterialTheme.colorScheme.onSecondaryContainer
+                    )
+                }
+            }
+        }
+        
+        // Detected Commands
+        if (detectedCommands.isNotEmpty()) {
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 8.dp),
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.tertiaryContainer
+                )
+            ) {
+                Column(
+                    modifier = Modifier.padding(16.dp)
+                ) {
+                    Text(
+                        text = "Erkannte Befehle:",
+                        style = MaterialTheme.typography.titleMedium
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+                    
+                    detectedCommands.forEachIndexed { index, command ->
+                        val commandText = when (command) {
+                            is Command.ClickButton -> "Klick auf Button: \"${command.buttonText}\""
+                            is Command.TapCoordinates -> "Tippen auf Koordinaten: (${command.x}, ${command.y})"
+                            is Command.TakeScreenshot -> "Screenshot aufnehmen"
+                        }
+                        
+                        Text(
+                            text = "${index + 1}. $commandText",
+                            color = MaterialTheme.colorScheme.onTertiaryContainer
+                        )
+                        
+                        if (index < detectedCommands.size - 1) {
+                            Divider(
+                                modifier = Modifier.padding(vertical = 4.dp),
+                                color = MaterialTheme.colorScheme.onTertiaryContainer.copy(alpha = 0.2f)
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
+        LazyColumn(
+            state = listState,
+            modifier = Modifier
+                .fillMaxWidth()
+                .weight(1f)
+        ) {
+            items(uiState.messages) { message ->
+                when (message.participant) {
+                    Participant.USER -> {
+                        UserChatBubble(
+                            text = message.text,
+                            isPending = message.isPending
+                        )
+                    }
+                    Participant.MODEL -> {
+                        ModelChatBubble(
+                            text = message.text,
+                            isPending = message.isPending
+                        )
+                    }
+                    Participant.ERROR -> {
+                        ErrorChatBubble(
+                            text = message.text
+                        )
+                    }
+                }
+            }
+        }
+
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(top = 8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            OutlinedTextField(
+                value = userMessage,
+                onValueChange = { userMessage = it },
+                placeholder = { Text(stringResource(R.string.chat_input_hint)) },
+                modifier = Modifier
+                    .weight(1f)
+                    .padding(end = 8.dp)
+            )
+            IconButton(
+                onClick = {
+                    if (userMessage.isNotBlank()) {
+                        onMessageSent(userMessage)
+                        userMessage = ""
+                    }
+                }
+            ) {
+                Icon(
+                    Icons.Default.Send,
+                    contentDescription = stringResource(R.string.chat_send),
+                    tint = MaterialTheme.colorScheme.primary
+                )
+            }
+        }
+    }
+}
+
+@Composable
+fun UserChatBubble(
+    text: String,
+    isPending: Boolean
+) {
+    Row(
+        modifier = Modifier
+            .padding(vertical = 8.dp, horizontal = 8.dp)
+            .fillMaxWidth(),
+        verticalAlignment = Alignment.Top
+    ) {
+        Spacer(modifier = Modifier.weight(1f))
+        Card(
+            shape = MaterialTheme.shapes.medium,
+            colors = CardDefaults.cardColors(
+                containerColor = MaterialTheme.colorScheme.primaryContainer
+            ),
+            modifier = Modifier.weight(4f)
+        ) {
+            Column(
+                modifier = Modifier.padding(all = 16.dp)
+            ) {
+                Text(
+                    text = text,
+                    color = MaterialTheme.colorScheme.onPrimaryContainer
+                )
+                if (isPending) {
+                    CircularProgressIndicator(
+                        modifier = Modifier
+                            .padding(top = 8.dp)
+                            .requiredSize(16.dp),
+                        strokeWidth = 2.dp
                     )
                 }
             }
@@ -170,53 +314,78 @@ fun ChatBubbleItem(
 }
 
 @Composable
-fun MessageInput(
-    onSendMessage: (String) -> Unit,
-    resetScroll: () -> Unit = {}
+fun ModelChatBubble(
+    text: String,
+    isPending: Boolean
 ) {
-    var userMessage by rememberSaveable { mutableStateOf("") }
-
-    ElevatedCard(
+    Row(
         modifier = Modifier
-            .fillMaxWidth()
+            .padding(vertical = 8.dp, horizontal = 8.dp)
+            .fillMaxWidth(),
+        verticalAlignment = Alignment.Top
     ) {
-        Row(
-            modifier = Modifier
-                .padding(16.dp)
-                .fillMaxWidth()
+        Card(
+            shape = MaterialTheme.shapes.medium,
+            colors = CardDefaults.cardColors(
+                containerColor = MaterialTheme.colorScheme.secondaryContainer
+            ),
+            modifier = Modifier.weight(4f)
         ) {
-            OutlinedTextField(
-                value = userMessage,
-                label = { Text(stringResource(R.string.chat_label)) },
-                onValueChange = { userMessage = it },
-                keyboardOptions = KeyboardOptions(
-                    capitalization = KeyboardCapitalization.Sentences,
-                ),
-                modifier = Modifier
-                    .align(Alignment.CenterVertically)
-                    .fillMaxWidth()
-                    .weight(0.85f)
-            )
-            IconButton(
-                onClick = {
-                    if (userMessage.isNotBlank()) {
-                        onSendMessage(userMessage)
-                        userMessage = ""
-                        resetScroll()
-                    }
-                },
-                modifier = Modifier
-                    .padding(start = 16.dp)
-                    .align(Alignment.CenterVertically)
-                    .fillMaxWidth()
-                    .weight(0.15f)
+            Row(
+                modifier = Modifier.padding(all = 16.dp)
             ) {
                 Icon(
-                    Icons.Default.Send,
-                    contentDescription = stringResource(R.string.action_send),
+                    Icons.Outlined.Person,
+                    contentDescription = "AI Assistant",
+                    tint = MaterialTheme.colorScheme.onSecondaryContainer,
                     modifier = Modifier
+                        .requiredSize(24.dp)
+                        .drawBehind {
+                            drawCircle(color = Color.White)
+                        }
+                        .padding(end = 8.dp)
                 )
+                Column {
+                    Text(
+                        text = text,
+                        color = MaterialTheme.colorScheme.onSecondaryContainer
+                    )
+                    if (isPending) {
+                        CircularProgressIndicator(
+                            modifier = Modifier
+                                .padding(top = 8.dp)
+                                .requiredSize(16.dp),
+                            strokeWidth = 2.dp
+                        )
+                    }
+                }
             }
+        }
+        Spacer(modifier = Modifier.weight(1f))
+    }
+}
+
+@Composable
+fun ErrorChatBubble(
+    text: String
+) {
+    Box(
+        modifier = Modifier
+            .padding(vertical = 8.dp, horizontal = 8.dp)
+            .fillMaxWidth()
+    ) {
+        Card(
+            shape = MaterialTheme.shapes.medium,
+            colors = CardDefaults.cardColors(
+                containerColor = MaterialTheme.colorScheme.errorContainer
+            ),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Text(
+                text = text,
+                color = MaterialTheme.colorScheme.error,
+                modifier = Modifier.padding(all = 16.dp)
+            )
         }
     }
 }
