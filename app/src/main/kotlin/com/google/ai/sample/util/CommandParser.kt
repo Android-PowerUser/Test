@@ -9,10 +9,10 @@ import java.util.regex.Pattern
 object CommandParser {
     private const val TAG = "CommandParser"
     
-    // Command patterns
-    private val CLICK_BUTTON_PATTERN = Pattern.compile("clickOnButton\\(\\s*\"([^\"]+)\"\\s*\\)")
-    private val TAP_COORDINATES_PATTERN = Pattern.compile("tapAtCoordinates\\(\\s*([0-9.]+)\\s*,\\s*([0-9.]+)\\s*\\)")
-    private val TAKE_SCREENSHOT_PATTERN = Pattern.compile("takeScreenshot\\(\\s*\\)")
+    // Command patterns - more flexible to match various formats
+    private val CLICK_BUTTON_PATTERN = Pattern.compile("clickOnButton\\(\\s*\"([^\"]+)\"\\s*\\)|click\\s*(?:on)?\\s*(?:button)?\\s*[\"']([^\"']+)[\"']", Pattern.CASE_INSENSITIVE)
+    private val TAP_COORDINATES_PATTERN = Pattern.compile("tapAtCoordinates\\(\\s*([0-9.]+)\\s*,\\s*([0-9.]+)\\s*\\)|tap\\s*(?:at)?\\s*\\(?\\s*([0-9.]+)\\s*,\\s*([0-9.]+)\\s*\\)?", Pattern.CASE_INSENSITIVE)
+    private val TAKE_SCREENSHOT_PATTERN = Pattern.compile("takeScreenshot\\(\\s*\\)|take\\s*(?:a)?\\s*screenshot", Pattern.CASE_INSENSITIVE)
     
     /**
      * Parse commands from AI response text
@@ -25,7 +25,8 @@ object CommandParser {
         // Find clickOnButton commands
         val clickMatcher = CLICK_BUTTON_PATTERN.matcher(text)
         while (clickMatcher.find()) {
-            val buttonText = clickMatcher.group(1)
+            // Try both capture groups
+            val buttonText = clickMatcher.group(1) ?: clickMatcher.group(2)
             if (buttonText != null) {
                 Log.d(TAG, "Found clickOnButton command: $buttonText")
                 commands.add(Command.ClickButton(buttonText))
@@ -36,8 +37,10 @@ object CommandParser {
         val tapMatcher = TAP_COORDINATES_PATTERN.matcher(text)
         while (tapMatcher.find()) {
             try {
-                val x = tapMatcher.group(1)?.toFloat()
-                val y = tapMatcher.group(2)?.toFloat()
+                // Try both formats of capture groups
+                val x = tapMatcher.group(1)?.toFloatOrNull() ?: tapMatcher.group(3)?.toFloatOrNull()
+                val y = tapMatcher.group(2)?.toFloatOrNull() ?: tapMatcher.group(4)?.toFloatOrNull()
+                
                 if (x != null && y != null) {
                     Log.d(TAG, "Found tapAtCoordinates command: $x, $y")
                     commands.add(Command.TapCoordinates(x, y))
