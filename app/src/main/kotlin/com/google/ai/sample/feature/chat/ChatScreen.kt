@@ -251,7 +251,7 @@ fun ChatScreen(
             OutlinedTextField(
                 value = userMessage,
                 onValueChange = { userMessage = it },
-                placeholder = { Text(stringResource(R.string.chat_input_hint)) },
+                placeholder = { Text(stringResource(R.string.chat_label)) },
                 modifier = Modifier
                     .weight(1f)
                     .padding(end = 8.dp)
@@ -266,7 +266,7 @@ fun ChatScreen(
             ) {
                 Icon(
                     Icons.Default.Send,
-                    contentDescription = stringResource(R.string.chat_send),
+                    contentDescription = stringResource(R.string.action_send),
                     tint = MaterialTheme.colorScheme.primary
                 )
             }
