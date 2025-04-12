@@ -1,7 +1,6 @@
 package com.google.ai.sample
 
 import android.Manifest
-import android.accessibilityservice.AccessibilityManager
 import android.app.AlertDialog
 import android.content.Context
 import android.content.Intent
@@ -191,7 +190,7 @@ class MainActivity : ComponentActivity() {
 
     // Helper function to check if the accessibility service is enabled
     private fun isAccessibilityServiceEnabled(): Boolean {
-        val accessibilityManager = getSystemService(Context.ACCESSIBILITY_SERVICE) as AccessibilityManager
+        val accessibilityManager = getSystemService(Context.ACCESSIBILITY_SERVICE) as android.view.accessibility.AccessibilityManager
         val enabledServices = Settings.Secure.getString(
             contentResolver,
             Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES
