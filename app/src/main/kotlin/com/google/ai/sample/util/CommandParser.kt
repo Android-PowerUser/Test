@@ -22,6 +22,9 @@ object CommandParser {
     fun parseCommands(text: String): List<Command> {
         val commands = mutableListOf<Command>()
         
+        // Log the text being parsed for debugging
+        Log.d(TAG, "Parsing commands from text: $text")
+        
         // Find clickOnButton commands
         val clickMatcher = CLICK_BUTTON_PATTERN.matcher(text)
         while (clickMatcher.find()) {
@@ -56,6 +59,9 @@ object CommandParser {
             Log.d(TAG, "Found takeScreenshot command")
             commands.add(Command.TakeScreenshot)
         }
+        
+        // Log the total number of commands found
+        Log.d(TAG, "Total commands found: ${commands.size}")
         
         return commands
     }
