@@ -17,6 +17,7 @@ import com.google.ai.sample.MainActivity
 import com.google.ai.sample.ScreenOperatorAccessibilityService
 import com.google.ai.sample.util.Command
 import com.google.ai.sample.util.CommandParser
+import com.google.ai.sample.util.SystemMessagePreferences
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -50,6 +51,10 @@ class PhotoReasoningViewModel(
     private val _commandExecutionStatus = MutableStateFlow<String>("")
     val commandExecutionStatus: StateFlow<String> = _commandExecutionStatus.asStateFlow()
     
+    // System message state
+    private val _systemMessage = MutableStateFlow<String>("")
+    val systemMessage: StateFlow<String> = _systemMessage.asStateFlow()
+    
     // ImageLoader and ImageRequestBuilder for processing images
     private var imageLoader: ImageLoader? = null
     private var imageRequestBuilder: ImageRequest.Builder? = null
@@ -59,7 +64,16 @@ class PhotoReasoningViewModel(
         selectedImages: List<Bitmap>
     ) {
         _uiState.value = PhotoReasoningUiState.Loading
-        val prompt = "Look at the image(s), and then answer the following question: $userInput"
+        
+        // Get the system message
+        val systemMessageText = _systemMessage.value
+        
+        // Create the prompt with system message if available
+        val prompt = if (systemMessageText.isNotBlank()) {
+            "System Message: $systemMessageText\n\nLook at the image(s), and then answer the following question: $userInput"
+        } else {
+            "Look at the image(s), and then answer the following question: $userInput"
+        }
         
         // Store the current user input and selected images
         currentUserInput = userInput
@@ -95,6 +109,24 @@ class PhotoReasoningViewModel(
                 _commandExecutionStatus.value = "Fehler bei der Generierung: ${e.localizedMessage}"
             }
         }
+    }
+    
+    /**
+     * Update the system message
+     */
+    fun updateSystemMessage(message: String, context: android.content.Context) {
+        _systemMessage.value = message
+        
+        // Save to SharedPreferences for persistence
+        SystemMessagePreferences.saveSystemMessage(context, message)
+    }
+    
+    /**
+     * Load the system message from SharedPreferences
+     */
+    fun loadSystemMessage(context: android.content.Context) {
+        val message = SystemMessagePreferences.loadSystemMessage(context)
+        _systemMessage.value = message
     }
     
     /**

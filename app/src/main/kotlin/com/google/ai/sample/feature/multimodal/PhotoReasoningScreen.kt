@@ -69,6 +69,7 @@ internal fun PhotoReasoningRoute(
     val photoReasoningUiState by viewModel.uiState.collectAsState()
     val commandExecutionStatus by viewModel.commandExecutionStatus.collectAsState()
     val detectedCommands by viewModel.detectedCommands.collectAsState()
+    val systemMessage by viewModel.systemMessage.collectAsState()
 
     val coroutineScope = rememberCoroutineScope()
     val imageRequestBuilder = ImageRequest.Builder(LocalContext.current)
@@ -87,6 +88,9 @@ internal fun PhotoReasoningRoute(
         // Check if accessibility service is enabled
         mainActivity?.checkAccessibilityServiceEnabled()
         
+        // Load the saved system message
+        viewModel.loadSystemMessage(context)
+        
         // When the composable is disposed, clear the reference if needed
         onDispose {
             // Optional: clear the reference when navigating away
@@ -98,6 +102,10 @@ internal fun PhotoReasoningRoute(
         uiState = photoReasoningUiState,
         commandExecutionStatus = commandExecutionStatus,
         detectedCommands = detectedCommands,
+        systemMessage = systemMessage,
+        onSystemMessageChanged = { message ->
+            viewModel.updateSystemMessage(message, context)
+        },
         onReasonClicked = { inputText, selectedItems ->
             coroutineScope.launch {
                 Log.d("PhotoReasoningScreen", "Go button clicked, processing images")
@@ -144,6 +152,8 @@ fun PhotoReasoningScreen(
     uiState: PhotoReasoningUiState = PhotoReasoningUiState.Initial,
     commandExecutionStatus: String = "",
     detectedCommands: List<Command> = emptyList(),
+    systemMessage: String = "",
+    onSystemMessageChanged: (String) -> Unit = {},
     onReasonClicked: (String, List<Uri>) -> Unit = { _, _ -> },
     isAccessibilityServiceEnabled: Boolean = false,
     onEnableAccessibilityService: () -> Unit = {}
@@ -164,6 +174,37 @@ fun PhotoReasoningScreen(
             .padding(all = 16.dp)
             .verticalScroll(rememberScrollState())
     ) {
+        // System Message Field
+        Card(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(bottom = 16.dp),
+            colors = CardDefaults.cardColors(
+                containerColor = MaterialTheme.colorScheme.primaryContainer
+            )
+        ) {
+            Column(
+                modifier = Modifier.padding(16.dp)
+            ) {
+                Text(
+                    text = "System Message",
+                    style = MaterialTheme.typography.titleMedium,
+                    color = MaterialTheme.colorScheme.onPrimaryContainer
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                OutlinedTextField(
+                    value = systemMessage,
+                    onValueChange = onSystemMessageChanged,
+                    placeholder = { Text("Geben Sie hier eine System-Nachricht ein, die bei jeder Anfrage mitgesendet wird") },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(80.dp), // Height for approximately 3 lines
+                    maxLines = 3,
+                    minLines = 3
+                )
+            }
+        }
+        
         // Accessibility Service Status Card
         if (!isAccessibilityServiceEnabled) {
             Card(
@@ -394,6 +435,20 @@ fun PhotoReasoningScreen(
             }
         }
     }
+}
+
+@Preview
+@Composable
+fun PhotoReasoningScreenPreview() {
+    PhotoReasoningScreen(
+        uiState = PhotoReasoningUiState.Success("This is a preview of the photo reasoning screen."),
+        commandExecutionStatus = "Befehl ausgeführt: Screenshot aufnehmen",
+        detectedCommands = listOf(
+            Command.TakeScreenshot,
+            Command.ClickButton("OK")
+        ),
+        systemMessage = "Dies ist eine System-Nachricht für die KI"
+    )
 }
 
 @Composable
