@@ -284,7 +284,10 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
             
             // Create a new overlay
             val inflater = LayoutInflater.from(this)
-            overlayView = inflater.inflate(R.layout.tap_indicator, null)
+            // Erstelle einen einfachen View anstatt R.layout.tap_indicator zu verwenden
+            val circleView = View(this)
+            circleView.setBackgroundResource(android.R.drawable.radiobutton_on_background)
+            overlayView = circleView
             
             // Create layout parameters
             overlayParams = WindowManager.LayoutParams(
@@ -388,17 +391,15 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
             // Get the root node
             val rootNode = rootInActiveWindow ?: return null
             
-            // Take the screenshot
-            rootNode.performAction(AccessibilityNodeInfo.ACTION_TAKE_SCREENSHOT)
-            
-            // For now, we can't directly get the bitmap from the accessibility service
-            // This is a placeholder for future implementation
+            // Verwende eine alternative Methode anstelle von ACTION_TAKE_SCREENSHOT
+            // Erstelle ein leeres Bitmap als Platzhalter
+            val bitmap = Bitmap.createBitmap(100, 100, Bitmap.Config.ARGB_8888)
             
             // Recycle the root node
             rootNode.recycle()
             
             // Return a placeholder bitmap
-            Bitmap.createBitmap(100, 100, Bitmap.Config.ARGB_8888)
+            bitmap
         } catch (e: Exception) {
             Log.e(TAG, "Error taking screenshot bitmap: ${e.message}")
             null
@@ -419,8 +420,8 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
             // Get the class name
             val className = rootNode.className?.toString() ?: "Unknown"
             
-            // Get the window title
-            val windowTitle = rootNode.windowTitle?.toString() ?: "Unknown"
+            // Entferne den Verweis auf windowTitle
+            val windowTitle = "Unknown" // Statt rootNode.windowTitle?.toString() ?: "Unknown"
             
             // Get the content description
             val contentDescription = rootNode.contentDescription?.toString() ?: "None"
