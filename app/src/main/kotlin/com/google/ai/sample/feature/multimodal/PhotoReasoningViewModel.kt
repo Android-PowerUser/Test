@@ -15,6 +15,7 @@ import com.google.ai.client.generativeai.GenerativeModel
 import com.google.ai.client.generativeai.type.content
 import com.google.ai.sample.MainActivity
 import com.google.ai.sample.ScreenOperatorAccessibilityService
+import com.google.ai.sample.util.ChatHistoryPreferences
 import com.google.ai.sample.util.Command
 import com.google.ai.sample.util.CommandParser
 import com.google.ai.sample.util.SystemMessagePreferences
@@ -55,6 +56,15 @@ class PhotoReasoningViewModel(
     private val _systemMessage = MutableStateFlow<String>("")
     val systemMessage: StateFlow<String> = _systemMessage.asStateFlow()
     
+    // Chat history state
+    private val _chatStateManager = PhotoReasoningUiStateManager()
+    val chatMessages: List<PhotoReasoningMessage>
+        get() = _chatStateManager.chatState.messages
+    
+    // Chat history state flow for UI updates
+    private val _chatMessagesFlow = MutableStateFlow<List<PhotoReasoningMessage>>(emptyList())
+    val chatMessagesFlow: StateFlow<List<PhotoReasoningMessage>> = _chatMessagesFlow.asStateFlow()
+    
     // ImageLoader and ImageRequestBuilder for processing images
     private var imageLoader: ImageLoader? = null
     private var imageRequestBuilder: ImageRequest.Builder? = null
@@ -82,6 +92,24 @@ class PhotoReasoningViewModel(
         // Clear previous commands
         _detectedCommands.value = emptyList()
         _commandExecutionStatus.value = ""
+        
+        // Add user message to chat history
+        val userMessage = PhotoReasoningMessage(
+            text = userInput,
+            participant = PhotoParticipant.USER,
+            isPending = false
+        )
+        _chatStateManager.chatState.addMessage(userMessage)
+        _chatMessagesFlow.value = chatMessages
+        
+        // Add AI message with pending status
+        val pendingAiMessage = PhotoReasoningMessage(
+            text = "",
+            participant = PhotoParticipant.MODEL,
+            isPending = true
+        )
+        _chatStateManager.chatState.addMessage(pendingAiMessage)
+        _chatMessagesFlow.value = chatMessages
 
         viewModelScope.launch(Dispatchers.IO) {
             try {
@@ -100,14 +128,57 @@ class PhotoReasoningViewModel(
                         outputContent += newText
                         _uiState.value = PhotoReasoningUiState.Success(outputContent)
                         
+                        // Update the AI message in chat history
+                        updateAiMessage(outputContent)
+                        
                         // Parse and execute commands from the response
                         processCommands(newText)
                     }
+                
+                // Save chat history after successful response
+                saveChatHistory(MainActivity.getInstance()?.applicationContext)
             } catch (e: Exception) {
                 Log.e(TAG, "Error generating content: ${e.message}", e)
                 _uiState.value = PhotoReasoningUiState.Error(e.localizedMessage ?: "Unknown error")
                 _commandExecutionStatus.value = "Fehler bei der Generierung: ${e.localizedMessage}"
+                
+                // Update chat with error message
+                _chatStateManager.chatState.replaceLastPendingMessage()
+                _chatStateManager.chatState.addMessage(
+                    PhotoReasoningMessage(
+                        text = e.localizedMessage ?: "Unknown error",
+                        participant = PhotoParticipant.ERROR
+                    )
+                )
+                _chatMessagesFlow.value = chatMessages
+                
+                // Save chat history even after error
+                saveChatHistory(MainActivity.getInstance()?.applicationContext)
             }
+        }
+    }
+    
+    /**
+     * Update the AI message in chat history
+     */
+    private fun updateAiMessage(text: String) {
+        // Find the last AI message and update it
+        val messages = _chatStateManager.chatState.messages.toMutableList()
+        val lastAiMessageIndex = messages.indexOfLast { it.participant == PhotoParticipant.MODEL }
+        
+        if (lastAiMessageIndex >= 0) {
+            val updatedMessage = messages[lastAiMessageIndex].copy(text = text, isPending = false)
+            messages[lastAiMessageIndex] = updatedMessage
+            
+            // Clear and re-add all messages to maintain order
+            _chatStateManager.chatState.clearMessages()
+            messages.forEach { _chatStateManager.chatState.addMessage(it) }
+            
+            // Update the flow
+            _chatMessagesFlow.value = chatMessages
+            
+            // Save chat history after updating message
+            saveChatHistory(MainActivity.getInstance()?.applicationContext)
         }
     }
     
@@ -127,6 +198,9 @@ class PhotoReasoningViewModel(
     fun loadSystemMessage(context: android.content.Context) {
         val message = SystemMessagePreferences.loadSystemMessage(context)
         _systemMessage.value = message
+        
+        // Also load chat history
+        loadChatHistory(context)
     }
     
     /**
@@ -266,6 +340,18 @@ class PhotoReasoningViewModel(
                 // Show toast
                 Toast.makeText(context, "Verarbeite Screenshot...", Toast.LENGTH_SHORT).show()
                 
+                // Add screenshot message to chat history
+                val screenshotMessage = PhotoReasoningMessage(
+                    text = "Screenshot aufgenommen",
+                    participant = PhotoParticipant.USER,
+                    imageUris = listOf(screenshotUri.toString())
+                )
+                _chatStateManager.chatState.addMessage(screenshotMessage)
+                _chatMessagesFlow.value = chatMessages
+                
+                // Save chat history after adding screenshot
+                saveChatHistory(context)
+                
                 // Process the screenshot
                 val imageRequest = imageRequestBuilder!!
                     .data(screenshotUri)
@@ -292,7 +378,7 @@ class PhotoReasoningViewModel(
                         Toast.makeText(context, "Screenshot hinzugefügt, sende an KI...", Toast.LENGTH_SHORT).show()
                         
                         // Re-send the query with the updated images
-                        reason(currentUserInput, updatedImages)
+                        reason("Analysiere diesen Screenshot", listOf(bitmap))
                         
                         // Show a toast to indicate the screenshot was added
                         Toast.makeText(context, "Screenshot zur Konversation hinzugefügt", Toast.LENGTH_SHORT).show()
@@ -300,17 +386,87 @@ class PhotoReasoningViewModel(
                         Log.e(TAG, "Failed to process screenshot: result is not SuccessResult")
                         _commandExecutionStatus.value = "Fehler bei der Screenshot-Verarbeitung"
                         Toast.makeText(context, "Fehler bei der Screenshot-Verarbeitung", Toast.LENGTH_SHORT).show()
+                        
+                        // Add error message to chat
+                        _chatStateManager.chatState.addMessage(
+                            PhotoReasoningMessage(
+                                text = "Fehler bei der Screenshot-Verarbeitung",
+                                participant = PhotoParticipant.ERROR
+                            )
+                        )
+                        _chatMessagesFlow.value = chatMessages
+                        
+                        // Save chat history after adding error message
+                        saveChatHistory(context)
                     }
                 } catch (e: Exception) {
                     Log.e(TAG, "Error processing screenshot: ${e.message}", e)
                     _commandExecutionStatus.value = "Fehler bei der Screenshot-Verarbeitung: ${e.message}"
                     Toast.makeText(context, "Fehler bei der Screenshot-Verarbeitung: ${e.message}", Toast.LENGTH_SHORT).show()
+                    
+                    // Add error message to chat
+                    _chatStateManager.chatState.addMessage(
+                        PhotoReasoningMessage(
+                            text = "Fehler bei der Screenshot-Verarbeitung: ${e.message}",
+                            participant = PhotoParticipant.ERROR
+                        )
+                    )
+                    _chatMessagesFlow.value = chatMessages
+                    
+                    // Save chat history after adding error message
+                    saveChatHistory(context)
                 }
             } catch (e: Exception) {
                 Log.e(TAG, "Error adding screenshot to conversation: ${e.message}", e)
                 _commandExecutionStatus.value = "Fehler beim Hinzufügen des Screenshots: ${e.message}"
                 Toast.makeText(context, "Fehler beim Hinzufügen des Screenshots: ${e.message}", Toast.LENGTH_SHORT).show()
+                
+                // Add error message to chat
+                _chatStateManager.chatState.addMessage(
+                    PhotoReasoningMessage(
+                        text = "Fehler beim Hinzufügen des Screenshots: ${e.message}",
+                        participant = PhotoParticipant.ERROR
+                    )
+                )
+                _chatMessagesFlow.value = chatMessages
+                
+                // Save chat history after adding error message
+                saveChatHistory(context)
             }
+        }
+    }
+    
+    /**
+     * Load saved chat history from SharedPreferences
+     */
+    fun loadChatHistory(context: android.content.Context) {
+        val savedMessages = ChatHistoryPreferences.loadChatMessages(context)
+        if (savedMessages.isNotEmpty()) {
+            _chatStateManager.chatState.clearMessages()
+            savedMessages.forEach { _chatStateManager.chatState.addMessage(it) }
+            _chatMessagesFlow.value = chatMessages
+        }
+    }
+    
+    /**
+     * Save current chat history to SharedPreferences
+     */
+    fun saveChatHistory(context: android.content.Context?) {
+        context?.let {
+            ChatHistoryPreferences.saveChatMessages(it, chatMessages)
+        }
+    }
+    
+    /**
+     * Clear the chat history
+     */
+    fun clearChatHistory(context: android.content.Context? = null) {
+        _chatStateManager.chatState.clearMessages()
+        _chatMessagesFlow.value = emptyList()
+        
+        // Also clear from SharedPreferences if context is provided
+        context?.let {
+            ChatHistoryPreferences.clearChatMessages(it)
         }
     }
 }

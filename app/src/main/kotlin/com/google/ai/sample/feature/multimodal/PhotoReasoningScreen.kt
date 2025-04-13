@@ -13,11 +13,14 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.requiredSize
+import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Send
 import androidx.compose.material.icons.outlined.Person
 import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material3.Card
@@ -32,6 +35,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
@@ -70,6 +74,7 @@ internal fun PhotoReasoningRoute(
     val commandExecutionStatus by viewModel.commandExecutionStatus.collectAsState()
     val detectedCommands by viewModel.detectedCommands.collectAsState()
     val systemMessage by viewModel.systemMessage.collectAsState()
+    val chatMessages by viewModel.chatMessagesFlow.collectAsState()
 
     val coroutineScope = rememberCoroutineScope()
     val imageRequestBuilder = ImageRequest.Builder(LocalContext.current)
@@ -103,6 +108,7 @@ internal fun PhotoReasoningRoute(
         commandExecutionStatus = commandExecutionStatus,
         detectedCommands = detectedCommands,
         systemMessage = systemMessage,
+        chatMessages = chatMessages,
         onSystemMessageChanged = { message ->
             viewModel.updateSystemMessage(message, context)
         },
@@ -153,6 +159,7 @@ fun PhotoReasoningScreen(
     commandExecutionStatus: String = "",
     detectedCommands: List<Command> = emptyList(),
     systemMessage: String = "",
+    chatMessages: List<PhotoReasoningMessage> = emptyList(),
     onSystemMessageChanged: (String) -> Unit = {},
     onReasonClicked: (String, List<Uri>) -> Unit = { _, _ -> },
     isAccessibilityServiceEnabled: Boolean = false,
@@ -160,19 +167,22 @@ fun PhotoReasoningScreen(
 ) {
     var userQuestion by rememberSaveable { mutableStateOf("") }
     val imageUris = rememberSaveable(saver = UriSaver()) { mutableStateListOf() }
+    val listState = rememberLazyListState()
+    val context = LocalContext.current
+    
+    // Get the MainActivity instance from the context
+    val mainActivity = context as? MainActivity
 
-    val pickMedia = rememberLauncherForActivityResult(
-        ActivityResultContracts.PickVisualMedia()
-    ) { imageUri ->
-        imageUri?.let {
-            imageUris.add(it)
+    // Scroll to the bottom when new messages arrive
+    LaunchedEffect(chatMessages.size) {
+        if (chatMessages.isNotEmpty()) {
+            listState.animateScrollToItem(chatMessages.size - 1)
         }
     }
 
     Column(
         modifier = Modifier
             .padding(all = 16.dp)
-            .verticalScroll(rememberScrollState())
     ) {
         // System Message Field
         Card(
@@ -198,8 +208,8 @@ fun PhotoReasoningScreen(
                     placeholder = { Text("Geben Sie hier eine System-Nachricht ein, die bei jeder Anfrage mitgesendet wird") },
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(80.dp), // Height for approximately 3 lines
-                    maxLines = 3,
+                        .height(120.dp), // Height increased by 50% (from 80dp to 120dp)
+                    maxLines = 5, // Increased to accommodate more visible lines
                     minLines = 3
                 )
             }
@@ -238,6 +248,37 @@ fun PhotoReasoningScreen(
             }
         }
 
+        // Chat History
+        LazyColumn(
+            state = listState,
+            modifier = Modifier
+                .fillMaxWidth()
+                .weight(1f)
+        ) {
+            items(chatMessages) { message ->
+                when (message.participant) {
+                    PhotoParticipant.USER -> {
+                        UserChatBubble(
+                            text = message.text,
+                            isPending = message.isPending,
+                            imageUris = message.imageUris
+                        )
+                    }
+                    PhotoParticipant.MODEL -> {
+                        ModelChatBubble(
+                            text = message.text,
+                            isPending = message.isPending
+                        )
+                    }
+                    PhotoParticipant.ERROR -> {
+                        ErrorChatBubble(
+                            text = message.text
+                        )
+                    }
+                }
+            }
+        }
+
         // Input Card
         Card(
             modifier = Modifier.fillMaxWidth()
@@ -245,40 +286,83 @@ fun PhotoReasoningScreen(
             Row(
                 modifier = Modifier.padding(top = 16.dp)
             ) {
-                IconButton(
-                    onClick = {
-                        pickMedia.launch(
-                            PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
-                        )
-                    },
+                // Column for the two buttons (+ and New)
+                Column(
                     modifier = Modifier
                         .padding(all = 4.dp)
                         .align(Alignment.CenterVertically)
                 ) {
-                    Icon(
-                        Icons.Rounded.Add,
-                        contentDescription = stringResource(R.string.add_image),
-                    )
+                    // Add image button (moved up)
+                    IconButton(
+                        onClick = {
+                            pickMedia.launch(
+                                PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
+                            )
+                        },
+                        modifier = Modifier
+                            .padding(bottom = 4.dp)
+                    ) {
+                        Icon(
+                            Icons.Rounded.Add,
+                            contentDescription = stringResource(R.string.add_image),
+                        )
+                    }
+                    
+                    // New button to clear chat history
+                    IconButton(
+                        onClick = {
+                            // Clear chat history directly without confirmation
+                            mainActivity?.let {
+                                val viewModel = it.getPhotoReasoningViewModel()
+                                viewModel?.clearChatHistory(context)
+                            }
+                        },
+                        modifier = Modifier
+                            .padding(top = 4.dp)
+                            .drawBehind {
+                                // Draw a thin black circular border
+                                drawCircle(
+                                    color = Color.Black,
+                                    radius = size.minDimension / 2,
+                                    style = androidx.compose.ui.graphics.drawscope.Stroke(
+                                        width = 1.dp.toPx()
+                                    )
+                                )
+                            }
+                    ) {
+                        Text(
+                            text = "New",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                    }
                 }
+                
                 OutlinedTextField(
                     value = userQuestion,
                     label = { Text(stringResource(R.string.reason_label)) },
                     placeholder = { Text(stringResource(R.string.reason_hint)) },
                     onValueChange = { userQuestion = it },
                     modifier = Modifier
-                        .fillMaxWidth(0.8f)
+                        .weight(1f)
+                        .padding(end = 8.dp)
                 )
-                TextButton(
+                IconButton(
                     onClick = {
                         if (userQuestion.isNotBlank()) {
                             onReasonClicked(userQuestion, imageUris.toList())
+                            userQuestion = ""
                         }
                     },
                     modifier = Modifier
                         .padding(all = 4.dp)
                         .align(Alignment.CenterVertically)
                 ) {
-                    Text(stringResource(R.string.action_go))
+                    Icon(
+                        Icons.Default.Send,
+                        contentDescription = stringResource(R.string.action_go),
+                        tint = MaterialTheme.colorScheme.primary
+                    )
                 }
             }
             LazyRow(
@@ -363,76 +447,148 @@ fun PhotoReasoningScreen(
                 }
             }
         }
+    }
 
-        when (uiState) {
-            PhotoReasoningUiState.Initial -> {
-                // Nothing is shown
-            }
+    val pickMedia = rememberLauncherForActivityResult(
+        ActivityResultContracts.PickVisualMedia()
+    ) { imageUri ->
+        imageUri?.let {
+            imageUris.add(it)
+        }
+    }
+}
 
-            PhotoReasoningUiState.Loading -> {
-                Box(
-                    contentAlignment = Alignment.Center,
-                    modifier = Modifier
-                        .padding(all = 8.dp)
-                        .align(Alignment.CenterHorizontally)
-                ) {
-                    CircularProgressIndicator()
+@Composable
+fun UserChatBubble(
+    text: String,
+    isPending: Boolean,
+    imageUris: List<String> = emptyList()
+) {
+    Row(
+        modifier = Modifier
+            .padding(vertical = 8.dp, horizontal = 8.dp)
+            .fillMaxWidth(),
+        verticalAlignment = Alignment.Top
+    ) {
+        Spacer(modifier = Modifier.weight(1f))
+        Card(
+            shape = MaterialTheme.shapes.medium,
+            colors = CardDefaults.cardColors(
+                containerColor = MaterialTheme.colorScheme.primaryContainer
+            ),
+            modifier = Modifier.weight(4f)
+        ) {
+            Column(
+                modifier = Modifier.padding(all = 16.dp)
+            ) {
+                Text(
+                    text = text,
+                    color = MaterialTheme.colorScheme.onPrimaryContainer
+                )
+                
+                // Display images if any
+                if (imageUris.isNotEmpty()) {
+                    LazyRow(
+                        modifier = Modifier.padding(top = 8.dp)
+                    ) {
+                        items(imageUris) { uri ->
+                            AsyncImage(
+                                model = uri,
+                                contentDescription = null,
+                                modifier = Modifier
+                                    .padding(4.dp)
+                                    .requiredSize(100.dp)
+                            )
+                        }
+                    }
+                }
+                
+                if (isPending) {
+                    CircularProgressIndicator(
+                        modifier = Modifier
+                            .padding(top = 8.dp)
+                            .requiredSize(16.dp),
+                        strokeWidth = 2.dp
+                    )
                 }
             }
+        }
+    }
+}
 
-            is PhotoReasoningUiState.Success -> {
-                Card(
+@Composable
+fun ModelChatBubble(
+    text: String,
+    isPending: Boolean
+) {
+    Row(
+        modifier = Modifier
+            .padding(vertical = 8.dp, horizontal = 8.dp)
+            .fillMaxWidth(),
+        verticalAlignment = Alignment.Top
+    ) {
+        Card(
+            shape = MaterialTheme.shapes.medium,
+            colors = CardDefaults.cardColors(
+                containerColor = MaterialTheme.colorScheme.secondaryContainer
+            ),
+            modifier = Modifier.weight(4f)
+        ) {
+            Row(
+                modifier = Modifier.padding(all = 16.dp)
+            ) {
+                Icon(
+                    Icons.Outlined.Person,
+                    contentDescription = "AI Assistant",
+                    tint = MaterialTheme.colorScheme.onSecondaryContainer,
                     modifier = Modifier
-                        .padding(vertical = 16.dp)
-                        .fillMaxWidth(),
-                    shape = MaterialTheme.shapes.large,
-                    colors = CardDefaults.cardColors(
-                        containerColor = MaterialTheme.colorScheme.onSecondaryContainer
+                        .requiredSize(24.dp)
+                        .drawBehind {
+                            drawCircle(color = Color.White)
+                        }
+                        .padding(end = 8.dp)
+                )
+                Column {
+                    Text(
+                        text = text,
+                        color = MaterialTheme.colorScheme.onSecondaryContainer
                     )
-                ) {
-                    Row(
-                        modifier = Modifier
-                            .padding(all = 16.dp)
-                            .fillMaxWidth()
-                    ) {
-                        Icon(
-                            Icons.Outlined.Person,
-                            contentDescription = "Person Icon",
-                            tint = MaterialTheme.colorScheme.onSecondary,
+                    if (isPending) {
+                        CircularProgressIndicator(
                             modifier = Modifier
-                                .requiredSize(36.dp)
-                                .drawBehind {
-                                    drawCircle(color = Color.White)
-                                }
-                        )
-                        Text(
-                            text = uiState.outputText,
-                            color = MaterialTheme.colorScheme.onSecondary,
-                            modifier = Modifier
-                                .padding(start = 16.dp)
-                                .fillMaxWidth()
+                                .padding(top = 8.dp)
+                                .requiredSize(16.dp),
+                            strokeWidth = 2.dp
                         )
                     }
                 }
             }
+        }
+        Spacer(modifier = Modifier.weight(1f))
+    }
+}
 
-            is PhotoReasoningUiState.Error -> {
-                Card(
-                    modifier = Modifier
-                        .padding(vertical = 16.dp)
-                        .fillMaxWidth(),
-                    shape = MaterialTheme.shapes.large,
-                    colors = CardDefaults.cardColors(
-                        containerColor = MaterialTheme.colorScheme.errorContainer
-                    )
-                ) {
-                    Text(
-                        text = uiState.errorMessage,
-                        color = MaterialTheme.colorScheme.error,
-                        modifier = Modifier.padding(all = 16.dp)
-                    )
-                }
-            }
+@Composable
+fun ErrorChatBubble(
+    text: String
+) {
+    Box(
+        modifier = Modifier
+            .padding(vertical = 8.dp, horizontal = 8.dp)
+            .fillMaxWidth()
+    ) {
+        Card(
+            shape = MaterialTheme.shapes.medium,
+            colors = CardDefaults.cardColors(
+                containerColor = MaterialTheme.colorScheme.errorContainer
+            ),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Text(
+                text = text,
+                color = MaterialTheme.colorScheme.error,
+                modifier = Modifier.padding(all = 16.dp)
+            )
         }
     }
 }
@@ -447,7 +603,17 @@ fun PhotoReasoningScreenPreviewWithContent() {
             Command.TakeScreenshot,
             Command.ClickButton("OK")
         ),
-        systemMessage = "Dies ist eine System-Nachricht für die KI"
+        systemMessage = "Dies ist eine System-Nachricht für die KI",
+        chatMessages = listOf(
+            PhotoReasoningMessage(
+                text = "Hallo, wie kann ich dir helfen?",
+                participant = PhotoParticipant.USER
+            ),
+            PhotoReasoningMessage(
+                text = "Ich bin hier, um dir zu helfen. Was möchtest du wissen?",
+                participant = PhotoParticipant.MODEL
+            )
+        )
     )
 }
 
