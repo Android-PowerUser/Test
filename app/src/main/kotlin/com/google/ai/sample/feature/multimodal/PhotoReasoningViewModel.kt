@@ -57,9 +57,9 @@ class PhotoReasoningViewModel(
     val systemMessage: StateFlow<String> = _systemMessage.asStateFlow()
     
     // Chat history state
-    private val _chatStateManager = PhotoReasoningUiStateManager()
+    private val _chatState = ChatState()
     val chatMessages: List<PhotoReasoningMessage>
-        get() = _chatStateManager.chatState.messages
+        get() = _chatState.messages
     
     // Chat history state flow for UI updates
     private val _chatMessagesFlow = MutableStateFlow<List<PhotoReasoningMessage>>(emptyList())
@@ -99,7 +99,7 @@ class PhotoReasoningViewModel(
             participant = PhotoParticipant.USER,
             isPending = false
         )
-        _chatStateManager.chatState.addMessage(userMessage)
+        _chatState.addMessage(userMessage)
         _chatMessagesFlow.value = chatMessages
         
         // Add AI message with pending status
@@ -108,7 +108,7 @@ class PhotoReasoningViewModel(
             participant = PhotoParticipant.MODEL,
             isPending = true
         )
-        _chatStateManager.chatState.addMessage(pendingAiMessage)
+        _chatState.addMessage(pendingAiMessage)
         _chatMessagesFlow.value = chatMessages
 
         viewModelScope.launch(Dispatchers.IO) {
@@ -143,8 +143,8 @@ class PhotoReasoningViewModel(
                 _commandExecutionStatus.value = "Fehler bei der Generierung: ${e.localizedMessage}"
                 
                 // Update chat with error message
-                _chatStateManager.chatState.replaceLastPendingMessage()
-                _chatStateManager.chatState.addMessage(
+                _chatState.replaceLastPendingMessage()
+                _chatState.addMessage(
                     PhotoReasoningMessage(
                         text = e.localizedMessage ?: "Unknown error",
                         participant = PhotoParticipant.ERROR
@@ -163,7 +163,7 @@ class PhotoReasoningViewModel(
      */
     private fun updateAiMessage(text: String) {
         // Find the last AI message and update it
-        val messages = _chatStateManager.chatState.messages.toMutableList()
+        val messages = _chatState.messages.toMutableList()
         val lastAiMessageIndex = messages.indexOfLast { it.participant == PhotoParticipant.MODEL }
         
         if (lastAiMessageIndex >= 0) {
@@ -171,8 +171,8 @@ class PhotoReasoningViewModel(
             messages[lastAiMessageIndex] = updatedMessage
             
             // Clear and re-add all messages to maintain order
-            _chatStateManager.chatState.clearMessages()
-            messages.forEach { _chatStateManager.chatState.addMessage(it) }
+            _chatState.clearMessages()
+            messages.forEach { _chatState.addMessage(it) }
             
             // Update the flow
             _chatMessagesFlow.value = chatMessages
@@ -346,7 +346,7 @@ class PhotoReasoningViewModel(
                     participant = PhotoParticipant.USER,
                     imageUris = listOf(screenshotUri.toString())
                 )
-                _chatStateManager.chatState.addMessage(screenshotMessage)
+                _chatState.addMessage(screenshotMessage)
                 _chatMessagesFlow.value = chatMessages
                 
                 // Save chat history after adding screenshot
@@ -388,7 +388,7 @@ class PhotoReasoningViewModel(
                         Toast.makeText(context, "Fehler bei der Screenshot-Verarbeitung", Toast.LENGTH_SHORT).show()
                         
                         // Add error message to chat
-                        _chatStateManager.chatState.addMessage(
+                        _chatState.addMessage(
                             PhotoReasoningMessage(
                                 text = "Fehler bei der Screenshot-Verarbeitung",
                                 participant = PhotoParticipant.ERROR
@@ -405,7 +405,7 @@ class PhotoReasoningViewModel(
                     Toast.makeText(context, "Fehler bei der Screenshot-Verarbeitung: ${e.message}", Toast.LENGTH_SHORT).show()
                     
                     // Add error message to chat
-                    _chatStateManager.chatState.addMessage(
+                    _chatState.addMessage(
                         PhotoReasoningMessage(
                             text = "Fehler bei der Screenshot-Verarbeitung: ${e.message}",
                             participant = PhotoParticipant.ERROR
@@ -422,7 +422,7 @@ class PhotoReasoningViewModel(
                 Toast.makeText(context, "Fehler beim Hinzufügen des Screenshots: ${e.message}", Toast.LENGTH_SHORT).show()
                 
                 // Add error message to chat
-                _chatStateManager.chatState.addMessage(
+                _chatState.addMessage(
                     PhotoReasoningMessage(
                         text = "Fehler beim Hinzufügen des Screenshots: ${e.message}",
                         participant = PhotoParticipant.ERROR
@@ -442,8 +442,8 @@ class PhotoReasoningViewModel(
     fun loadChatHistory(context: android.content.Context) {
         val savedMessages = ChatHistoryPreferences.loadChatMessages(context)
         if (savedMessages.isNotEmpty()) {
-            _chatStateManager.chatState.clearMessages()
-            savedMessages.forEach { _chatStateManager.chatState.addMessage(it) }
+            _chatState.clearMessages()
+            savedMessages.forEach { _chatState.addMessage(it) }
             _chatMessagesFlow.value = chatMessages
         }
     }
@@ -461,12 +461,37 @@ class PhotoReasoningViewModel(
      * Clear the chat history
      */
     fun clearChatHistory(context: android.content.Context? = null) {
-        _chatStateManager.chatState.clearMessages()
+        _chatState.clearMessages()
         _chatMessagesFlow.value = emptyList()
         
         // Also clear from SharedPreferences if context is provided
         context?.let {
             ChatHistoryPreferences.clearChatMessages(it)
+        }
+    }
+    
+    /**
+     * Chat state management class
+     */
+    private class ChatState {
+        private val _messages = mutableListOf<PhotoReasoningMessage>()
+        
+        val messages: List<PhotoReasoningMessage>
+            get() = _messages.toList()
+        
+        fun addMessage(message: PhotoReasoningMessage) {
+            _messages.add(message)
+        }
+        
+        fun clearMessages() {
+            _messages.clear()
+        }
+        
+        fun replaceLastPendingMessage() {
+            val lastPendingIndex = _messages.indexOfLast { it.isPending }
+            if (lastPendingIndex >= 0) {
+                _messages.removeAt(lastPendingIndex)
+            }
         }
     }
 }
