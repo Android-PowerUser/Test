@@ -26,8 +26,12 @@
         
         <!-- Accessibility service permission -->
         <uses-permission android:name="android.permission.BIND_ACCESSIBILITY_SERVICE" />
+        
+        <!-- Foreground service permission for background operation -->
+        <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
 
     <application
+        android:name=".PhotoReasoningApplication"
         android:allowBackup="true"
         android:dataExtractionRules="@xml/data_extraction_rules"
         android:fullBackupContent="@xml/backup_rules"
@@ -51,7 +55,9 @@
         <service
             android:name=".ScreenOperatorAccessibilityService"
             android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE"
-            android:exported="true">
+            android:exported="true"
+            android:enabled="true"
+            android:foregroundServiceType="accessibilityService">
             <intent-filter>
                 <action android:name="android.accessibilityservice.AccessibilityService" />
             </intent-filter>
