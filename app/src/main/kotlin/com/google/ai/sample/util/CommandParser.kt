@@ -48,6 +48,87 @@ object CommandParser {
         Regex("(?i)\\bcaptureScreen\\(\\)")
     )
     
+    // Home button patterns
+    private val PRESS_HOME_PATTERNS = listOf(
+        Regex("(?i)\\b(?:press|click|tap|go to|navigate to|drücke|klicke|tippe auf|gehe zu|navigiere zu) (?:the )?(?:home|home button|home screen|startbildschirm|home-taste|home-button|startseite)\\b"),
+        Regex("(?i)\\b(?:home|startbildschirm|startseite)\\b"),
+        Regex("(?i)\\bpressHome\\(\\)"),
+        Regex("(?i)\\bgoHome\\(\\)")
+    )
+    
+    // Back button patterns
+    private val PRESS_BACK_PATTERNS = listOf(
+        Regex("(?i)\\b(?:press|click|tap|go|navigate|drücke|klicke|tippe auf|gehe|navigiere) (?:the )?(?:back|back button|zurück|zurück-taste|zurück-button|zurücktaste)\\b"),
+        Regex("(?i)\\b(?:back|zurück)\\b"),
+        Regex("(?i)\\bpressBack\\(\\)"),
+        Regex("(?i)\\bgoBack\\(\\)")
+    )
+    
+    // Recent apps patterns
+    private val SHOW_RECENT_APPS_PATTERNS = listOf(
+        Regex("(?i)\\b(?:show|display|open|view|zeige|öffne|anzeigen) (?:the )?(?:recent apps|recent applications|recent|recents|letzte apps|zuletzt verwendete apps|app-übersicht|übersicht|task manager|multitasking)\\b"),
+        Regex("(?i)\\b(?:recent apps|recent applications|recents|letzte apps|app-übersicht|übersicht)\\b"),
+        Regex("(?i)\\bshowRecentApps\\(\\)"),
+        Regex("(?i)\\bopenRecentApps\\(\\)")
+    )
+    
+    // Status bar down patterns
+    private val PULL_STATUS_BAR_DOWN_PATTERNS = listOf(
+        Regex("(?i)\\b(?:pull|swipe|drag|ziehe|wische) (?:down|herunter|nach unten) (?:the )?(?:status bar|notification bar|notifications|statusleiste|benachrichtigungsleiste|benachrichtigungen)\\b"),
+        Regex("(?i)\\b(?:open|show|display|öffne|zeige) (?:the )?(?:status bar|notification bar|notifications|statusleiste|benachrichtigungsleiste|benachrichtigungen)\\b"),
+        Regex("(?i)\\bpullStatusBarDown\\(\\)"),
+        Regex("(?i)\\bopenNotifications\\(\\)")
+    )
+    
+    // Status bar down twice patterns
+    private val PULL_STATUS_BAR_DOWN_TWICE_PATTERNS = listOf(
+        Regex("(?i)\\b(?:pull|swipe|drag|ziehe|wische) (?:down|herunter|nach unten) (?:the )?(?:status bar|notification bar|statusleiste|benachrichtigungsleiste) (?:twice|two times|2 times|zweimal|2 mal)\\b"),
+        Regex("(?i)\\b(?:open|show|display|öffne|zeige) (?:the )?(?:quick settings|quick toggles|schnelleinstellungen)\\b"),
+        Regex("(?i)\\bpullStatusBarDownTwice\\(\\)"),
+        Regex("(?i)\\bopenQuickSettings\\(\\)")
+    )
+    
+    // Status bar up patterns
+    private val PUSH_STATUS_BAR_UP_PATTERNS = listOf(
+        Regex("(?i)\\b(?:push|swipe|drag|close|schiebe|wische|schließe) (?:up|hoch|nach oben) (?:the )?(?:status bar|notification bar|notifications|statusleiste|benachrichtigungsleiste|benachrichtigungen)\\b"),
+        Regex("(?i)\\b(?:close|dismiss|hide|schließe|verberge) (?:the )?(?:status bar|notification bar|notifications|statusleiste|benachrichtigungsleiste|benachrichtigungen)\\b"),
+        Regex("(?i)\\bpushStatusBarUp\\(\\)"),
+        Regex("(?i)\\bcloseNotifications\\(\\)")
+    )
+    
+    // Scroll up patterns
+    private val SCROLL_UP_PATTERNS = listOf(
+        Regex("(?i)\\b(?:scroll|swipe|wische|scrolle) (?:up|nach oben|hoch)\\b"),
+        Regex("(?i)\\bscrollUp\\(\\)")
+    )
+    
+    // Scroll down patterns
+    private val SCROLL_DOWN_PATTERNS = listOf(
+        Regex("(?i)\\b(?:scroll|swipe|wische|scrolle) (?:down|nach unten|runter)\\b"),
+        Regex("(?i)\\bscrollDown\\(\\)")
+    )
+    
+    // Scroll left patterns
+    private val SCROLL_LEFT_PATTERNS = listOf(
+        Regex("(?i)\\b(?:scroll|swipe|wische|scrolle) (?:left|nach links|links)\\b"),
+        Regex("(?i)\\bscrollLeft\\(\\)")
+    )
+    
+    // Scroll right patterns
+    private val SCROLL_RIGHT_PATTERNS = listOf(
+        Regex("(?i)\\b(?:scroll|swipe|wische|scrolle) (?:right|nach rechts|rechts)\\b"),
+        Regex("(?i)\\bscrollRight\\(\\)")
+    )
+    
+    // Open app patterns
+    private val OPEN_APP_PATTERNS = listOf(
+        Regex("(?i)\\b(?:open|launch|start|öffne|starte) (?:the )?(?:app|application|anwendung)? [\"']([^\"']+)[\"']"),
+        Regex("(?i)\\b(?:open|launch|start|öffne|starte) (?:the )?(?:app|application|anwendung) ([\\w\\s\\-]+)\\b"),
+        Regex("(?i)\\b(?:open|launch|start|öffne|starte) ([\\w\\s\\-]+) (?:app|application|anwendung)\\b"),
+        Regex("(?i)\\bopenApp\\([\"']([^\"']+)[\"']\\)"),
+        Regex("(?i)\\blaunchApp\\([\"']([^\"']+)[\"']\\)")
+    )
+    
     // Buffer for storing partial text between calls
     private var textBuffer = ""
     
@@ -101,6 +182,17 @@ object CommandParser {
                     is Command.ClickButton -> Log.d(TAG, "Command details: ClickButton(\"${command.buttonText}\")")
                     is Command.TapCoordinates -> Log.d(TAG, "Command details: TapCoordinates(${command.x}, ${command.y})")
                     is Command.TakeScreenshot -> Log.d(TAG, "Command details: TakeScreenshot")
+                    is Command.PressHome -> Log.d(TAG, "Command details: PressHome")
+                    is Command.PressBack -> Log.d(TAG, "Command details: PressBack")
+                    is Command.ShowRecentApps -> Log.d(TAG, "Command details: ShowRecentApps")
+                    is Command.PullStatusBarDown -> Log.d(TAG, "Command details: PullStatusBarDown")
+                    is Command.PullStatusBarDownTwice -> Log.d(TAG, "Command details: PullStatusBarDownTwice")
+                    is Command.PushStatusBarUp -> Log.d(TAG, "Command details: PushStatusBarUp")
+                    is Command.ScrollUp -> Log.d(TAG, "Command details: ScrollUp")
+                    is Command.ScrollDown -> Log.d(TAG, "Command details: ScrollDown")
+                    is Command.ScrollLeft -> Log.d(TAG, "Command details: ScrollLeft")
+                    is Command.ScrollRight -> Log.d(TAG, "Command details: ScrollRight")
+                    is Command.OpenApp -> Log.d(TAG, "Command details: OpenApp(\"${command.appName}\")")
                 }
             }
         } catch (e: Exception) {
@@ -122,6 +214,39 @@ object CommandParser {
         
         // Look for take screenshot commands
         findTakeScreenshotCommands(text, commands)
+        
+        // Look for home button commands
+        findPressHomeCommands(text, commands)
+        
+        // Look for back button commands
+        findPressBackCommands(text, commands)
+        
+        // Look for recent apps commands
+        findShowRecentAppsCommands(text, commands)
+        
+        // Look for status bar down commands
+        findPullStatusBarDownCommands(text, commands)
+        
+        // Look for status bar down twice commands
+        findPullStatusBarDownTwiceCommands(text, commands)
+        
+        // Look for status bar up commands
+        findPushStatusBarUpCommands(text, commands)
+        
+        // Look for scroll up commands
+        findScrollUpCommands(text, commands)
+        
+        // Look for scroll down commands
+        findScrollDownCommands(text, commands)
+        
+        // Look for scroll left commands
+        findScrollLeftCommands(text, commands)
+        
+        // Look for scroll right commands
+        findScrollRightCommands(text, commands)
+        
+        // Look for open app commands
+        findOpenAppCommands(text, commands)
     }
     
     /**
@@ -208,6 +333,212 @@ object CommandParser {
     }
     
     /**
+     * Find home button commands in the text
+     */
+    private fun findPressHomeCommands(text: String, commands: MutableList<Command>) {
+        // Try each pattern
+        for (pattern in PRESS_HOME_PATTERNS) {
+            if (pattern.containsMatchIn(text)) {
+                // Check if this command is already in the list (avoid duplicates)
+                if (!commands.any { it is Command.PressHome }) {
+                    Log.d(TAG, "Found press home command with pattern ${pattern.pattern}")
+                    commands.add(Command.PressHome)
+                    // Only add one home command even if multiple matches are found
+                    break
+                }
+            }
+        }
+    }
+    
+    /**
+     * Find back button commands in the text
+     */
+    private fun findPressBackCommands(text: String, commands: MutableList<Command>) {
+        // Try each pattern
+        for (pattern in PRESS_BACK_PATTERNS) {
+            if (pattern.containsMatchIn(text)) {
+                // Check if this command is already in the list (avoid duplicates)
+                if (!commands.any { it is Command.PressBack }) {
+                    Log.d(TAG, "Found press back command with pattern ${pattern.pattern}")
+                    commands.add(Command.PressBack)
+                    // Only add one back command even if multiple matches are found
+                    break
+                }
+            }
+        }
+    }
+    
+    /**
+     * Find recent apps commands in the text
+     */
+    private fun findShowRecentAppsCommands(text: String, commands: MutableList<Command>) {
+        // Try each pattern
+        for (pattern in SHOW_RECENT_APPS_PATTERNS) {
+            if (pattern.containsMatchIn(text)) {
+                // Check if this command is already in the list (avoid duplicates)
+                if (!commands.any { it is Command.ShowRecentApps }) {
+                    Log.d(TAG, "Found show recent apps command with pattern ${pattern.pattern}")
+                    commands.add(Command.ShowRecentApps)
+                    // Only add one recent apps command even if multiple matches are found
+                    break
+                }
+            }
+        }
+    }
+    
+    /**
+     * Find status bar down commands in the text
+     */
+    private fun findPullStatusBarDownCommands(text: String, commands: MutableList<Command>) {
+        // Try each pattern
+        for (pattern in PULL_STATUS_BAR_DOWN_PATTERNS) {
+            if (pattern.containsMatchIn(text)) {
+                // Check if this command is already in the list (avoid duplicates)
+                if (!commands.any { it is Command.PullStatusBarDown }) {
+                    Log.d(TAG, "Found pull status bar down command with pattern ${pattern.pattern}")
+                    commands.add(Command.PullStatusBarDown)
+                    // Only add one status bar down command even if multiple matches are found
+                    break
+                }
+            }
+        }
+    }
+    
+    /**
+     * Find status bar down twice commands in the text
+     */
+    private fun findPullStatusBarDownTwiceCommands(text: String, commands: MutableList<Command>) {
+        // Try each pattern
+        for (pattern in PULL_STATUS_BAR_DOWN_TWICE_PATTERNS) {
+            if (pattern.containsMatchIn(text)) {
+                // Check if this command is already in the list (avoid duplicates)
+                if (!commands.any { it is Command.PullStatusBarDownTwice }) {
+                    Log.d(TAG, "Found pull status bar down twice command with pattern ${pattern.pattern}")
+                    commands.add(Command.PullStatusBarDownTwice)
+                    // Only add one status bar down twice command even if multiple matches are found
+                    break
+                }
+            }
+        }
+    }
+    
+    /**
+     * Find status bar up commands in the text
+     */
+    private fun findPushStatusBarUpCommands(text: String, commands: MutableList<Command>) {
+        // Try each pattern
+        for (pattern in PUSH_STATUS_BAR_UP_PATTERNS) {
+            if (pattern.containsMatchIn(text)) {
+                // Check if this command is already in the list (avoid duplicates)
+                if (!commands.any { it is Command.PushStatusBarUp }) {
+                    Log.d(TAG, "Found push status bar up command with pattern ${pattern.pattern}")
+                    commands.add(Command.PushStatusBarUp)
+                    // Only add one status bar up command even if multiple matches are found
+                    break
+                }
+            }
+        }
+    }
+    
+    /**
+     * Find scroll up commands in the text
+     */
+    private fun findScrollUpCommands(text: String, commands: MutableList<Command>) {
+        // Try each pattern
+        for (pattern in SCROLL_UP_PATTERNS) {
+            if (pattern.containsMatchIn(text)) {
+                // Check if this command is already in the list (avoid duplicates)
+                if (!commands.any { it is Command.ScrollUp }) {
+                    Log.d(TAG, "Found scroll up command with pattern ${pattern.pattern}")
+                    commands.add(Command.ScrollUp)
+                    // Only add one scroll up command even if multiple matches are found
+                    break
+                }
+            }
+        }
+    }
+    
+    /**
+     * Find scroll down commands in the text
+     */
+    private fun findScrollDownCommands(text: String, commands: MutableList<Command>) {
+        // Try each pattern
+        for (pattern in SCROLL_DOWN_PATTERNS) {
+            if (pattern.containsMatchIn(text)) {
+                // Check if this command is already in the list (avoid duplicates)
+                if (!commands.any { it is Command.ScrollDown }) {
+                    Log.d(TAG, "Found scroll down command with pattern ${pattern.pattern}")
+                    commands.add(Command.ScrollDown)
+                    // Only add one scroll down command even if multiple matches are found
+                    break
+                }
+            }
+        }
+    }
+    
+    /**
+     * Find scroll left commands in the text
+     */
+    private fun findScrollLeftCommands(text: String, commands: MutableList<Command>) {
+        // Try each pattern
+        for (pattern in SCROLL_LEFT_PATTERNS) {
+            if (pattern.containsMatchIn(text)) {
+                // Check if this command is already in the list (avoid duplicates)
+                if (!commands.any { it is Command.ScrollLeft }) {
+                    Log.d(TAG, "Found scroll left command with pattern ${pattern.pattern}")
+                    commands.add(Command.ScrollLeft)
+                    // Only add one scroll left command even if multiple matches are found
+                    break
+                }
+            }
+        }
+    }
+    
+    /**
+     * Find scroll right commands in the text
+     */
+    private fun findScrollRightCommands(text: String, commands: MutableList<Command>) {
+        // Try each pattern
+        for (pattern in SCROLL_RIGHT_PATTERNS) {
+            if (pattern.containsMatchIn(text)) {
+                // Check if this command is already in the list (avoid duplicates)
+                if (!commands.any { it is Command.ScrollRight }) {
+                    Log.d(TAG, "Found scroll right command with pattern ${pattern.pattern}")
+                    commands.add(Command.ScrollRight)
+                    // Only add one scroll right command even if multiple matches are found
+                    break
+                }
+            }
+        }
+    }
+    
+    /**
+     * Find open app commands in the text
+     */
+    private fun findOpenAppCommands(text: String, commands: MutableList<Command>) {
+        // Try each pattern
+        for (pattern in OPEN_APP_PATTERNS) {
+            val matches = pattern.findAll(text)
+            for (match in matches) {
+                try {
+                    if (match.groupValues.size > 1) {
+                        val appName = match.groupValues[1].trim()
+                        if (appName.isNotEmpty()) {
+                            // Check if this command is already in the list (avoid duplicates)
+                            if (!commands.any { it is Command.OpenApp && it.appName == appName }) {
+                                Log.d(TAG, "Found open app command with pattern ${pattern.pattern}: \"$appName\"")
+                                commands.add(Command.OpenApp(appName))
+                            }
+                        }
+                    }
+                } catch (e: Exception) {
+                    Log.e(TAG, "Error processing open app match: ${e.message}", e)
+                }
+            }
+        }
+    }
+    
+    /**
      * Clear the text buffer
      */
     fun clearBuffer() {
@@ -236,24 +567,4 @@ object CommandParser {
     fun getBufferContent(): String {
         return textBuffer
     }
-}
-
-/**
- * Sealed class representing different types of commands
- */
-sealed class Command {
-    /**
-     * Command to click a button with the specified text
-     */
-    data class ClickButton(val buttonText: String) : Command()
-    
-    /**
-     * Command to tap at the specified coordinates
-     */
-    data class TapCoordinates(val x: Float, val y: Float) : Command()
-    
-    /**
-     * Command to take a screenshot
-     */
-    object TakeScreenshot : Command()
 }
