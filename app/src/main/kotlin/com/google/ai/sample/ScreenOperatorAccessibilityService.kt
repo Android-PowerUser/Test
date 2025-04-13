@@ -604,17 +604,279 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
         showToast("Nehme Screenshot auf durch Simulation der Hardware-Tasten...", false)
         
         try {
+            // Capture screen information before taking the screenshot
+            val screenInfo = captureScreenInformation()
+            
             // Simulate pressing Power + Volume Down buttons to take a screenshot
             simulateScreenshotButtonCombination()
             
             // Wait a moment for the screenshot to be saved, then retrieve it
             handler.postDelayed({
-                retrieveLatestScreenshot()
+                retrieveLatestScreenshot(screenInfo)
             }, 1000) // Wait 1 second for the screenshot to be saved
         } catch (e: Exception) {
             Log.e(TAG, "Error taking screenshot: ${e.message}")
             showToast("Fehler beim Aufnehmen des Screenshots: ${e.message}", true)
         }
+    }
+    
+    /**
+     * Capture information about all interactive elements on the screen
+     */
+    private fun captureScreenInformation(): String {
+        Log.d(TAG, "Capturing screen information")
+        
+        // Refresh the root node to ensure we have the latest information
+        refreshRootNode()
+        
+        // Check if root node is available
+        if (rootNode == null) {
+            Log.e(TAG, "Root node is null, cannot capture screen information")
+            return "Keine Bildschirminformationen verfügbar (Root-Knoten ist null)"
+        }
+        
+        // Build a string with information about all interactive elements
+        val screenInfo = StringBuilder()
+        screenInfo.append("Bildschirmelemente:\n")
+        
+        // Capture information about all interactive elements
+        val interactiveElements = findAllInteractiveElements(rootNode!!)
+        
+        if (interactiveElements.isEmpty()) {
+            screenInfo.append("Keine interaktiven Elemente gefunden.")
+        } else {
+            screenInfo.append("Gefundene interaktive Elemente (${interactiveElements.size}):\n\n")
+            
+            interactiveElements.forEachIndexed { index, element ->
+                screenInfo.append("${index + 1}. ")
+                
+                // Get element ID if available
+                val elementId = getNodeId(element)
+                if (elementId.isNotEmpty()) {
+                    screenInfo.append("ID: \"$elementId\" ")
+                }
+                
+                // Add element text if available
+                if (!element.text.isNullOrEmpty()) {
+                    screenInfo.append("Text: \"${element.text}\" ")
+                }
+                
+                // Add element content description if available
+                if (!element.contentDescription.isNullOrEmpty()) {
+                    screenInfo.append("Beschreibung: \"${element.contentDescription}\" ")
+                }
+                
+                // Try to get the button name from the view hierarchy
+                val buttonName = getButtonName(element)
+                if (buttonName.isNotEmpty()) {
+                    screenInfo.append("Name: \"$buttonName\" ")
+                }
+                
+                // Add element class name
+                screenInfo.append("Klasse: ${element.className} ")
+                
+                // Add element bounds
+                val rect = Rect()
+                element.getBoundsInScreen(rect)
+                screenInfo.append("Position: (${rect.centerX()}, ${rect.centerY()}) ")
+                
+                // Add element clickable status
+                screenInfo.append("Klickbar: ${if (element.isClickable) "Ja" else "Nein"}")
+                
+                screenInfo.append("\n")
+                
+                // Recycle the element to avoid memory leaks
+                element.recycle()
+            }
+        }
+        
+        Log.d(TAG, "Screen information captured: ${screenInfo.length} characters")
+        return screenInfo.toString()
+    }
+    
+    /**
+     * Get the ID of a node if available
+     */
+    private fun getNodeId(node: AccessibilityNodeInfo): String {
+        try {
+            val viewIdResourceName = node.viewIdResourceName
+            if (!viewIdResourceName.isNullOrEmpty()) {
+                // Extract the ID name from the resource name (package:id/name)
+                val parts = viewIdResourceName.split("/")
+                if (parts.size > 1) {
+                    return parts[1]
+                }
+                return viewIdResourceName
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error getting node ID: ${e.message}")
+        }
+        return ""
+    }
+    
+    /**
+     * Try to get the button name from various properties
+     */
+    private fun getButtonName(node: AccessibilityNodeInfo): String {
+        try {
+            // First check if the node has text
+            if (!node.text.isNullOrEmpty()) {
+                return node.text.toString()
+            }
+            
+            // Then check content description
+            if (!node.contentDescription.isNullOrEmpty()) {
+                return node.contentDescription.toString()
+            }
+            
+            // Get the node ID which might contain a name
+            val nodeId = getNodeId(node)
+            if (nodeId.isNotEmpty() && !nodeId.startsWith("android:")) {
+                // Convert camelCase or snake_case to readable format
+                val readableName = nodeId
+                    .replace("_", " ")
+                    .replace(Regex("([a-z])([A-Z])"), "$1 $2")
+                    .lowercase(Locale.getDefault())
+                    .capitalize(Locale.getDefault())
+                
+                // If it contains common button names like "new", "add", etc., return it
+                val commonButtonNames = listOf("new", "add", "edit", "delete", "save", "cancel", "ok", "send")
+                for (buttonName in commonButtonNames) {
+                    if (readableName.contains(buttonName, ignoreCase = true)) {
+                        return readableName
+                    }
+                }
+                
+                // Return the readable ID name
+                return readableName
+            }
+            
+            // Check if it's a known button type by class name
+            val className = node.className?.toString() ?: ""
+            if (className.contains("Button", ignoreCase = true) || 
+                className.contains("ImageButton", ignoreCase = true) ||
+                className.contains("FloatingActionButton", ignoreCase = true)) {
+                
+                // For buttons without text, try to infer name from siblings or parent
+                val parent = node.parent
+                if (parent != null) {
+                    // Check if parent has text that might describe this button
+                    if (!parent.text.isNullOrEmpty()) {
+                        val parentText = parent.text.toString()
+                        parent.recycle()
+                        return parentText
+                    }
+                    
+                    // Check siblings for text that might be related
+                    for (i in 0 until parent.childCount) {
+                        val sibling = parent.getChild(i) ?: continue
+                        if (sibling != node && !sibling.text.isNullOrEmpty()) {
+                            val siblingText = sibling.text.toString()
+                            sibling.recycle()
+                            parent.recycle()
+                            return siblingText
+                        }
+                        sibling.recycle()
+                    }
+                    
+                    // Check if this is a FAB (Floating Action Button) which is often used as "New" or "Add"
+                    if (className.contains("FloatingActionButton", ignoreCase = true)) {
+                        parent.recycle()
+                        return "New"
+                    }
+                    
+                    parent.recycle()
+                }
+                
+                // Special case for circular buttons at the bottom of the screen (likely navigation or action buttons)
+                val rect = Rect()
+                node.getBoundsInScreen(rect)
+                val displayMetrics = resources.displayMetrics
+                val screenHeight = displayMetrics.heightPixels
+                
+                // If it's a circular button near the bottom of the screen
+                if (rect.height() == rect.width() && rect.height() < displayMetrics.densityDpi / 4 && 
+                    rect.bottom > screenHeight * 0.8) {
+                    
+                    // Check if it's in the bottom left corner (often "New" or "Add")
+                    if (rect.centerX() < displayMetrics.widthPixels * 0.3) {
+                        return "New"
+                    }
+                }
+                
+                // If it's a button but we couldn't find a name, use a generic name
+                return "Button"
+            }
+            
+            // For EditText fields, try to get hint text
+            if (className.contains("EditText", ignoreCase = true)) {
+                // Try to get hint text using reflection (not always available)
+                try {
+                    val hintTextMethod = node.javaClass.getMethod("getHintText")
+                    val hintText = hintTextMethod.invoke(node)?.toString()
+                    if (!hintText.isNullOrEmpty()) {
+                        return "Textfeld: $hintText"
+                    }
+                } catch (e: Exception) {
+                    // Reflection failed, ignore
+                }
+                
+                return "Textfeld"
+            }
+            
+            // For specific view types that are commonly used as buttons
+            if (className == "android.view.View" || className == "android.widget.ImageView") {
+                // Check if it's in a position commonly used for specific buttons
+                val rect = Rect()
+                node.getBoundsInScreen(rect)
+                val displayMetrics = resources.displayMetrics
+                val screenHeight = displayMetrics.heightPixels
+                val screenWidth = displayMetrics.widthPixels
+                
+                // Check if it's a small circular element at the bottom of the screen
+                if (rect.width() == rect.height() && rect.width() < displayMetrics.densityDpi / 3 &&
+                    rect.bottom > screenHeight * 0.9) {
+                    
+                    // Bottom left is often "New" or "Add"
+                    if (rect.centerX() < screenWidth * 0.2) {
+                        return "New"
+                    }
+                    
+                    // Bottom right is often "Send" or "Next"
+                    if (rect.centerX() > screenWidth * 0.8) {
+                        return "Send"
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error getting button name: ${e.message}")
+        }
+        return ""
+    }
+    
+    /**
+     * Find all interactive elements on the screen
+     */
+    private fun findAllInteractiveElements(node: AccessibilityNodeInfo): List<AccessibilityNodeInfo> {
+        val elements = mutableListOf<AccessibilityNodeInfo>()
+        
+        try {
+            // Check if this node is interactive (clickable, long clickable, or focusable)
+            if (node.isClickable || node.isLongClickable || node.isFocusable) {
+                elements.add(AccessibilityNodeInfo.obtain(node))
+            }
+            
+            // Check all child nodes
+            for (i in 0 until node.childCount) {
+                val child = node.getChild(i) ?: continue
+                elements.addAll(findAllInteractiveElements(child))
+                child.recycle()
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error finding interactive elements: ${e.message}")
+        }
+        
+        return elements
     }
     
     /**
@@ -686,7 +948,7 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
     /**
      * Retrieve the latest screenshot from the standard screenshot folder
      */
-    private fun retrieveLatestScreenshot() {
+    private fun retrieveLatestScreenshot(screenInfo: String) {
         try {
             Log.d(TAG, "Retrieving latest screenshot")
             showToast("Suche nach dem aufgenommenen Screenshot...", false)
@@ -701,8 +963,8 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
                 // Convert file to URI
                 val screenshotUri = Uri.fromFile(screenshotFile)
                 
-                // Add the screenshot to the conversation
-                addScreenshotToConversation(screenshotUri)
+                // Add the screenshot to the conversation with screen information
+                addScreenshotToConversation(screenshotUri, screenInfo)
             } else {
                 Log.e(TAG, "No screenshot file found")
                 showToast("Kein Screenshot gefunden. Bitte prüfen Sie die Berechtigungen.", true)
@@ -834,11 +1096,11 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
     }
     
     /**
-     * Add the screenshot to the conversation
+     * Add the screenshot to the conversation with screen information
      */
-    private fun addScreenshotToConversation(screenshotUri: Uri) {
+    private fun addScreenshotToConversation(screenshotUri: Uri, screenInfo: String) {
         try {
-            Log.d(TAG, "Adding screenshot to conversation: $screenshotUri")
+            Log.d(TAG, "Adding screenshot to conversation with screen information: $screenshotUri")
             
             // Get the MainActivity instance
             val mainActivity = MainActivity.getInstance()
@@ -856,11 +1118,11 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
                 return
             }
             
-            // Add the screenshot to the conversation
-            photoReasoningViewModel.addScreenshotToConversation(screenshotUri, applicationContext)
+            // Add the screenshot to the conversation with screen information
+            photoReasoningViewModel.addScreenshotToConversation(screenshotUri, applicationContext, screenInfo)
             
-            Log.d(TAG, "Screenshot added to conversation")
-            showToast("Screenshot zur Konversation hinzugefügt", false)
+            Log.d(TAG, "Screenshot added to conversation with screen information")
+            showToast("Screenshot mit Bildschirminformationen zur Konversation hinzugefügt", false)
         } catch (e: Exception) {
             Log.e(TAG, "Error adding screenshot to conversation: ${e.message}")
             showToast("Fehler beim Hinzufügen des Screenshots zur Konversation: ${e.message}", true)
