@@ -729,10 +729,33 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
                 return node.contentDescription.toString()
             }
             
+            // Get the node ID which might contain a name
+            val nodeId = getNodeId(node)
+            if (nodeId.isNotEmpty() && !nodeId.startsWith("android:")) {
+                // Convert camelCase or snake_case to readable format
+                val readableName = nodeId
+                    .replace("_", " ")
+                    .replace(Regex("([a-z])([A-Z])"), "$1 $2")
+                    .lowercase(Locale.getDefault())
+                    .capitalize(Locale.getDefault())
+                
+                // If it contains common button names like "new", "add", etc., return it
+                val commonButtonNames = listOf("new", "add", "edit", "delete", "save", "cancel", "ok", "send")
+                for (buttonName in commonButtonNames) {
+                    if (readableName.contains(buttonName, ignoreCase = true)) {
+                        return readableName
+                    }
+                }
+                
+                // Return the readable ID name
+                return readableName
+            }
+            
             // Check if it's a known button type by class name
             val className = node.className?.toString() ?: ""
             if (className.contains("Button", ignoreCase = true) || 
-                className.contains("ImageButton", ignoreCase = true)) {
+                className.contains("ImageButton", ignoreCase = true) ||
+                className.contains("FloatingActionButton", ignoreCase = true)) {
                 
                 // For buttons without text, try to infer name from siblings or parent
                 val parent = node.parent
@@ -755,7 +778,30 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
                         }
                         sibling.recycle()
                     }
+                    
+                    // Check if this is a FAB (Floating Action Button) which is often used as "New" or "Add"
+                    if (className.contains("FloatingActionButton", ignoreCase = true)) {
+                        parent.recycle()
+                        return "New"
+                    }
+                    
                     parent.recycle()
+                }
+                
+                // Special case for circular buttons at the bottom of the screen (likely navigation or action buttons)
+                val rect = Rect()
+                node.getBoundsInScreen(rect)
+                val displayMetrics = resources.displayMetrics
+                val screenHeight = displayMetrics.heightPixels
+                
+                // If it's a circular button near the bottom of the screen
+                if (rect.height() == rect.width() && rect.height() < displayMetrics.densityDpi / 4 && 
+                    rect.bottom > screenHeight * 0.8) {
+                    
+                    // Check if it's in the bottom left corner (often "New" or "Add")
+                    if (rect.centerX() < displayMetrics.widthPixels * 0.3) {
+                        return "New"
+                    }
                 }
                 
                 // If it's a button but we couldn't find a name, use a generic name
@@ -776,6 +822,31 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
                 }
                 
                 return "Textfeld"
+            }
+            
+            // For specific view types that are commonly used as buttons
+            if (className == "android.view.View" || className == "android.widget.ImageView") {
+                // Check if it's in a position commonly used for specific buttons
+                val rect = Rect()
+                node.getBoundsInScreen(rect)
+                val displayMetrics = resources.displayMetrics
+                val screenHeight = displayMetrics.heightPixels
+                val screenWidth = displayMetrics.widthPixels
+                
+                // Check if it's a small circular element at the bottom of the screen
+                if (rect.width() == rect.height() && rect.width() < displayMetrics.densityDpi / 3 &&
+                    rect.bottom > screenHeight * 0.9) {
+                    
+                    // Bottom left is often "New" or "Add"
+                    if (rect.centerX() < screenWidth * 0.2) {
+                        return "New"
+                    }
+                    
+                    // Bottom right is often "Send" or "Next"
+                    if (rect.centerX() > screenWidth * 0.8) {
+                        return "Send"
+                    }
+                }
             }
         } catch (e: Exception) {
             Log.e(TAG, "Error getting button name: ${e.message}")
