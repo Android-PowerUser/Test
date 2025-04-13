@@ -317,8 +317,16 @@ class PhotoReasoningViewModel(
     
     /**
      * Add a screenshot to the conversation
+     * 
+     * @param screenshotUri URI of the screenshot
+     * @param context Application context
+     * @param screenInfo Optional information about screen elements (null if not available)
      */
-    fun addScreenshotToConversation(screenshotUri: Uri, context: android.content.Context) {
+    fun addScreenshotToConversation(
+        screenshotUri: Uri, 
+        context: android.content.Context,
+        screenInfo: String? = null
+    ) {
         viewModelScope.launch(Dispatchers.Main) {
             try {
                 Log.d(TAG, "Adding screenshot to conversation: $screenshotUri")
@@ -340,9 +348,16 @@ class PhotoReasoningViewModel(
                 // Show toast
                 Toast.makeText(context, "Verarbeite Screenshot...", Toast.LENGTH_SHORT).show()
                 
+                // Create message text with screen information if available
+                val messageText = if (screenInfo != null) {
+                    "Screenshot aufgenommen\n\n$screenInfo"
+                } else {
+                    "Screenshot aufgenommen"
+                }
+                
                 // Add screenshot message to chat history
                 val screenshotMessage = PhotoReasoningMessage(
-                    text = "Screenshot aufgenommen",
+                    text = messageText,
                     participant = PhotoParticipant.USER,
                     imageUris = listOf(screenshotUri.toString())
                 )
@@ -377,8 +392,15 @@ class PhotoReasoningViewModel(
                         // Show toast
                         Toast.makeText(context, "Screenshot hinzugefügt, sende an KI...", Toast.LENGTH_SHORT).show()
                         
+                        // Create prompt with screen information if available
+                        val prompt = if (screenInfo != null) {
+                            "Analysiere diesen Screenshot. Hier sind die verfügbaren Bildschirmelemente: $screenInfo"
+                        } else {
+                            "Analysiere diesen Screenshot"
+                        }
+                        
                         // Re-send the query with the updated images
-                        reason("Analysiere diesen Screenshot", listOf(bitmap))
+                        reason(prompt, listOf(bitmap))
                         
                         // Show a toast to indicate the screenshot was added
                         Toast.makeText(context, "Screenshot zur Konversation hinzugefügt", Toast.LENGTH_SHORT).show()
