@@ -6,6 +6,7 @@ import com.google.ai.sample.feature.multimodal.PhotoParticipant
 import com.google.ai.sample.feature.multimodal.PhotoReasoningMessage
 import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
+import java.lang.reflect.Type
 
 /**
  * Utility class for persisting chat history across app restarts
@@ -14,6 +15,7 @@ object ChatHistoryPreferences {
     private const val PREFS_NAME = "chat_history_prefs"
     private const val KEY_CHAT_MESSAGES = "chat_messages"
     
+    // Initialize Gson instance
     private val gson = Gson()
     
     /**
@@ -35,9 +37,9 @@ object ChatHistoryPreferences {
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         val json = prefs.getString(KEY_CHAT_MESSAGES, null) ?: return emptyList()
         
-        val type = object : TypeToken<List<PhotoReasoningMessage>>() {}.type
+        val listType: Type = object : TypeToken<List<PhotoReasoningMessage>>() {}.type
         return try {
-            gson.fromJson(json, type)
+            gson.fromJson(json, listType)
         } catch (e: Exception) {
             emptyList()
         }
