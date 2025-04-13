@@ -149,6 +149,66 @@ internal fun PhotoReasoningRoute(
         } ?: false,
         onEnableAccessibilityService = {
             mainActivity?.checkAccessibilityServiceEnabled()
+        },
+        onClearChatHistory = {
+            mainActivity?.let {
+                val viewModel = it.getPhotoReasoningViewModel()
+                viewModel?.clearChatHistory(context)
+            }
+        }
+    )
+}
+            // Optional: clear the reference when navigating away
+            // mainActivity?.clearPhotoReasoningViewModel()
+        }
+    }
+
+    PhotoReasoningScreen(
+        uiState = photoReasoningUiState,
+        commandExecutionStatus = commandExecutionStatus,
+        detectedCommands = detectedCommands,
+        systemMessage = systemMessage,
+        chatMessages = chatMessages,
+        onSystemMessageChanged = { message ->
+            viewModel.updateSystemMessage(message, context)
+        },
+        onReasonClicked = { inputText, selectedItems ->
+            coroutineScope.launch {
+                Log.d("PhotoReasoningScreen", "Go button clicked, processing images")
+                
+                // Process all selected images
+                val bitmaps = selectedItems.mapNotNull {
+                    Log.d("PhotoReasoningScreen", "Processing image: $it")
+                    val imageRequest = imageRequestBuilder
+                        .data(it)
+                        .precision(Precision.EXACT)
+                        .build()
+                    try {
+                        val result = imageLoader.execute(imageRequest)
+                        if (result is SuccessResult) {
+                            Log.d("PhotoReasoningScreen", "Successfully processed image")
+                            return@mapNotNull (result.drawable as BitmapDrawable).bitmap
+                        } else {
+                            Log.e("PhotoReasoningScreen", "Failed to process image: result is not SuccessResult")
+                            return@mapNotNull null
+                        }
+                    } catch (e: Exception) {
+                        Log.e("PhotoReasoningScreen", "Error processing image: ${e.message}")
+                        return@mapNotNull null
+                    }
+                }
+                
+                Log.d("PhotoReasoningScreen", "Processed ${bitmaps.size} images")
+                
+                // Send to AI
+                viewModel.reason(inputText, bitmaps)
+            }
+        },
+        isAccessibilityServiceEnabled = mainActivity?.let {
+            ScreenOperatorAccessibilityService.isAccessibilityServiceEnabled(it)
+        } ?: false,
+        onEnableAccessibilityService = {
+            mainActivity?.checkAccessibilityServiceEnabled()
         }
     )
 }
@@ -163,7 +223,8 @@ fun PhotoReasoningScreen(
     onSystemMessageChanged: (String) -> Unit = {},
     onReasonClicked: (String, List<Uri>) -> Unit = { _, _ -> },
     isAccessibilityServiceEnabled: Boolean = false,
-    onEnableAccessibilityService: () -> Unit = {}
+    onEnableAccessibilityService: () -> Unit = {},
+    onClearChatHistory: () -> Unit = {}
 ) {
     var userQuestion by rememberSaveable { mutableStateOf("") }
     val imageUris = rememberSaveable(saver = UriSaver()) { mutableStateListOf() }
@@ -172,6 +233,13 @@ fun PhotoReasoningScreen(
     
     // Get the MainActivity instance from the context
     val mainActivity = context as? MainActivity
+    
+    // Media picker for adding images
+    val pickMedia = rememberLauncherForActivityResult(
+        ActivityResultContracts.PickVisualMedia()
+    ) { uri ->
+        uri?.let { imageUris.add(it) }
+    }
 
     // Scroll to the bottom when new messages arrive
     LaunchedEffect(chatMessages.size) {
@@ -312,10 +380,7 @@ fun PhotoReasoningScreen(
                     IconButton(
                         onClick = {
                             // Clear chat history directly without confirmation
-                            mainActivity?.let {
-                                val viewModel = it.getPhotoReasoningViewModel()
-                                viewModel?.clearChatHistory(context)
-                            }
+                            onClearChatHistory()
                         },
                         modifier = Modifier
                             .padding(top = 4.dp)
