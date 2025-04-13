@@ -275,7 +275,7 @@ fun PhotoReasoningScreen(
                         UserChatBubble(
                             text = message.text,
                             isPending = message.isPending,
-                            imageUris = message.imageUris
+                            imageUris = message.imageUris.map { Uri.parse(it) }
                         )
                     }
                     PhotoParticipant.MODEL -> {
