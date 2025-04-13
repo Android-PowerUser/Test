@@ -6,25 +6,26 @@ import android.accessibilityservice.GestureDescription
 import android.content.Context
 import android.content.Intent
 import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.graphics.Path
 import android.graphics.Rect
 import android.net.Uri
 import android.os.Build
+import android.os.Environment
 import android.os.Handler
 import android.os.Looper
 import android.provider.MediaStore
 import android.provider.Settings
 import android.util.Log
+import android.view.KeyEvent
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
 import android.widget.Toast
 import com.google.ai.sample.util.Command
 import java.io.File
-import java.io.FileOutputStream
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
-import java.util.concurrent.Executor
 import java.util.concurrent.atomic.AtomicBoolean
 
 class ScreenOperatorAccessibilityService : AccessibilityService() {
@@ -133,6 +134,9 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
     // Last time the root node was refreshed
     private var lastRootNodeRefreshTime: Long = 0
     
+    // Handler for delayed operations
+    private val handler = Handler(Looper.getMainLooper())
+    
     override fun onServiceConnected() {
         super.onServiceConnected()
         Log.d(TAG, "Accessibility service connected")
@@ -144,7 +148,8 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
         info.notificationTimeout = 100
         info.flags = AccessibilityServiceInfo.FLAG_REPORT_VIEW_IDS or
                 AccessibilityServiceInfo.FLAG_RETRIEVE_INTERACTIVE_WINDOWS or
-                AccessibilityServiceInfo.FLAG_REQUEST_ENHANCED_WEB_ACCESSIBILITY
+                AccessibilityServiceInfo.FLAG_REQUEST_ENHANCED_WEB_ACCESSIBILITY or
+                AccessibilityServiceInfo.FLAG_REQUEST_FILTER_KEY_EVENTS
         
         // Apply the configuration
         serviceInfo = info
@@ -592,32 +597,20 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
     }
     
     /**
-     * Take a screenshot using the accessibility service
+     * Take a screenshot by simulating hardware button presses
      */
     fun takeScreenshot() {
-        Log.d(TAG, "Taking screenshot via accessibility service")
-        showToast("Nehme Screenshot auf...", false)
+        Log.d(TAG, "Taking screenshot by simulating hardware buttons")
+        showToast("Nehme Screenshot auf durch Simulation der Hardware-Tasten...", false)
         
         try {
-            // Check if we have a valid root node
-            refreshRootNode()
-            if (rootNode == null) {
-                Log.e(TAG, "Root node is null, cannot take screenshot")
-                showToast("Fehler: Root-Knoten ist nicht verfügbar", true)
-                return
-            }
+            // Simulate pressing Power + Volume Down buttons to take a screenshot
+            simulateScreenshotButtonCombination()
             
-            // Get the window bounds
-            val windowBounds = Rect()
-            rootNode!!.getBoundsInScreen(windowBounds)
-            
-            // Take the screenshot using the accessibility service
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-                takeScreenshotWithAccessibilityService(windowBounds)
-            } else {
-                // For older Android versions, use a fallback method
-                takeScreenshotFallback()
-            }
+            // Wait a moment for the screenshot to be saved, then retrieve it
+            handler.postDelayed({
+                retrieveLatestScreenshot()
+            }, 2000) // Wait 2 seconds for the screenshot to be saved
         } catch (e: Exception) {
             Log.e(TAG, "Error taking screenshot: ${e.message}")
             showToast("Fehler beim Aufnehmen des Screenshots: ${e.message}", true)
@@ -625,191 +618,218 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
     }
     
     /**
-     * Take a screenshot using the accessibility service (Android P and above)
+     * Simulate pressing Power + Volume Down buttons to take a screenshot
      */
-    private fun takeScreenshotWithAccessibilityService(windowBounds: Rect) {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-            try {
-                Log.d(TAG, "Taking screenshot with accessibility service API")
+    private fun simulateScreenshotButtonCombination() {
+        try {
+            Log.d(TAG, "Simulating Power + Volume Down button combination")
+            
+            // First try using performGlobalAction if available (Android P and above)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                val result = performGlobalAction(AccessibilityService.GLOBAL_ACTION_TAKE_SCREENSHOT)
+                if (result) {
+                    Log.d(TAG, "Successfully triggered screenshot using GLOBAL_ACTION_TAKE_SCREENSHOT")
+                    showToast("Screenshot-Aktion ausgelöst", false)
+                    return
+                } else {
+                    Log.e(TAG, "Failed to trigger screenshot using GLOBAL_ACTION_TAKE_SCREENSHOT")
+                }
+            }
+            
+            // Fallback to simulating key events
+            Log.d(TAG, "Falling back to key event simulation")
+            
+            // Simulate Volume Down key press
+            val volumeDownResult = performKeyPress(KeyEvent.KEYCODE_VOLUME_DOWN)
+            
+            // Simulate Power key press
+            val powerResult = performKeyPress(KeyEvent.KEYCODE_POWER)
+            
+            if (volumeDownResult && powerResult) {
+                Log.d(TAG, "Successfully simulated key presses")
+                showToast("Tasten-Simulation erfolgreich", false)
+            } else {
+                Log.e(TAG, "Failed to simulate key presses")
+                showToast("Fehler bei der Tasten-Simulation", true)
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error simulating button combination: ${e.message}")
+            showToast("Fehler bei der Simulation der Tasten-Kombination: ${e.message}", true)
+        }
+    }
+    
+    /**
+     * Perform a key press
+     */
+    private fun performKeyPress(keyCode: Int): Boolean {
+        try {
+            // Create key down event
+            val downTime = System.currentTimeMillis()
+            val keyDownEvent = KeyEvent(downTime, downTime, KeyEvent.ACTION_DOWN, keyCode, 0)
+            val downResult = performGlobalAction(keyCode)
+            
+            // Small delay between down and up events
+            Thread.sleep(100)
+            
+            // Create key up event
+            val upTime = System.currentTimeMillis()
+            val keyUpEvent = KeyEvent(downTime, upTime, KeyEvent.ACTION_UP, keyCode, 0)
+            val upResult = performGlobalAction(keyCode)
+            
+            return downResult && upResult
+        } catch (e: Exception) {
+            Log.e(TAG, "Error performing key press: ${e.message}")
+            return false
+        }
+    }
+    
+    /**
+     * Retrieve the latest screenshot from the standard screenshot folder
+     */
+    private fun retrieveLatestScreenshot() {
+        try {
+            Log.d(TAG, "Retrieving latest screenshot")
+            showToast("Suche nach dem aufgenommenen Screenshot...", false)
+            
+            // Check standard screenshot locations
+            val screenshotFile = findLatestScreenshotFile()
+            
+            if (screenshotFile != null) {
+                Log.d(TAG, "Found screenshot file: ${screenshotFile.absolutePath}")
+                showToast("Screenshot gefunden: ${screenshotFile.name}", false)
                 
-                // Use the accessibility service to take a screenshot
-                takeScreenshot(
-                    1000, // timeout in milliseconds
-                    mainExecutor,
-                    object : TakeScreenshotCallback {
-                        override fun onSuccess(screenshot: ScreenshotResult) {
-                            try {
-                                Log.d(TAG, "Screenshot taken successfully")
-                                
-                                // Convert the screenshot to a bitmap
-                                val bitmap = Bitmap.wrapHardwareBuffer(
-                                    screenshot.hardwareBuffer,
-                                    screenshot.colorSpace
-                                )
-                                
-                                if (bitmap != null) {
-                                    // Save the bitmap to a file
-                                    saveScreenshotToFile(bitmap)
-                                } else {
-                                    Log.e(TAG, "Failed to convert screenshot to bitmap")
-                                    showToast("Fehler: Screenshot konnte nicht in Bitmap konvertiert werden", true)
-                                }
-                                
-                                // Release resources
-                                screenshot.hardwareBuffer.close()
-                            } catch (e: Exception) {
-                                Log.e(TAG, "Error processing screenshot: ${e.message}")
-                                showToast("Fehler bei der Verarbeitung des Screenshots: ${e.message}", true)
-                            }
-                        }
-                        
-                        override fun onFailure(errorCode: Int) {
-                            Log.e(TAG, "Failed to take screenshot, error code: $errorCode")
-                            showToast("Fehler beim Aufnehmen des Screenshots, Fehlercode: $errorCode", true)
-                            
-                            // Try fallback method
-                            takeScreenshotFallback()
+                // Convert file to URI
+                val screenshotUri = Uri.fromFile(screenshotFile)
+                
+                // Add the screenshot to the conversation
+                addScreenshotToConversation(screenshotUri)
+            } else {
+                Log.e(TAG, "No screenshot file found")
+                showToast("Kein Screenshot gefunden. Bitte prüfen Sie die Berechtigungen.", true)
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error retrieving screenshot: ${e.message}")
+            showToast("Fehler beim Abrufen des Screenshots: ${e.message}", true)
+        }
+    }
+    
+    /**
+     * Find the latest screenshot file in standard locations
+     */
+    private fun findLatestScreenshotFile(): File? {
+        try {
+            // List of possible screenshot directories
+            val possibleDirs = listOf(
+                // Primary location on most devices
+                File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES), "Screenshots"),
+                // Secondary location on some devices
+                File(Environment.getExternalStorageDirectory(), "Pictures/Screenshots"),
+                // DCIM location used by some manufacturers
+                File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DCIM), "Screenshots"),
+                // App-specific location
+                File(applicationContext.getExternalFilesDir(Environment.DIRECTORY_PICTURES), "Screenshots")
+            )
+            
+            // Find the most recent screenshot file
+            var latestFile: File? = null
+            var latestModified: Long = 0
+            
+            for (dir in possibleDirs) {
+                if (dir.exists() && dir.isDirectory) {
+                    Log.d(TAG, "Checking directory: ${dir.absolutePath}")
+                    
+                    val files = dir.listFiles { file ->
+                        file.isFile && (file.name.startsWith("Screenshot") || 
+                                        file.name.startsWith("screenshot")) &&
+                        (file.name.endsWith(".png") || file.name.endsWith(".jpg") || 
+                         file.name.endsWith(".jpeg"))
+                    }
+                    
+                    files?.forEach { file ->
+                        Log.d(TAG, "Found file: ${file.name}, modified: ${file.lastModified()}")
+                        if (file.lastModified() > latestModified) {
+                            latestFile = file
+                            latestModified = file.lastModified()
                         }
                     }
-                )
-            } catch (e: Exception) {
-                Log.e(TAG, "Error taking screenshot with accessibility service: ${e.message}")
-                showToast("Fehler beim Aufnehmen des Screenshots: ${e.message}", true)
+                }
+            }
+            
+            // Check if the file is recent (within the last 10 seconds)
+            if (latestFile != null) {
+                val currentTime = System.currentTimeMillis()
+                val fileAge = currentTime - latestModified
                 
-                // Try fallback method
-                takeScreenshotFallback()
+                if (fileAge <= 10000) { // 10 seconds
+                    Log.d(TAG, "Found recent screenshot: ${latestFile?.absolutePath}, age: ${fileAge}ms")
+                    return latestFile
+                } else {
+                    Log.d(TAG, "Found screenshot is too old: ${latestFile?.absolutePath}, age: ${fileAge}ms")
+                }
             }
-        } else {
-            Log.e(TAG, "Accessibility screenshot API not available on this Android version")
-            showToast("Screenshot-API ist auf dieser Android-Version nicht verfügbar", true)
             
-            // Try fallback method
-            takeScreenshotFallback()
-        }
-    }
-    
-    /**
-     * Fallback method for taking screenshots
-     */
-    private fun takeScreenshotFallback() {
-        Log.d(TAG, "Using fallback method for taking screenshot")
-        showToast("Verwende alternative Methode für Screenshot...", false)
-        
-        try {
-            // Create a bitmap of the root node
-            val rootNodeBitmap = createBitmapFromRootNode()
-            
-            if (rootNodeBitmap != null) {
-                // Save the bitmap to a file
-                saveScreenshotToFile(rootNodeBitmap)
-            } else {
-                Log.e(TAG, "Failed to create bitmap from root node")
-                showToast("Fehler: Bitmap konnte nicht erstellt werden", true)
+            // If no recent file found, try to query MediaStore
+            val latestMediaStoreFile = findLatestScreenshotViaMediaStore()
+            if (latestMediaStoreFile != null) {
+                return latestMediaStoreFile
             }
+            
+            return null
         } catch (e: Exception) {
-            Log.e(TAG, "Error taking screenshot with fallback method: ${e.message}")
-            showToast("Fehler beim Aufnehmen des Screenshots mit alternativer Methode: ${e.message}", true)
-        }
-    }
-    
-    /**
-     * Create a bitmap from the root node
-     */
-    private fun createBitmapFromRootNode(): Bitmap? {
-        try {
-            // Get the root node bounds
-            val bounds = Rect()
-            rootNode?.getBoundsInScreen(bounds)
-            
-            if (bounds.width() <= 0 || bounds.height() <= 0) {
-                Log.e(TAG, "Invalid root node bounds: $bounds")
-                return null
-            }
-            
-            // Create a bitmap with the size of the screen
-            val bitmap = Bitmap.createBitmap(bounds.width(), bounds.height(), Bitmap.Config.ARGB_8888)
-            
-            // Draw the root node to the bitmap
-            // Note: This is a simplified implementation and may not capture all visual elements
-            // For a complete screenshot, we would need to traverse the accessibility node tree
-            // and draw each node based on its properties
-            
-            return bitmap
-        } catch (e: Exception) {
-            Log.e(TAG, "Error creating bitmap from root node: ${e.message}")
+            Log.e(TAG, "Error finding latest screenshot file: ${e.message}")
             return null
         }
     }
     
     /**
-     * Save the screenshot bitmap to a file
+     * Find the latest screenshot using MediaStore
      */
-    private fun saveScreenshotToFile(bitmap: Bitmap) {
+    private fun findLatestScreenshotViaMediaStore(): File? {
         try {
-            Log.d(TAG, "Saving screenshot to file")
-            
-            // Create a filename with timestamp
-            val timestamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(Date())
-            val filename = "Screenshot_$timestamp.jpg"
-            
-            // Get the pictures directory
-            val imagesDir = applicationContext.getExternalFilesDir(android.os.Environment.DIRECTORY_PICTURES)
-            val imageFile = File(imagesDir, filename)
-            
-            // Save the bitmap to the file
-            FileOutputStream(imageFile).use { out ->
-                bitmap.compress(Bitmap.CompressFormat.JPEG, 90, out)
-                out.flush()
-            }
-            
-            Log.d(TAG, "Screenshot saved to: ${imageFile.absolutePath}")
-            
-            // Add the image to the MediaStore so it appears in the gallery
-            val contentValues = android.content.ContentValues().apply {
-                put(MediaStore.Images.Media.DISPLAY_NAME, filename)
-                put(MediaStore.Images.Media.MIME_TYPE, "image/jpeg")
-                put(MediaStore.Images.Media.DATE_ADDED, System.currentTimeMillis() / 1000)
-                
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                    put(MediaStore.Images.Media.DATE_TAKEN, System.currentTimeMillis())
-                    put(MediaStore.Images.Media.RELATIVE_PATH, "Pictures/Screenshots")
-                    put(MediaStore.Images.Media.IS_PENDING, 1)
-                }
-            }
-            
-            // Insert the image into the MediaStore
             val contentResolver = applicationContext.contentResolver
-            val imageUri = contentResolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, contentValues)
+            val projection = arrayOf(
+                MediaStore.Images.Media.DATA,
+                MediaStore.Images.Media.DATE_ADDED
+            )
             
-            if (imageUri != null) {
-                // Copy the bitmap data to the MediaStore
-                contentResolver.openOutputStream(imageUri)?.use { out ->
-                    bitmap.compress(Bitmap.CompressFormat.JPEG, 90, out)
+            // Query for recent screenshots
+            val selection = "${MediaStore.Images.Media.DISPLAY_NAME} LIKE ?"
+            val selectionArgs = arrayOf("%screenshot%")
+            val sortOrder = "${MediaStore.Images.Media.DATE_ADDED} DESC"
+            
+            contentResolver.query(
+                MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
+                projection,
+                selection,
+                selectionArgs,
+                sortOrder
+            )?.use { cursor ->
+                if (cursor.moveToFirst()) {
+                    val dataColumnIndex = cursor.getColumnIndexOrThrow(MediaStore.Images.Media.DATA)
+                    val dateColumnIndex = cursor.getColumnIndexOrThrow(MediaStore.Images.Media.DATE_ADDED)
+                    
+                    val filePath = cursor.getString(dataColumnIndex)
+                    val dateAdded = cursor.getLong(dateColumnIndex) * 1000 // Convert to milliseconds
+                    
+                    val file = File(filePath)
+                    if (file.exists()) {
+                        val currentTime = System.currentTimeMillis()
+                        val fileAge = currentTime - dateAdded
+                        
+                        if (fileAge <= 10000) { // 10 seconds
+                            Log.d(TAG, "Found recent screenshot via MediaStore: $filePath, age: ${fileAge}ms")
+                            return file
+                        } else {
+                            Log.d(TAG, "Found screenshot via MediaStore is too old: $filePath, age: ${fileAge}ms")
+                        }
+                    }
                 }
-                
-                // Update the IS_PENDING flag for Android Q and above
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                    contentValues.clear()
-                    contentValues.put(MediaStore.Images.Media.IS_PENDING, 0)
-                    contentResolver.update(imageUri, contentValues, null, null)
-                }
-                
-                Log.d(TAG, "Screenshot added to MediaStore: $imageUri")
-                showToast("Screenshot erfolgreich aufgenommen und gespeichert", false)
-                
-                // Add the screenshot to the conversation
-                addScreenshotToConversation(imageUri)
-            } else {
-                Log.e(TAG, "Failed to insert screenshot into MediaStore")
-                showToast("Fehler: Screenshot konnte nicht in MediaStore eingefügt werden", true)
-                
-                // Try to add the file directly
-                val fileUri = Uri.fromFile(imageFile)
-                addScreenshotToConversation(fileUri)
             }
+            
+            return null
         } catch (e: Exception) {
-            Log.e(TAG, "Error saving screenshot to file: ${e.message}")
-            showToast("Fehler beim Speichern des Screenshots: ${e.message}", true)
+            Log.e(TAG, "Error finding screenshot via MediaStore: ${e.message}")
+            return null
         }
     }
     
