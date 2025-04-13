@@ -610,7 +610,7 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
             // Wait a moment for the screenshot to be saved, then retrieve it
             handler.postDelayed({
                 retrieveLatestScreenshot()
-            }, 2000) // Wait 2 seconds for the screenshot to be saved
+            }, 1000) // Wait 1 second for the screenshot to be saved
         } catch (e: Exception) {
             Log.e(TAG, "Error taking screenshot: ${e.message}")
             showToast("Fehler beim Aufnehmen des Screenshots: ${e.message}", true)
