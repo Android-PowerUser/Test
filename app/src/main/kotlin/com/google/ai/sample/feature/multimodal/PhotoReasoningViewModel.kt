@@ -12,7 +12,6 @@ import coil.request.ImageRequest
 import coil.request.SuccessResult
 import coil.size.Precision
 import com.google.ai.client.generativeai.GenerativeModel
-import com.google.ai.client.generativeai.type.GenerationConfig
 import com.google.ai.client.generativeai.type.content
 import com.google.ai.client.generativeai.type.Content
 import com.google.ai.sample.MainActivity
@@ -75,12 +74,7 @@ class PhotoReasoningViewModel(
     
     // Chat instance for maintaining conversation context
     private var chat = generativeModel.startChat(
-        history = emptyList(),
-        generationConfig = GenerationConfig.Builder()
-            .temperature(0.7f)
-            .topK(40)
-            .topP(0.95f)
-            .build()
+        history = emptyList()
     )
 
     fun reason(
@@ -558,12 +552,7 @@ class PhotoReasoningViewModel(
         // Create a new chat with the rebuilt history
         if (history.isNotEmpty()) {
             chat = generativeModel.startChat(
-                history = history,
-                generationConfig = GenerationConfig.Builder()
-                    .temperature(0.7f)
-                    .topK(40)
-                    .topP(0.95f)
-                    .build()
+                history = history
             )
         }
     }
@@ -586,12 +575,7 @@ class PhotoReasoningViewModel(
         
         // Reset the chat with empty history
         chat = generativeModel.startChat(
-            history = emptyList(),
-            generationConfig = GenerationConfig.Builder()
-                .temperature(0.7f)
-                .topK(40)
-                .topP(0.95f)
-                .build()
+            history = emptyList()
         )
         
         // Also clear from SharedPreferences if context is provided
