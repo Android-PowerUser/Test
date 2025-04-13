@@ -24,6 +24,7 @@ import java.io.FileOutputStream
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import java.util.concurrent.Executor
 import java.util.concurrent.atomic.AtomicBoolean
 
 class ScreenOperatorAccessibilityService : AccessibilityService() {
@@ -633,9 +634,8 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
                 
                 // Use the accessibility service to take a screenshot
                 takeScreenshot(
-                    TAKE_SCREENSHOT_DISPLAY_TIMEOUT,
-                    mainExecutor,
-                    object : TakeScreenshotCallback {
+                    executor = mainExecutor,
+                    callback = object : TakeScreenshotCallback {
                         override fun onSuccess(screenshot: ScreenshotResult) {
                             try {
                                 Log.d(TAG, "Screenshot taken successfully")
@@ -654,8 +654,8 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
                                     showToast("Fehler: Screenshot konnte nicht in Bitmap konvertiert werden", true)
                                 }
                                 
-                                // Close the screenshot result
-                                screenshot.close()
+                                // Release resources
+                                screenshot.hardwareBuffer.close()
                             } catch (e: Exception) {
                                 Log.e(TAG, "Error processing screenshot: ${e.message}")
                                 showToast("Fehler bei der Verarbeitung des Screenshots: ${e.message}", true)
