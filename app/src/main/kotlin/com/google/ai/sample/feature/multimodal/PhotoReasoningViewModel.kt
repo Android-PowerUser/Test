@@ -246,6 +246,17 @@ class PhotoReasoningViewModel(
                             is Command.ClickButton -> "Klick auf Button: \"${it.buttonText}\""
                             is Command.TapCoordinates -> "Tippen auf Koordinaten: (${it.x}, ${it.y})"
                             is Command.TakeScreenshot -> "Screenshot aufnehmen"
+                            is Command.PressHome -> "Home-Taste drücken"
+                            is Command.PressBack -> "Zurück-Taste drücken"
+                            is Command.ShowRecentApps -> "Letzte Apps anzeigen"
+                            is Command.PullStatusBarDown -> "Statusleiste herunterziehen"
+                            is Command.PullStatusBarDownTwice -> "Statusleiste zweimal herunterziehen"
+                            is Command.PushStatusBarUp -> "Statusleiste hochschieben"
+                            is Command.ScrollUp -> "Nach oben scrollen"
+                            is Command.ScrollDown -> "Nach unten scrollen"
+                            is Command.ScrollLeft -> "Nach links scrollen"
+                            is Command.ScrollRight -> "Nach rechts scrollen"
+                            is Command.OpenApp -> "App öffnen: \"${it.appName}\""
                             else -> "Unbekannter Befehl"
                         }
                     }
@@ -296,6 +307,17 @@ class PhotoReasoningViewModel(
                             is Command.ClickButton -> "Klick auf Button: \"${command.buttonText}\""
                             is Command.TapCoordinates -> "Tippen auf Koordinaten: (${command.x}, ${command.y})"
                             is Command.TakeScreenshot -> "Screenshot aufnehmen"
+                            is Command.PressHome -> "Home-Taste drücken"
+                            is Command.PressBack -> "Zurück-Taste drücken"
+                            is Command.ShowRecentApps -> "Letzte Apps anzeigen"
+                            is Command.PullStatusBarDown -> "Statusleiste herunterziehen"
+                            is Command.PullStatusBarDownTwice -> "Statusleiste zweimal herunterziehen"
+                            is Command.PushStatusBarUp -> "Statusleiste hochschieben"
+                            is Command.ScrollUp -> "Nach oben scrollen"
+                            is Command.ScrollDown -> "Nach unten scrollen"
+                            is Command.ScrollLeft -> "Nach links scrollen"
+                            is Command.ScrollRight -> "Nach rechts scrollen"
+                            is Command.OpenApp -> "App öffnen: \"${command.appName}\""
                             else -> "Unbekannter Befehl"
                         }
                         
@@ -370,195 +392,201 @@ class PhotoReasoningViewModel(
                 // Show toast
                 Toast.makeText(context, "Verarbeite Screenshot...", Toast.LENGTH_SHORT).show()
                 
-                // Create message text with screen info if available
-                val messageText = if (screenInfo != null) {
-                    "Screenshot aufgenommen\n\nBildschirmelemente:\n$screenInfo"
-                } else {
-                    "Screenshot aufgenommen"
-                }
-                
-                // Load the bitmap from the URI
+                // Load the image from URI
                 val request = imageRequestBuilder!!
                     .data(screenshotUri)
-                    .size(1024, 1024)
+                    .size(1024, 1024) // Resize to reasonable dimensions
                     .precision(Precision.EXACT)
                     .build()
                 
                 val result = withContext(Dispatchers.IO) {
-                    imageLoader!!.execute(request)
+                    val result = imageLoader!!.execute(request)
+                    if (result is SuccessResult) {
+                        return@withContext (result.drawable as BitmapDrawable).bitmap
+                    } else {
+                        throw Exception("Failed to load image")
+                    }
                 }
                 
-                if (result is SuccessResult) {
-                    // Get the bitmap from the result
-                    val bitmap = (result.drawable as BitmapDrawable).bitmap
-                    
-                    // Add the screenshot to the conversation
-                    val screenshotMessage = PhotoReasoningMessage(
-                        text = messageText,
-                        participant = PhotoParticipant.USER,
-                        isPending = false,
-                        image = bitmap
-                    )
-                    
-                    // Add the message to chat history
-                    _chatState.addMessage(screenshotMessage)
-                    _chatMessagesFlow.value = chatMessages
-                    
-                    // Save chat history
-                    saveChatHistory(context)
-                    
-                    // Update the current selected images to only include this screenshot
-                    currentSelectedImages = listOf(bitmap)
-                    
-                    // Update status
-                    _commandExecutionStatus.value = "Screenshot zur Konversation hinzugefügt"
-                    
-                    // Show toast
-                    Toast.makeText(context, "Screenshot zur Konversation hinzugefügt", Toast.LENGTH_SHORT).show()
-                    
-                    // Rebuild chat history to include the new screenshot
-                    rebuildChatHistory()
+                // Create message text with screen info if available
+                val messageText = if (screenInfo != null && screenInfo.isNotEmpty()) {
+                    "Screenshot aufgenommen\n\n$screenInfo"
                 } else {
-                    Log.e(TAG, "Failed to load screenshot bitmap")
-                    _commandExecutionStatus.value = "Fehler beim Laden des Screenshots"
-                    
-                    // Show toast
-                    Toast.makeText(context, "Fehler beim Laden des Screenshots", Toast.LENGTH_SHORT).show()
+                    "Screenshot aufgenommen"
                 }
+                
+                // Add user message to chat history
+                val userMessage = PhotoReasoningMessage(
+                    text = messageText,
+                    participant = PhotoParticipant.USER,
+                    isPending = false
+                )
+                _chatState.addMessage(userMessage)
+                _chatMessagesFlow.value = chatMessages
+                
+                // Save chat history
+                saveChatHistory(context)
+                
+                // Update the current selected images to include only the latest screenshot
+                currentSelectedImages = listOf(result)
+                
+                // Update status
+                _commandExecutionStatus.value = "Screenshot zur Konversation hinzugefügt"
+                
+                // Show toast
+                Toast.makeText(context, "Screenshot zur Konversation hinzugefügt", Toast.LENGTH_SHORT).show()
+                
+                // Rebuild chat history to ensure context is maintained
+                rebuildChatHistory()
             } catch (e: Exception) {
                 Log.e(TAG, "Error adding screenshot to conversation: ${e.message}", e)
                 _commandExecutionStatus.value = "Fehler beim Hinzufügen des Screenshots: ${e.message}"
                 
                 // Show toast
-                Toast.makeText(context, "Fehler beim Hinzufügen des Screenshots: ${e.message}", Toast.LENGTH_SHORT).show()
+                Toast.makeText(context, "Fehler beim Hinzufügen des Screenshots: ${e.message}", Toast.LENGTH_LONG).show()
             }
+        }
+    }
+    
+    /**
+     * Save chat history to SharedPreferences
+     */
+    private fun saveChatHistory(context: android.content.Context?) {
+        if (context == null) return
+        
+        try {
+            // Get the current messages
+            val messages = _chatState.messages
+            
+            // Save to SharedPreferences
+            ChatHistoryPreferences.saveChatHistory(context, messages)
+            
+            Log.d(TAG, "Chat history saved: ${messages.size} messages")
+        } catch (e: Exception) {
+            Log.e(TAG, "Error saving chat history: ${e.message}", e)
         }
     }
     
     /**
      * Load chat history from SharedPreferences
      */
-    fun loadChatHistory(context: android.content.Context) {
-        PhotoReasoningApplication.applicationScope.launch(Dispatchers.Main) {
-            try {
-                val messages = ChatHistoryPreferences.loadChatMessages(context)
-                
-                if (messages.isNotEmpty()) {
-                    // Clear current messages
-                    _chatState.clearMessages()
-                    
-                    // Add loaded messages
-                    messages.forEach { _chatState.addMessage(it) }
-                    
-                    // Update the flow
-                    _chatMessagesFlow.value = chatMessages
-                    
-                    // Rebuild chat history
-                    rebuildChatHistory()
-                }
-            } catch (e: Exception) {
-                Log.e(TAG, "Error loading chat history: ${e.message}", e)
-                
-                // Show toast
-                Toast.makeText(context, "Fehler beim Laden des Chat-Verlaufs: ${e.message}", Toast.LENGTH_SHORT).show()
-            }
+    private fun loadChatHistory(context: android.content.Context) {
+        try {
+            // Load from SharedPreferences
+            val messages = ChatHistoryPreferences.loadChatHistory(context)
+            
+            // Clear current messages
+            _chatState.clearMessages()
+            
+            // Add loaded messages
+            messages.forEach { _chatState.addMessage(it) }
+            
+            // Update the flow
+            _chatMessagesFlow.value = chatMessages
+            
+            Log.d(TAG, "Chat history loaded: ${messages.size} messages")
+            
+            // Rebuild chat history to ensure context is maintained
+            rebuildChatHistory()
+        } catch (e: Exception) {
+            Log.e(TAG, "Error loading chat history: ${e.message}", e)
         }
     }
     
     /**
-     * Rebuild the chat history for the AI
+     * Clear chat history
+     */
+    fun clearChatHistory(context: android.content.Context) {
+        try {
+            // Clear current messages
+            _chatState.clearMessages()
+            
+            // Update the flow
+            _chatMessagesFlow.value = chatMessages
+            
+            // Clear from SharedPreferences
+            ChatHistoryPreferences.clearChatHistory(context)
+            
+            // Reset the chat
+            chat = generativeModel.startChat(
+                history = emptyList()
+            )
+            
+            Log.d(TAG, "Chat history cleared")
+        } catch (e: Exception) {
+            Log.e(TAG, "Error clearing chat history: ${e.message}", e)
+        }
+    }
+    
+    /**
+     * Rebuild chat history for the chat object
      */
     private fun rebuildChatHistory() {
-        val history = mutableListOf<Content>()
-        
-        // Group messages by participant to create proper conversation turns
-        var currentUserContent = ""
-        var currentModelContent = ""
-        
-        for (message in chatMessages) {
-            when (message.participant) {
-                PhotoParticipant.USER -> {
-                    // If we have model content and are now seeing a user message,
-                    // add the model content to history and reset
-                    if (currentModelContent.isNotEmpty()) {
-                        history.add(content(role = "model") { text(currentModelContent) })
-                        currentModelContent = ""
-                    }
+        PhotoReasoningApplication.applicationScope.launch(Dispatchers.IO) {
+            try {
+                // Get the current messages
+                val messages = _chatState.messages
+                
+                // Group messages by participant
+                val groupedMessages = mutableListOf<Pair<PhotoParticipant, String>>()
+                
+                var currentParticipant: PhotoParticipant? = null
+                var currentText = StringBuilder()
+                
+                for (message in messages) {
+                    // Skip pending messages
+                    if (message.isPending) continue
                     
-                    // Append to current user content
-                    if (currentUserContent.isNotEmpty()) {
-                        currentUserContent += "\n\n"
-                    }
-                    currentUserContent += message.text
-                }
-                PhotoParticipant.MODEL -> {
-                    // If we have user content and are now seeing a model message,
-                    // add the user content to history and reset
-                    if (currentUserContent.isNotEmpty()) {
-                        history.add(content(role = "user") { text(currentUserContent) })
-                        currentUserContent = ""
-                    }
+                    // Skip error messages
+                    if (message.participant == PhotoParticipant.ERROR) continue
                     
-                    // Append to current model content
-                    if (currentModelContent.isNotEmpty()) {
-                        currentModelContent += "\n\n"
+                    if (currentParticipant == null) {
+                        // First message
+                        currentParticipant = message.participant
+                        currentText.append(message.text)
+                    } else if (currentParticipant == message.participant) {
+                        // Same participant, append text
+                        currentText.append("\n\n").append(message.text)
+                    } else {
+                        // Different participant, add the current group and start a new one
+                        groupedMessages.add(Pair(currentParticipant, currentText.toString()))
+                        currentParticipant = message.participant
+                        currentText = StringBuilder(message.text)
                     }
-                    currentModelContent += message.text
                 }
-                PhotoParticipant.ERROR -> {
-                    // Errors are not included in the AI history
-                    continue
+                
+                // Add the last group if there is one
+                if (currentParticipant != null) {
+                    groupedMessages.add(Pair(currentParticipant, currentText.toString()))
                 }
+                
+                // Convert grouped messages to Content objects
+                val history = groupedMessages.map { (participant, text) ->
+                    when (participant) {
+                        PhotoParticipant.USER -> content { text(text) }
+                        PhotoParticipant.MODEL -> content { text(text) }
+                        else -> content { text(text) } // Should not happen, but just in case
+                    }
+                }
+                
+                // Create a new chat with the history
+                withContext(Dispatchers.Main) {
+                    chat = generativeModel.startChat(
+                        history = history
+                    )
+                    
+                    Log.d(TAG, "Chat history rebuilt with ${history.size} messages")
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Error rebuilding chat history: ${e.message}", e)
             }
         }
-        
-        // Add any remaining content
-        if (currentUserContent.isNotEmpty()) {
-            history.add(content(role = "user") { text(currentUserContent) })
-        }
-        if (currentModelContent.isNotEmpty()) {
-            history.add(content(role = "model") { text(currentModelContent) })
-        }
-        
-        // Create a new chat with the rebuilt history
-        if (history.isNotEmpty()) {
-            chat = generativeModel.startChat(
-                history = history
-            )
-        }
     }
     
     /**
-     * Save current chat history to SharedPreferences
+     * Chat state class to manage messages
      */
-    fun saveChatHistory(context: android.content.Context?) {
-        context?.let {
-            ChatHistoryPreferences.saveChatMessages(it, chatMessages)
-        }
-    }
-    
-    /**
-     * Clear the chat history
-     */
-    fun clearChatHistory(context: android.content.Context? = null) {
-        _chatState.clearMessages()
-        _chatMessagesFlow.value = emptyList()
-        
-        // Reset the chat with empty history
-        chat = generativeModel.startChat(
-            history = emptyList()
-        )
-        
-        // Also clear from SharedPreferences if context is provided
-        context?.let {
-            ChatHistoryPreferences.clearChatMessages(it)
-        }
-    }
-    
-    /**
-     * Chat state management class
-     */
-    private class ChatState {
+    inner class ChatState {
         private val _messages = mutableListOf<PhotoReasoningMessage>()
         
         val messages: List<PhotoReasoningMessage>
