@@ -246,6 +246,7 @@ class PhotoReasoningViewModel(
                             is Command.ClickButton -> "Klick auf Button: \"${it.buttonText}\""
                             is Command.TapCoordinates -> "Tippen auf Koordinaten: (${it.x}, ${it.y})"
                             is Command.TakeScreenshot -> "Screenshot aufnehmen"
+                            else -> "Unbekannter Befehl"
                         }
                     }
                     
@@ -295,6 +296,7 @@ class PhotoReasoningViewModel(
                             is Command.ClickButton -> "Klick auf Button: \"${command.buttonText}\""
                             is Command.TapCoordinates -> "Tippen auf Koordinaten: (${command.x}, ${command.y})"
                             is Command.TakeScreenshot -> "Screenshot aufnehmen"
+                            else -> "Unbekannter Befehl"
                         }
                         
                         _commandExecutionStatus.value = "Führe aus: $commandDescription (${index + 1}/${commands.size})"
@@ -368,136 +370,105 @@ class PhotoReasoningViewModel(
                 // Show toast
                 Toast.makeText(context, "Verarbeite Screenshot...", Toast.LENGTH_SHORT).show()
                 
-                // Create message text with screen information if available
+                // Create message text with screen info if available
                 val messageText = if (screenInfo != null) {
-                    "Screenshot aufgenommen\n\n$screenInfo"
+                    "Screenshot aufgenommen\n\nBildschirmelemente:\n$screenInfo"
                 } else {
                     "Screenshot aufgenommen"
                 }
                 
-                // Add screenshot message to chat history
-                val screenshotMessage = PhotoReasoningMessage(
-                    text = messageText,
-                    participant = PhotoParticipant.USER,
-                    imageUris = listOf(screenshotUri.toString())
-                )
-                _chatState.addMessage(screenshotMessage)
-                _chatMessagesFlow.value = chatMessages
-                
-                // Save chat history after adding screenshot
-                saveChatHistory(context)
-                
-                // Process the screenshot
-                val imageRequest = imageRequestBuilder!!
+                // Load the bitmap from the URI
+                val request = imageRequestBuilder!!
                     .data(screenshotUri)
+                    .size(1024, 1024)
                     .precision(Precision.EXACT)
                     .build()
                 
-                try {
-                    val result = imageLoader!!.execute(imageRequest)
-                    if (result is SuccessResult) {
-                        Log.d(TAG, "Successfully processed screenshot")
-                        val bitmap = (result.drawable as BitmapDrawable).bitmap
-                        
-                        // Add the screenshot to the current images
-                        val updatedImages = currentSelectedImages.toMutableList()
-                        updatedImages.add(bitmap)
-                        
-                        // Update the current selected images - only keep the latest screenshot
-                        currentSelectedImages = listOf(bitmap)
-                        
-                        // Update status
-                        _commandExecutionStatus.value = "Screenshot hinzugefügt, sende an KI..."
-                        
-                        // Show toast
-                        Toast.makeText(context, "Screenshot hinzugefügt, sende an KI...", Toast.LENGTH_SHORT).show()
-                        
-                        // Create prompt with screen information if available
-                        val prompt = if (screenInfo != null) {
-                            "Analysiere diesen Screenshot. Hier sind die verfügbaren Bildschirmelemente: $screenInfo"
-                        } else {
-                            "Analysiere diesen Screenshot"
-                        }
-                        
-                        // Re-send the query with only the latest screenshot
-                        reason(prompt, listOf(bitmap))
-                        
-                        // Show a toast to indicate the screenshot was added
-                        Toast.makeText(context, "Screenshot zur Konversation hinzugefügt", Toast.LENGTH_SHORT).show()
-                    } else {
-                        Log.e(TAG, "Failed to process screenshot: result is not SuccessResult")
-                        _commandExecutionStatus.value = "Fehler bei der Screenshot-Verarbeitung"
-                        Toast.makeText(context, "Fehler bei der Screenshot-Verarbeitung", Toast.LENGTH_SHORT).show()
-                        
-                        // Add error message to chat
-                        _chatState.addMessage(
-                            PhotoReasoningMessage(
-                                text = "Fehler bei der Screenshot-Verarbeitung",
-                                participant = PhotoParticipant.ERROR
-                            )
-                        )
-                        _chatMessagesFlow.value = chatMessages
-                        
-                        // Save chat history after adding error message
-                        saveChatHistory(context)
-                    }
-                } catch (e: Exception) {
-                    Log.e(TAG, "Error processing screenshot: ${e.message}", e)
-                    _commandExecutionStatus.value = "Fehler bei der Screenshot-Verarbeitung: ${e.message}"
-                    Toast.makeText(context, "Fehler bei der Screenshot-Verarbeitung: ${e.message}", Toast.LENGTH_SHORT).show()
+                val result = withContext(Dispatchers.IO) {
+                    imageLoader!!.execute(request)
+                }
+                
+                if (result is SuccessResult) {
+                    // Get the bitmap from the result
+                    val bitmap = (result.drawable as BitmapDrawable).bitmap
                     
-                    // Add error message to chat
-                    _chatState.addMessage(
-                        PhotoReasoningMessage(
-                            text = "Fehler bei der Screenshot-Verarbeitung: ${e.message}",
-                            participant = PhotoParticipant.ERROR
-                        )
+                    // Add the screenshot to the conversation
+                    val screenshotMessage = PhotoReasoningMessage(
+                        text = messageText,
+                        participant = PhotoParticipant.USER,
+                        isPending = false,
+                        image = bitmap
                     )
+                    
+                    // Add the message to chat history
+                    _chatState.addMessage(screenshotMessage)
                     _chatMessagesFlow.value = chatMessages
                     
-                    // Save chat history after adding error message
+                    // Save chat history
                     saveChatHistory(context)
+                    
+                    // Update the current selected images to only include this screenshot
+                    currentSelectedImages = listOf(bitmap)
+                    
+                    // Update status
+                    _commandExecutionStatus.value = "Screenshot zur Konversation hinzugefügt"
+                    
+                    // Show toast
+                    Toast.makeText(context, "Screenshot zur Konversation hinzugefügt", Toast.LENGTH_SHORT).show()
+                    
+                    // Rebuild chat history to include the new screenshot
+                    rebuildChatHistory()
+                } else {
+                    Log.e(TAG, "Failed to load screenshot bitmap")
+                    _commandExecutionStatus.value = "Fehler beim Laden des Screenshots"
+                    
+                    // Show toast
+                    Toast.makeText(context, "Fehler beim Laden des Screenshots", Toast.LENGTH_SHORT).show()
                 }
             } catch (e: Exception) {
                 Log.e(TAG, "Error adding screenshot to conversation: ${e.message}", e)
                 _commandExecutionStatus.value = "Fehler beim Hinzufügen des Screenshots: ${e.message}"
+                
+                // Show toast
                 Toast.makeText(context, "Fehler beim Hinzufügen des Screenshots: ${e.message}", Toast.LENGTH_SHORT).show()
-                
-                // Add error message to chat
-                _chatState.addMessage(
-                    PhotoReasoningMessage(
-                        text = "Fehler beim Hinzufügen des Screenshots: ${e.message}",
-                        participant = PhotoParticipant.ERROR
-                    )
-                )
-                _chatMessagesFlow.value = chatMessages
-                
-                // Save chat history after adding error message
-                saveChatHistory(context)
             }
         }
     }
     
     /**
-     * Load saved chat history from SharedPreferences and initialize chat with history
+     * Load chat history from SharedPreferences
      */
     fun loadChatHistory(context: android.content.Context) {
-        val savedMessages = ChatHistoryPreferences.loadChatMessages(context)
-        if (savedMessages.isNotEmpty()) {
-            _chatState.clearMessages()
-            savedMessages.forEach { _chatState.addMessage(it) }
-            _chatMessagesFlow.value = chatMessages
-            
-            // Rebuild the chat history for the AI
-            rebuildChatHistory()
+        PhotoReasoningApplication.applicationScope.launch(Dispatchers.Main) {
+            try {
+                val messages = ChatHistoryPreferences.loadChatMessages(context)
+                
+                if (messages.isNotEmpty()) {
+                    // Clear current messages
+                    _chatState.clearMessages()
+                    
+                    // Add loaded messages
+                    messages.forEach { _chatState.addMessage(it) }
+                    
+                    // Update the flow
+                    _chatMessagesFlow.value = chatMessages
+                    
+                    // Rebuild chat history
+                    rebuildChatHistory()
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Error loading chat history: ${e.message}", e)
+                
+                // Show toast
+                Toast.makeText(context, "Fehler beim Laden des Chat-Verlaufs: ${e.message}", Toast.LENGTH_SHORT).show()
+            }
         }
     }
     
     /**
-     * Rebuild the chat history for the AI based on the current messages
+     * Rebuild the chat history for the AI
      */
     private fun rebuildChatHistory() {
-        // Convert the current chat messages to Content objects for the chat history
         val history = mutableListOf<Content>()
         
         // Group messages by participant to create proper conversation turns
