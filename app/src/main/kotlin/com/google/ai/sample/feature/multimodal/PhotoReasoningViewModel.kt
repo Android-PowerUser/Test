@@ -14,16 +14,19 @@ import coil.size.Precision
 import com.google.ai.client.generativeai.GenerativeModel
 import com.google.ai.client.generativeai.type.content
 import com.google.ai.sample.MainActivity
+import com.google.ai.sample.PhotoReasoningApplication
 import com.google.ai.sample.ScreenOperatorAccessibilityService
 import com.google.ai.sample.util.ChatHistoryPreferences
 import com.google.ai.sample.util.Command
 import com.google.ai.sample.util.CommandParser
 import com.google.ai.sample.util.SystemMessagePreferences
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 class PhotoReasoningViewModel(
     private val generativeModel: GenerativeModel
@@ -68,6 +71,9 @@ class PhotoReasoningViewModel(
     // ImageLoader and ImageRequestBuilder for processing images
     private var imageLoader: ImageLoader? = null
     private var imageRequestBuilder: ImageRequest.Builder? = null
+    
+    // Keep track of active jobs to prevent cancellation
+    private val activeJobs = mutableListOf<Job>()
 
     fun reason(
         userInput: String,
@@ -93,7 +99,7 @@ class PhotoReasoningViewModel(
         _detectedCommands.value = emptyList()
         _commandExecutionStatus.value = ""
         
-        // Add user message to chat history - only the actual user input, not the system message
+        // Add user message to chat history
         val userMessage = PhotoReasoningMessage(
             text = userInput,
             participant = PhotoParticipant.USER,
@@ -111,7 +117,8 @@ class PhotoReasoningViewModel(
         _chatState.addMessage(pendingAiMessage)
         _chatMessagesFlow.value = chatMessages
 
-        viewModelScope.launch(Dispatchers.IO) {
+        // Use application scope instead of viewModelScope to prevent cancellation when app goes to background
+        val job = PhotoReasoningApplication.applicationScope.launch(Dispatchers.IO) {
             try {
                 val inputContent = content {
                     for (bitmap in selectedImages) {
@@ -126,35 +133,53 @@ class PhotoReasoningViewModel(
                     .collect { response ->
                         val newText = response.text ?: ""
                         outputContent += newText
-                        _uiState.value = PhotoReasoningUiState.Success(outputContent)
                         
-                        // Update the AI message in chat history
-                        updateAiMessage(outputContent)
-                        
-                        // Parse and execute commands from the response
-                        processCommands(newText)
+                        // Update UI on main thread
+                        withContext(Dispatchers.Main) {
+                            _uiState.value = PhotoReasoningUiState.Success(outputContent)
+                            
+                            // Update the AI message in chat history
+                            updateAiMessage(outputContent)
+                            
+                            // Parse and execute commands from the response
+                            processCommands(newText)
+                        }
                     }
                 
                 // Save chat history after successful response
-                saveChatHistory(MainActivity.getInstance()?.applicationContext)
+                withContext(Dispatchers.Main) {
+                    saveChatHistory(MainActivity.getInstance()?.applicationContext)
+                }
             } catch (e: Exception) {
                 Log.e(TAG, "Error generating content: ${e.message}", e)
-                _uiState.value = PhotoReasoningUiState.Error(e.localizedMessage ?: "Unknown error")
-                _commandExecutionStatus.value = "Fehler bei der Generierung: ${e.localizedMessage}"
                 
-                // Update chat with error message
-                _chatState.replaceLastPendingMessage()
-                _chatState.addMessage(
-                    PhotoReasoningMessage(
-                        text = e.localizedMessage ?: "Unknown error",
-                        participant = PhotoParticipant.ERROR
+                // Update UI on main thread
+                withContext(Dispatchers.Main) {
+                    _uiState.value = PhotoReasoningUiState.Error(e.localizedMessage ?: "Unknown error")
+                    _commandExecutionStatus.value = "Fehler bei der Generierung: ${e.localizedMessage}"
+                    
+                    // Update chat with error message
+                    _chatState.replaceLastPendingMessage()
+                    _chatState.addMessage(
+                        PhotoReasoningMessage(
+                            text = e.localizedMessage ?: "Unknown error",
+                            participant = PhotoParticipant.ERROR
+                        )
                     )
-                )
-                _chatMessagesFlow.value = chatMessages
-                
-                // Save chat history even after error
-                saveChatHistory(MainActivity.getInstance()?.applicationContext)
+                    _chatMessagesFlow.value = chatMessages
+                    
+                    // Save chat history even after error
+                    saveChatHistory(MainActivity.getInstance()?.applicationContext)
+                }
             }
+        }
+        
+        // Track the job to prevent cancellation
+        synchronized(activeJobs) {
+            activeJobs.add(job)
+            
+            // Clean up completed jobs to prevent memory leaks
+            activeJobs.removeAll { it.isCompleted }
         }
     }
     
@@ -207,7 +232,8 @@ class PhotoReasoningViewModel(
      * Process commands found in the AI response
      */
     private fun processCommands(text: String) {
-        viewModelScope.launch(Dispatchers.Main) {
+        // Use application scope instead of viewModelScope to prevent cancellation when app goes to background
+        val job = PhotoReasoningApplication.applicationScope.launch(Dispatchers.Main) {
             try {
                 // Parse commands from the text
                 val commands = CommandParser.parseCommands(text)
@@ -313,6 +339,14 @@ class PhotoReasoningViewModel(
                 )
             }
         }
+        
+        // Track the job to prevent cancellation
+        synchronized(activeJobs) {
+            activeJobs.add(job)
+            
+            // Clean up completed jobs to prevent memory leaks
+            activeJobs.removeAll { it.isCompleted }
+        }
     }
     
     /**
@@ -327,7 +361,8 @@ class PhotoReasoningViewModel(
         context: android.content.Context,
         screenInfo: String? = null
     ) {
-        viewModelScope.launch(Dispatchers.Main) {
+        // Use application scope instead of viewModelScope to prevent cancellation when app goes to background
+        val job = PhotoReasoningApplication.applicationScope.launch(Dispatchers.Main) {
             try {
                 Log.d(TAG, "Adding screenshot to conversation: $screenshotUri")
                 
@@ -456,6 +491,14 @@ class PhotoReasoningViewModel(
                 saveChatHistory(context)
             }
         }
+        
+        // Track the job to prevent cancellation
+        synchronized(activeJobs) {
+            activeJobs.add(job)
+            
+            // Clean up completed jobs to prevent memory leaks
+            activeJobs.removeAll { it.isCompleted }
+        }
     }
     
     /**
@@ -490,6 +533,17 @@ class PhotoReasoningViewModel(
         context?.let {
             ChatHistoryPreferences.clearChatMessages(it)
         }
+    }
+    
+    /**
+     * Called when ViewModel is cleared
+     * We override this to ensure our background jobs continue running
+     */
+    override fun onCleared() {
+        super.onCleared()
+        Log.d(TAG, "ViewModel cleared, but background jobs will continue running")
+        // We intentionally do NOT cancel the jobs in activeJobs
+        // This allows them to continue running in the background
     }
     
     /**
