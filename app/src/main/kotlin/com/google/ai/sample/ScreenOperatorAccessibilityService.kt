@@ -604,17 +604,107 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
         showToast("Nehme Screenshot auf durch Simulation der Hardware-Tasten...", false)
         
         try {
+            // Capture screen information before taking the screenshot
+            val screenInfo = captureScreenInformation()
+            
             // Simulate pressing Power + Volume Down buttons to take a screenshot
             simulateScreenshotButtonCombination()
             
             // Wait a moment for the screenshot to be saved, then retrieve it
             handler.postDelayed({
-                retrieveLatestScreenshot()
+                retrieveLatestScreenshot(screenInfo)
             }, 1000) // Wait 1 second for the screenshot to be saved
         } catch (e: Exception) {
             Log.e(TAG, "Error taking screenshot: ${e.message}")
             showToast("Fehler beim Aufnehmen des Screenshots: ${e.message}", true)
         }
+    }
+    
+    /**
+     * Capture information about all interactive elements on the screen
+     */
+    private fun captureScreenInformation(): String {
+        Log.d(TAG, "Capturing screen information")
+        
+        // Refresh the root node to ensure we have the latest information
+        refreshRootNode()
+        
+        // Check if root node is available
+        if (rootNode == null) {
+            Log.e(TAG, "Root node is null, cannot capture screen information")
+            return "Keine Bildschirminformationen verfügbar (Root-Knoten ist null)"
+        }
+        
+        // Build a string with information about all interactive elements
+        val screenInfo = StringBuilder()
+        screenInfo.append("Bildschirmelemente:\n")
+        
+        // Capture information about all interactive elements
+        val interactiveElements = findAllInteractiveElements(rootNode!!)
+        
+        if (interactiveElements.isEmpty()) {
+            screenInfo.append("Keine interaktiven Elemente gefunden.")
+        } else {
+            screenInfo.append("Gefundene interaktive Elemente (${interactiveElements.size}):\n\n")
+            
+            interactiveElements.forEachIndexed { index, element ->
+                screenInfo.append("${index + 1}. ")
+                
+                // Add element text if available
+                if (!element.text.isNullOrEmpty()) {
+                    screenInfo.append("Text: \"${element.text}\" ")
+                }
+                
+                // Add element content description if available
+                if (!element.contentDescription.isNullOrEmpty()) {
+                    screenInfo.append("Beschreibung: \"${element.contentDescription}\" ")
+                }
+                
+                // Add element class name
+                screenInfo.append("Klasse: ${element.className} ")
+                
+                // Add element bounds
+                val rect = Rect()
+                element.getBoundsInScreen(rect)
+                screenInfo.append("Position: (${rect.centerX()}, ${rect.centerY()}) ")
+                
+                // Add element clickable status
+                screenInfo.append("Klickbar: ${if (element.isClickable) "Ja" else "Nein"}")
+                
+                screenInfo.append("\n")
+                
+                // Recycle the element to avoid memory leaks
+                element.recycle()
+            }
+        }
+        
+        Log.d(TAG, "Screen information captured: ${screenInfo.length} characters")
+        return screenInfo.toString()
+    }
+    
+    /**
+     * Find all interactive elements on the screen
+     */
+    private fun findAllInteractiveElements(node: AccessibilityNodeInfo): List<AccessibilityNodeInfo> {
+        val elements = mutableListOf<AccessibilityNodeInfo>()
+        
+        try {
+            // Check if this node is interactive (clickable, long clickable, or focusable)
+            if (node.isClickable || node.isLongClickable || node.isFocusable) {
+                elements.add(AccessibilityNodeInfo.obtain(node))
+            }
+            
+            // Check all child nodes
+            for (i in 0 until node.childCount) {
+                val child = node.getChild(i) ?: continue
+                elements.addAll(findAllInteractiveElements(child))
+                child.recycle()
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error finding interactive elements: ${e.message}")
+        }
+        
+        return elements
     }
     
     /**
@@ -686,7 +776,7 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
     /**
      * Retrieve the latest screenshot from the standard screenshot folder
      */
-    private fun retrieveLatestScreenshot() {
+    private fun retrieveLatestScreenshot(screenInfo: String) {
         try {
             Log.d(TAG, "Retrieving latest screenshot")
             showToast("Suche nach dem aufgenommenen Screenshot...", false)
@@ -701,8 +791,8 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
                 // Convert file to URI
                 val screenshotUri = Uri.fromFile(screenshotFile)
                 
-                // Add the screenshot to the conversation
-                addScreenshotToConversation(screenshotUri)
+                // Add the screenshot to the conversation with screen information
+                addScreenshotToConversation(screenshotUri, screenInfo)
             } else {
                 Log.e(TAG, "No screenshot file found")
                 showToast("Kein Screenshot gefunden. Bitte prüfen Sie die Berechtigungen.", true)
@@ -834,11 +924,11 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
     }
     
     /**
-     * Add the screenshot to the conversation
+     * Add the screenshot to the conversation with screen information
      */
-    private fun addScreenshotToConversation(screenshotUri: Uri) {
+    private fun addScreenshotToConversation(screenshotUri: Uri, screenInfo: String) {
         try {
-            Log.d(TAG, "Adding screenshot to conversation: $screenshotUri")
+            Log.d(TAG, "Adding screenshot to conversation with screen information: $screenshotUri")
             
             // Get the MainActivity instance
             val mainActivity = MainActivity.getInstance()
@@ -856,11 +946,11 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
                 return
             }
             
-            // Add the screenshot to the conversation
-            photoReasoningViewModel.addScreenshotToConversation(screenshotUri, applicationContext)
+            // Add the screenshot to the conversation with screen information
+            photoReasoningViewModel.addScreenshotToConversation(screenshotUri, applicationContext, screenInfo)
             
-            Log.d(TAG, "Screenshot added to conversation")
-            showToast("Screenshot zur Konversation hinzugefügt", false)
+            Log.d(TAG, "Screenshot added to conversation with screen information")
+            showToast("Screenshot mit Bildschirminformationen zur Konversation hinzugefügt", false)
         } catch (e: Exception) {
             Log.e(TAG, "Error adding screenshot to conversation: ${e.message}")
             showToast("Fehler beim Hinzufügen des Screenshots zur Konversation: ${e.message}", true)
