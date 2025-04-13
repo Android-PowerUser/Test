@@ -113,12 +113,12 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
                 is Command.PressHome -> {
                     Log.d(TAG, "Pressing Home button")
                     showToast("Drücke Home-Taste", false)
-                    serviceInstance?.pressHome()
+                    serviceInstance?.pressHomeButton()
                 }
                 is Command.PressBack -> {
                     Log.d(TAG, "Pressing Back button")
                     showToast("Drücke Zurück-Taste", false)
-                    serviceInstance?.pressBack()
+                    serviceInstance?.pressBackButton()
                 }
                 is Command.ShowRecentApps -> {
                     Log.d(TAG, "Showing recent apps")
@@ -162,7 +162,7 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
                 }
                 is Command.OpenApp -> {
                     Log.d(TAG, "Opening app: ${command.appName}")
-                    showToast("Öffne App: \"${command.appName}\"", false)
+                    showToast("Öffne App: ${command.appName}", false)
                     serviceInstance?.openApp(command.appName)
                 }
             }
@@ -294,14 +294,850 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
     }
     
     /**
+     * Find and click a button with the specified text
+     */
+    fun findAndClickButtonByText(buttonText: String) {
+        Log.d(TAG, "Finding and clicking button with text: $buttonText")
+        showToast("Suche Button mit Text: \"$buttonText\"", false)
+        
+        // Refresh the root node
+        refreshRootNode()
+        
+        // Check if root node is available
+        if (rootNode == null) {
+            Log.e(TAG, "Root node is null, cannot find button")
+            showToast("Fehler: Root-Knoten ist nicht verfügbar", true)
+            return
+        }
+        
+        // Try to find the node with the specified text
+        val node = findNodeByText(rootNode!!, buttonText)
+        
+        if (node != null) {
+            Log.d(TAG, "Found node with text: $buttonText")
+            showToast("Button gefunden: \"$buttonText\"", false)
+            
+            // Add a small delay before clicking
+            Handler(Looper.getMainLooper()).postDelayed({
+                // Perform the click
+                val clickResult = performClickOnNode(node)
+                
+                if (clickResult) {
+                    Log.d(TAG, "Successfully clicked on button: $buttonText")
+                    showToast("Klick auf Button \"$buttonText\" erfolgreich", false)
+                } else {
+                    Log.e(TAG, "Failed to click on button: $buttonText")
+                    showToast("Klick auf Button \"$buttonText\" fehlgeschlagen, versuche alternative Methoden", true)
+                    
+                    // Try alternative methods
+                    tryAlternativeClickMethods(node, buttonText)
+                }
+                
+                // Recycle the node
+                node.recycle()
+            }, 200) // 200ms delay
+        } else {
+            Log.e(TAG, "Could not find node with text: $buttonText")
+            showToast("Button mit Text \"$buttonText\" nicht gefunden, versuche alternative Suche", true)
+            
+            // Try to find by content description
+            findAndClickButtonByContentDescription(buttonText)
+        }
+    }
+    
+    /**
+     * Try alternative click methods if the standard click fails
+     */
+    private fun tryAlternativeClickMethods(node: AccessibilityNodeInfo, buttonText: String) {
+        // Try to get the bounds and tap at the center
+        val rect = Rect()
+        node.getBoundsInScreen(rect)
+        
+        if (rect.width() > 0 && rect.height() > 0) {
+            val centerX = rect.centerX()
+            val centerY = rect.centerY()
+            
+            Log.d(TAG, "Trying to tap at the center of the button: ($centerX, $centerY)")
+            showToast("Versuche Tippen auf Koordinaten: ($centerX, $centerY)", false)
+            
+            // Tap at the center of the button
+            tapAtCoordinatesWithLongerDuration(centerX.toFloat(), centerY.toFloat())
+        } else {
+            Log.e(TAG, "Button bounds are invalid: $rect")
+            showToast("Button-Grenzen sind ungültig", true)
+        }
+    }
+    
+    /**
+     * Find and click a button with the specified content description
+     */
+    private fun findAndClickButtonByContentDescription(description: String) {
+        Log.d(TAG, "Finding and clicking button with content description: $description")
+        showToast("Suche Button mit Beschreibung: \"$description\"", false)
+        
+        // Check if root node is available
+        if (rootNode == null) {
+            Log.e(TAG, "Root node is null, cannot find button")
+            showToast("Fehler: Root-Knoten ist nicht verfügbar", true)
+            return
+        }
+        
+        // Try to find the node with the specified content description
+        val node = findNodeByContentDescription(rootNode!!, description)
+        
+        if (node != null) {
+            Log.d(TAG, "Found node with content description: $description")
+            showToast("Button mit Beschreibung \"$description\" gefunden", false)
+            
+            // Add a small delay before clicking
+            Handler(Looper.getMainLooper()).postDelayed({
+                // Perform the click
+                val clickResult = performClickOnNode(node)
+                
+                if (clickResult) {
+                    Log.d(TAG, "Successfully clicked on button with description: $description")
+                    showToast("Klick auf Button mit Beschreibung \"$description\" erfolgreich", false)
+                } else {
+                    Log.e(TAG, "Failed to click on button with description: $description")
+                    showToast("Klick auf Button mit Beschreibung \"$description\" fehlgeschlagen, versuche Klassen-Suche", true)
+                    
+                    // Try to find by class name
+                    findAndClickButtonByClassName("android.widget.Button")
+                }
+                
+                // Recycle the node
+                node.recycle()
+            }, 200) // 200ms delay
+        } else {
+            Log.e(TAG, "Could not find node with content description: $description")
+            showToast("Button mit Beschreibung \"$description\" nicht gefunden, versuche Klassen-Suche", true)
+            
+            // Try to find by class name
+            findAndClickButtonByClassName("android.widget.Button")
+        }
+    }
+    
+    /**
+     * Find and click a button with the specified class name
+     */
+    private fun findAndClickButtonByClassName(className: String) {
+        Log.d(TAG, "Finding and clicking button with class name: $className")
+        showToast("Suche Button mit Klasse: \"$className\"", false)
+        
+        // Check if root node is available
+        if (rootNode == null) {
+            Log.e(TAG, "Root node is null, cannot find button")
+            showToast("Fehler: Root-Knoten ist nicht verfügbar", true)
+            return
+        }
+        
+        // Try to find the node with the specified class name
+        val node = findNodeByClassName(rootNode!!, className)
+        
+        if (node != null) {
+            Log.d(TAG, "Found node with class name: $className")
+            showToast("Button mit Klasse \"$className\" gefunden", false)
+            
+            // Add a small delay before clicking
+            Handler(Looper.getMainLooper()).postDelayed({
+                // Perform the click
+                val clickResult = performClickOnNode(node)
+                
+                if (clickResult) {
+                    Log.d(TAG, "Successfully clicked on button with class name: $className")
+                    showToast("Klick auf Button mit Klasse \"$className\" erfolgreich", false)
+                } else {
+                    Log.e(TAG, "Failed to click on button with class name: $className")
+                    showToast("Klick auf Button mit Klasse \"$className\" fehlgeschlagen", true)
+                }
+                
+                // Recycle the node
+                node.recycle()
+            }, 200) // 200ms delay
+        } else {
+            Log.e(TAG, "Could not find node with class name: $className")
+            showToast("Button mit Klasse \"$className\" nicht gefunden", true)
+        }
+    }
+    
+    /**
+     * Find a node by text
+     */
+    private fun findNodeByText(node: AccessibilityNodeInfo, text: String): AccessibilityNodeInfo? {
+        // Check if this node has the text we're looking for
+        if (node.text != null && node.text.toString().contains(text, ignoreCase = true)) {
+            return node
+        }
+        
+        // Check child nodes
+        for (i in 0 until node.childCount) {
+            val child = node.getChild(i) ?: continue
+            val result = findNodeByText(child, text)
+            if (result != null) {
+                return result
+            }
+            child.recycle()
+        }
+        
+        return null
+    }
+    
+    /**
+     * Find a node by content description
+     */
+    private fun findNodeByContentDescription(node: AccessibilityNodeInfo, description: String): AccessibilityNodeInfo? {
+        // Check if this node has the content description we're looking for
+        if (node.contentDescription != null && node.contentDescription.toString().contains(description, ignoreCase = true)) {
+            return node
+        }
+        
+        // Check child nodes
+        for (i in 0 until node.childCount) {
+            val child = node.getChild(i) ?: continue
+            val result = findNodeByContentDescription(child, description)
+            if (result != null) {
+                return result
+            }
+            child.recycle()
+        }
+        
+        return null
+    }
+    
+    /**
+     * Find a node by class name
+     */
+    private fun findNodeByClassName(node: AccessibilityNodeInfo, className: String): AccessibilityNodeInfo? {
+        // Check if this node has the class name we're looking for
+        if (node.className != null && node.className.toString() == className) {
+            return node
+        }
+        
+        // Check child nodes
+        for (i in 0 until node.childCount) {
+            val child = node.getChild(i) ?: continue
+            val result = findNodeByClassName(child, className)
+            if (result != null) {
+                return result
+            }
+            child.recycle()
+        }
+        
+        return null
+    }
+    
+    /**
+     * Perform a click on a node
+     */
+    private fun performClickOnNode(node: AccessibilityNodeInfo): Boolean {
+        try {
+            // Check if the node is clickable
+            if (node.isClickable) {
+                // Perform the click action
+                return node.performAction(AccessibilityNodeInfo.ACTION_CLICK)
+            } else {
+                Log.d(TAG, "Node is not clickable, trying to find clickable parent")
+                
+                // Try to find a clickable parent
+                var parent = node.parent
+                while (parent != null) {
+                    if (parent.isClickable) {
+                        val result = parent.performAction(AccessibilityNodeInfo.ACTION_CLICK)
+                        parent.recycle()
+                        return result
+                    }
+                    val tempParent = parent.parent
+                    parent.recycle()
+                    parent = tempParent
+                }
+                
+                Log.e(TAG, "Could not find clickable parent")
+                return false
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error performing click on node: ${e.message}")
+            return false
+        }
+    }
+    
+    /**
+     * Tap at the specified coordinates
+     */
+    fun tapAtCoordinates(x: Float, y: Float) {
+        Log.d(TAG, "Tapping at coordinates: ($x, $y)")
+        showToast("Tippen auf Koordinaten: ($x, $y)", false)
+        
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.N) {
+            Log.e(TAG, "Gesture API is not available on this Android version")
+            showToast("Gesten-API ist auf dieser Android-Version nicht verfügbar", true)
+            return
+        }
+        
+        try {
+            // Create a tap gesture
+            val path = Path()
+            path.moveTo(x, y)
+            
+            val gesture = GestureDescription.Builder()
+                .addStroke(GestureDescription.StrokeDescription(path, 0, 100))
+                .build()
+            
+            // Dispatch the gesture
+            val dispatchResult = dispatchGesture(gesture, object : GestureResultCallback() {
+                override fun onCompleted(gestureDescription: GestureDescription) {
+                    super.onCompleted(gestureDescription)
+                    Log.d(TAG, "Tap gesture completed")
+                    showToast("Tippen auf Koordinaten ($x, $y) erfolgreich", false)
+                }
+                
+                override fun onCancelled(gestureDescription: GestureDescription) {
+                    super.onCancelled(gestureDescription)
+                    Log.e(TAG, "Tap gesture cancelled")
+                    showToast("Tippen auf Koordinaten ($x, $y) abgebrochen, versuche längere Dauer", true)
+                    
+                    // Try with longer duration
+                    tapAtCoordinatesWithLongerDuration(x, y)
+                }
+            }, null)
+            
+            if (!dispatchResult) {
+                Log.e(TAG, "Failed to dispatch tap gesture")
+                showToast("Fehler beim Senden der Tipp-Geste, versuche längere Dauer", true)
+                
+                // Try with longer duration
+                tapAtCoordinatesWithLongerDuration(x, y)
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error tapping at coordinates: ${e.message}")
+            showToast("Fehler beim Tippen auf Koordinaten: ${e.message}", true)
+        }
+    }
+    
+    /**
+     * Tap at the specified coordinates with a longer duration
+     */
+    private fun tapAtCoordinatesWithLongerDuration(x: Float, y: Float) {
+        Log.d(TAG, "Tapping at coordinates with longer duration: ($x, $y)")
+        showToast("Versuche Tippen mit längerer Dauer auf: ($x, $y)", false)
+        
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.N) {
+            Log.e(TAG, "Gesture API is not available on this Android version")
+            showToast("Gesten-API ist auf dieser Android-Version nicht verfügbar", true)
+            return
+        }
+        
+        try {
+            // Create a tap gesture with longer duration
+            val path = Path()
+            path.moveTo(x, y)
+            
+            val gesture = GestureDescription.Builder()
+                .addStroke(GestureDescription.StrokeDescription(path, 0, 800))
+                .build()
+            
+            // Dispatch the gesture
+            val dispatchResult = dispatchGesture(gesture, object : GestureResultCallback() {
+                override fun onCompleted(gestureDescription: GestureDescription) {
+                    super.onCompleted(gestureDescription)
+                    Log.d(TAG, "Long tap gesture completed")
+                    showToast("Langes Tippen auf Koordinaten ($x, $y) erfolgreich", false)
+                }
+                
+                override fun onCancelled(gestureDescription: GestureDescription) {
+                    super.onCancelled(gestureDescription)
+                    Log.e(TAG, "Long tap gesture cancelled")
+                    showToast("Langes Tippen auf Koordinaten ($x, $y) abgebrochen", true)
+                }
+            }, null)
+            
+            if (!dispatchResult) {
+                Log.e(TAG, "Failed to dispatch long tap gesture")
+                showToast("Fehler beim Senden der langen Tipp-Geste", true)
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error tapping at coordinates with longer duration: ${e.message}")
+            showToast("Fehler beim langen Tippen auf Koordinaten: ${e.message}", true)
+        }
+    }
+    
+    /**
+     * Take a screenshot by simulating hardware button presses
+     */
+    fun takeScreenshot() {
+        Log.d(TAG, "Taking screenshot by simulating hardware buttons")
+        showToast("Nehme Screenshot auf durch Simulation der Hardware-Tasten...", false)
+        
+        try {
+            // Simulate pressing Power + Volume Down buttons to take a screenshot
+            simulateScreenshotButtonCombination()
+            
+            // Wait a moment for the screenshot to be saved, then retrieve it
+            handler.postDelayed({
+                retrieveLatestScreenshot()
+            }, 1000) // Wait 1 second for the screenshot to be saved
+        } catch (e: Exception) {
+            Log.e(TAG, "Error taking screenshot: ${e.message}")
+            showToast("Fehler beim Aufnehmen des Screenshots: ${e.message}", true)
+        }
+    }
+    
+    /**
+     * Simulate pressing Power + Volume Down buttons to take a screenshot
+     */
+    private fun simulateScreenshotButtonCombination() {
+        try {
+            Log.d(TAG, "Simulating Power + Volume Down button combination")
+            
+            // First try using performGlobalAction if available (Android P and above)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                val result = performGlobalAction(AccessibilityService.GLOBAL_ACTION_TAKE_SCREENSHOT)
+                if (result) {
+                    Log.d(TAG, "Successfully triggered screenshot using GLOBAL_ACTION_TAKE_SCREENSHOT")
+                    showToast("Screenshot-Aktion ausgelöst", false)
+                    return
+                } else {
+                    Log.e(TAG, "Failed to trigger screenshot using GLOBAL_ACTION_TAKE_SCREENSHOT")
+                }
+            }
+            
+            // Fallback to simulating key events
+            Log.d(TAG, "Falling back to key event simulation")
+            
+            // Simulate Volume Down key press
+            val volumeDownResult = performKeyPress(KeyEvent.KEYCODE_VOLUME_DOWN)
+            
+            // Simulate Power key press
+            val powerResult = performKeyPress(KeyEvent.KEYCODE_POWER)
+            
+            if (volumeDownResult && powerResult) {
+                Log.d(TAG, "Successfully simulated key presses")
+                showToast("Tasten-Simulation erfolgreich", false)
+            } else {
+                Log.e(TAG, "Failed to simulate key presses")
+                showToast("Fehler bei der Tasten-Simulation", true)
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error simulating button combination: ${e.message}")
+            showToast("Fehler bei der Simulation der Tasten-Kombination: ${e.message}", true)
+        }
+    }
+    
+    /**
+     * Perform a key press
+     */
+    private fun performKeyPress(keyCode: Int): Boolean {
+        try {
+            // Create key down event
+            val downTime = System.currentTimeMillis()
+            val keyDownEvent = KeyEvent(downTime, downTime, KeyEvent.ACTION_DOWN, keyCode, 0)
+            val downResult = performGlobalAction(keyCode)
+            
+            // Small delay between down and up events
+            Thread.sleep(100)
+            
+            // Create key up event
+            val upTime = System.currentTimeMillis()
+            val keyUpEvent = KeyEvent(downTime, upTime, KeyEvent.ACTION_UP, keyCode, 0)
+            val upResult = performGlobalAction(keyCode)
+            
+            return downResult && upResult
+        } catch (e: Exception) {
+            Log.e(TAG, "Error performing key press: ${e.message}")
+            return false
+        }
+    }
+    
+    /**
+     * Retrieve the latest screenshot from the standard screenshot folder
+     */
+    private fun retrieveLatestScreenshot() {
+        try {
+            Log.d(TAG, "Retrieving latest screenshot")
+            showToast("Suche nach dem aufgenommenen Screenshot...", false)
+            
+            // Check standard screenshot locations
+            val screenshotFile = findLatestScreenshotFile()
+            
+            if (screenshotFile != null) {
+                Log.d(TAG, "Found screenshot file: ${screenshotFile.absolutePath}")
+                showToast("Screenshot gefunden: ${screenshotFile.name}", false)
+                
+                // Convert file to URI
+                val screenshotUri = Uri.fromFile(screenshotFile)
+                
+                // Capture screen information
+                val screenInfo = captureScreenInformation()
+                
+                // Add the screenshot to the conversation
+                addScreenshotToConversation(screenshotUri, screenInfo)
+            } else {
+                Log.e(TAG, "No screenshot file found")
+                showToast("Kein Screenshot gefunden. Bitte prüfen Sie die Berechtigungen.", true)
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error retrieving screenshot: ${e.message}")
+            showToast("Fehler beim Abrufen des Screenshots: ${e.message}", true)
+        }
+    }
+    
+    /**
+     * Capture information about interactive elements on the screen
+     */
+    private fun captureScreenInformation(): String {
+        Log.d(TAG, "Capturing screen information")
+        
+        // Refresh the root node
+        refreshRootNode()
+        
+        // Check if root node is available
+        if (rootNode == null) {
+            Log.e(TAG, "Root node is null, cannot capture screen information")
+            return "Keine Bildschirminformationen verfügbar (Root-Knoten ist null)"
+        }
+        
+        // Find all interactive elements
+        val elements = findAllInteractiveElements(rootNode!!)
+        
+        // Format the information
+        val sb = StringBuilder()
+        sb.appendLine("Bildschirmelemente:")
+        
+        if (elements.isEmpty()) {
+            sb.appendLine("Keine interaktiven Elemente gefunden")
+        } else {
+            elements.forEachIndexed { index, element ->
+                sb.appendLine("Element ${index + 1}:")
+                
+                // Get button name or text
+                val buttonName = getButtonName(element)
+                if (buttonName.isNotEmpty()) {
+                    sb.appendLine("Name: $buttonName")
+                }
+                
+                // Get element text
+                val text = element.text?.toString() ?: ""
+                if (text.isNotEmpty()) {
+                    sb.appendLine("Text: $text")
+                }
+                
+                // Get content description
+                val contentDesc = element.contentDescription?.toString() ?: ""
+                if (contentDesc.isNotEmpty() && contentDesc != text) {
+                    sb.appendLine("Beschreibung: $contentDesc")
+                }
+                
+                // Get class name
+                val className = element.className?.toString()?.substringAfterLast('.') ?: "View"
+                sb.appendLine("Klasse: $className")
+                
+                // Get position
+                val rect = Rect()
+                element.getBoundsInScreen(rect)
+                sb.appendLine("Position: (${rect.centerX()}, ${rect.centerY()})")
+                
+                // Get clickable status
+                sb.appendLine("Klickbar: ${if (element.isClickable) "Ja" else "Nein"}")
+                
+                // Add separator between elements
+                if (index < elements.size - 1) {
+                    sb.appendLine("---")
+                }
+            }
+        }
+        
+        return sb.toString()
+    }
+    
+    /**
+     * Find all interactive elements in the accessibility tree
+     */
+    private fun findAllInteractiveElements(node: AccessibilityNodeInfo): List<AccessibilityNodeInfo> {
+        val elements = mutableListOf<AccessibilityNodeInfo>()
+        
+        try {
+            // Check if this node is interactive
+            if (node.isClickable || node.isLongClickable || node.isCheckable || 
+                node.isScrollable || node.isFocusable) {
+                elements.add(AccessibilityNodeInfo.obtain(node))
+            }
+            
+            // Check child nodes
+            for (i in 0 until node.childCount) {
+                val child = node.getChild(i) ?: continue
+                elements.addAll(findAllInteractiveElements(child))
+                child.recycle()
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error finding interactive elements: ${e.message}")
+        }
+        
+        return elements
+    }
+    
+    /**
+     * Get the ID of a node
+     */
+    private fun getNodeId(node: AccessibilityNodeInfo): String {
+        return try {
+            val viewIdResourceName = node.viewIdResourceName ?: ""
+            if (viewIdResourceName.isNotEmpty()) {
+                viewIdResourceName.substringAfterLast('/')
+            } else {
+                ""
+            }
+        } catch (e: Exception) {
+            ""
+        }
+    }
+    
+    /**
+     * Get the button name from a node
+     */
+    private fun getButtonName(node: AccessibilityNodeInfo): String {
+        // Try to get text directly
+        val text = node.text?.toString() ?: ""
+        if (text.isNotEmpty()) {
+            return text
+        }
+        
+        // Try to get content description
+        val contentDesc = node.contentDescription?.toString() ?: ""
+        if (contentDesc.isNotEmpty()) {
+            return contentDesc
+        }
+        
+        // Try to get ID and convert to readable name
+        val id = getNodeId(node)
+        if (id.isNotEmpty()) {
+            // Convert camelCase or snake_case to readable text
+            val readableName = id
+                .replace("_", " ")
+                .replace(Regex("([a-z])([A-Z])"), "$1 $2")
+                .lowercase()
+                .split(" ")
+                .joinToString(" ") { word ->
+                    word.replaceFirstChar { if (it.isLowerCase()) it.titlecase(Locale.getDefault()) else it.toString() }
+                }
+            
+            if (readableName.isNotEmpty()) {
+                return readableName
+            }
+        }
+        
+        // Try to get text from parent
+        val parent = node.parent
+        if (parent != null) {
+            val parentText = parent.text?.toString() ?: ""
+            parent.recycle()
+            if (parentText.isNotEmpty()) {
+                return parentText
+            }
+        }
+        
+        // Special case for FAB (Floating Action Button)
+        val className = node.className?.toString() ?: ""
+        if (className.contains("FloatingActionButton") || className.contains("Fab")) {
+            // Check position - FABs are often in the bottom right or bottom center
+            val rect = Rect()
+            node.getBoundsInScreen(rect)
+            
+            // If it's in the bottom right quadrant, it's likely a "New" or "Add" button
+            if (rect.centerX() > screenWidth * 0.75 && rect.centerY() > screenHeight * 0.75) {
+                return "New"
+            }
+            
+            // If it's in the bottom center, it might be a "New" button
+            if (rect.centerX() > screenWidth * 0.4 && rect.centerX() < screenWidth * 0.6 && 
+                rect.centerY() > screenHeight * 0.75) {
+                return "New"
+            }
+        }
+        
+        // Check if it's a circular button in the bottom right (often "New" or "Add")
+        val rect = Rect()
+        node.getBoundsInScreen(rect)
+        val width = rect.width()
+        val height = rect.height()
+        
+        // If it's a square or circular button (width ≈ height) in the bottom right
+        if (Math.abs(width - height) < 20 && 
+            rect.centerX() > screenWidth * 0.75 && 
+            rect.centerY() > screenHeight * 0.75) {
+            return "New"
+        }
+        
+        // If it's in the bottom left corner, it might be a "Home" button
+        if (rect.centerX() < screenWidth * 0.25 && rect.centerY() > screenHeight * 0.75) {
+            return "Home"
+        }
+        
+        // Return empty string if no name found
+        return ""
+    }
+    
+    /**
+     * Find the latest screenshot file in standard locations
+     */
+    private fun findLatestScreenshotFile(): File? {
+        try {
+            // List of possible screenshot directories
+            val possibleDirs = listOf(
+                // Primary location on most devices
+                File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES), "Screenshots"),
+                // Secondary location on some devices
+                File(Environment.getExternalStorageDirectory(), "Pictures/Screenshots"),
+                // DCIM location used by some manufacturers
+                File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DCIM), "Screenshots"),
+                // App-specific location
+                File(applicationContext.getExternalFilesDir(Environment.DIRECTORY_PICTURES), "Screenshots")
+            )
+            
+            // Find the most recent screenshot file
+            var latestFile: File? = null
+            var latestModified: Long = 0
+            
+            for (dir in possibleDirs) {
+                if (dir.exists() && dir.isDirectory) {
+                    Log.d(TAG, "Checking directory: ${dir.absolutePath}")
+                    
+                    val files = dir.listFiles { file ->
+                        file.isFile && (file.name.startsWith("Screenshot") || 
+                                        file.name.startsWith("screenshot")) &&
+                        (file.name.endsWith(".png") || file.name.endsWith(".jpg") || 
+                         file.name.endsWith(".jpeg"))
+                    }
+                    
+                    files?.forEach { file ->
+                        Log.d(TAG, "Found file: ${file.name}, modified: ${file.lastModified()}")
+                        if (file.lastModified() > latestModified) {
+                            latestFile = file
+                            latestModified = file.lastModified()
+                        }
+                    }
+                }
+            }
+            
+            // Check if the file is recent (within the last 10 seconds)
+            if (latestFile != null) {
+                val currentTime = System.currentTimeMillis()
+                val fileAge = currentTime - latestModified
+                
+                if (fileAge <= 10000) { // 10 seconds
+                    Log.d(TAG, "Found recent screenshot: ${latestFile?.absolutePath}, age: ${fileAge}ms")
+                    return latestFile
+                } else {
+                    Log.d(TAG, "Found screenshot is too old: ${latestFile?.absolutePath}, age: ${fileAge}ms")
+                }
+            }
+            
+            // If no recent file found, try to query MediaStore
+            val latestMediaStoreFile = findLatestScreenshotViaMediaStore()
+            if (latestMediaStoreFile != null) {
+                return latestMediaStoreFile
+            }
+            
+            return null
+        } catch (e: Exception) {
+            Log.e(TAG, "Error finding latest screenshot file: ${e.message}")
+            return null
+        }
+    }
+    
+    /**
+     * Find the latest screenshot using MediaStore
+     */
+    private fun findLatestScreenshotViaMediaStore(): File? {
+        try {
+            val contentResolver = applicationContext.contentResolver
+            val projection = arrayOf(
+                MediaStore.Images.Media.DATA,
+                MediaStore.Images.Media.DATE_ADDED
+            )
+            
+            // Query for recent screenshots
+            val selection = "${MediaStore.Images.Media.DISPLAY_NAME} LIKE ?"
+            val selectionArgs = arrayOf("%screenshot%")
+            val sortOrder = "${MediaStore.Images.Media.DATE_ADDED} DESC"
+            
+            contentResolver.query(
+                MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
+                projection,
+                selection,
+                selectionArgs,
+                sortOrder
+            )?.use { cursor ->
+                if (cursor.moveToFirst()) {
+                    val dataColumnIndex = cursor.getColumnIndexOrThrow(MediaStore.Images.Media.DATA)
+                    val dateColumnIndex = cursor.getColumnIndexOrThrow(MediaStore.Images.Media.DATE_ADDED)
+                    
+                    val filePath = cursor.getString(dataColumnIndex)
+                    val dateAdded = cursor.getLong(dateColumnIndex) * 1000 // Convert to milliseconds
+                    
+                    val file = File(filePath)
+                    if (file.exists()) {
+                        val currentTime = System.currentTimeMillis()
+                        val fileAge = currentTime - dateAdded
+                        
+                        if (fileAge <= 10000) { // 10 seconds
+                            Log.d(TAG, "Found recent screenshot via MediaStore: $filePath, age: ${fileAge}ms")
+                            return file
+                        } else {
+                            Log.d(TAG, "Found screenshot via MediaStore is too old: $filePath, age: ${fileAge}ms")
+                        }
+                    }
+                }
+            }
+            
+            return null
+        } catch (e: Exception) {
+            Log.e(TAG, "Error finding screenshot via MediaStore: ${e.message}")
+            return null
+        }
+    }
+    
+    /**
+     * Add the screenshot to the conversation
+     */
+    private fun addScreenshotToConversation(screenshotUri: Uri, screenInfo: String = "") {
+        try {
+            Log.d(TAG, "Adding screenshot to conversation: $screenshotUri")
+            
+            // Get the MainActivity instance
+            val mainActivity = MainActivity.getInstance()
+            if (mainActivity == null) {
+                Log.e(TAG, "MainActivity instance is null, cannot add screenshot to conversation")
+                showToast("Fehler: MainActivity-Instanz ist nicht verfügbar", true)
+                return
+            }
+            
+            // Get the PhotoReasoningViewModel from MainActivity
+            val photoReasoningViewModel = mainActivity.getPhotoReasoningViewModel()
+            if (photoReasoningViewModel == null) {
+                Log.e(TAG, "PhotoReasoningViewModel is null, cannot add screenshot to conversation")
+                showToast("Fehler: PhotoReasoningViewModel ist nicht verfügbar", true)
+                return
+            }
+            
+            // Add the screenshot to the conversation with screen information
+            photoReasoningViewModel.addScreenshotToConversation(screenshotUri, applicationContext, screenInfo)
+            
+            Log.d(TAG, "Screenshot added to conversation")
+            showToast("Screenshot zur Konversation hinzugefügt", false)
+        } catch (e: Exception) {
+            Log.e(TAG, "Error adding screenshot to conversation: ${e.message}")
+            showToast("Fehler beim Hinzufügen des Screenshots zur Konversation: ${e.message}", true)
+        }
+    }
+    
+    /**
      * Press the Home button
      */
-    fun pressHome() {
+    fun pressHomeButton() {
         Log.d(TAG, "Pressing Home button")
         showToast("Drücke Home-Taste", false)
         
         try {
-            val result = performGlobalAction(GLOBAL_ACTION_HOME)
+            val result = performGlobalAction(AccessibilityService.GLOBAL_ACTION_HOME)
             if (result) {
                 Log.d(TAG, "Successfully pressed Home button")
                 showToast("Home-Taste erfolgreich gedrückt", false)
@@ -318,12 +1154,12 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
     /**
      * Press the Back button
      */
-    fun pressBack() {
+    fun pressBackButton() {
         Log.d(TAG, "Pressing Back button")
         showToast("Drücke Zurück-Taste", false)
         
         try {
-            val result = performGlobalAction(GLOBAL_ACTION_BACK)
+            val result = performGlobalAction(AccessibilityService.GLOBAL_ACTION_BACK)
             if (result) {
                 Log.d(TAG, "Successfully pressed Back button")
                 showToast("Zurück-Taste erfolgreich gedrückt", false)
@@ -345,7 +1181,7 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
         showToast("Zeige letzte Apps", false)
         
         try {
-            val result = performGlobalAction(GLOBAL_ACTION_RECENTS)
+            val result = performGlobalAction(AccessibilityService.GLOBAL_ACTION_RECENTS)
             if (result) {
                 Log.d(TAG, "Successfully showed recent apps")
                 showToast("Letzte Apps erfolgreich angezeigt", false)
@@ -360,94 +1196,40 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
     }
     
     /**
-     * Pull down the status bar to show notifications
+     * Pull down the status bar (notifications)
      */
     fun pullStatusBarDown() {
         Log.d(TAG, "Pulling status bar down")
         showToast("Ziehe Statusleiste herunter", false)
         
         try {
-            // First try using the global action if available
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                val result = performGlobalAction(GLOBAL_ACTION_NOTIFICATIONS)
-                if (result) {
-                    Log.d(TAG, "Successfully pulled status bar down using global action")
-                    showToast("Statusleiste erfolgreich heruntergezogen", false)
-                    return
-                } else {
-                    Log.e(TAG, "Failed to pull status bar down using global action")
-                }
+            val result = performGlobalAction(AccessibilityService.GLOBAL_ACTION_NOTIFICATIONS)
+            if (result) {
+                Log.d(TAG, "Successfully pulled status bar down")
+                showToast("Statusleiste erfolgreich heruntergezogen", false)
+            } else {
+                Log.e(TAG, "Failed to pull status bar down")
+                showToast("Fehler beim Herunterziehen der Statusleiste", true)
+                
+                // Try using a gesture as fallback
+                pullStatusBarDownWithGesture()
             }
-            
-            // Fallback to gesture
-            performStatusBarDownGesture()
         } catch (e: Exception) {
             Log.e(TAG, "Error pulling status bar down: ${e.message}")
             showToast("Fehler beim Herunterziehen der Statusleiste: ${e.message}", true)
-        }
-    }
-    
-    /**
-     * Pull down the status bar twice to show quick settings
-     */
-    fun pullStatusBarDownTwice() {
-        Log.d(TAG, "Pulling status bar down twice")
-        showToast("Ziehe Statusleiste zweimal herunter", false)
-        
-        try {
-            // First try using the global action if available
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                val result = performGlobalAction(GLOBAL_ACTION_QUICK_SETTINGS)
-                if (result) {
-                    Log.d(TAG, "Successfully pulled status bar down twice using global action")
-                    showToast("Schnelleinstellungen erfolgreich geöffnet", false)
-                    return
-                } else {
-                    Log.e(TAG, "Failed to pull status bar down twice using global action")
-                }
-            }
             
-            // Fallback to gesture
-            performStatusBarDownTwiceGesture()
-        } catch (e: Exception) {
-            Log.e(TAG, "Error pulling status bar down twice: ${e.message}")
-            showToast("Fehler beim Öffnen der Schnelleinstellungen: ${e.message}", true)
+            // Try using a gesture as fallback
+            pullStatusBarDownWithGesture()
         }
     }
     
     /**
-     * Push the status bar up to close notifications/quick settings
+     * Pull down the status bar using a gesture
      */
-    fun pushStatusBarUp() {
-        Log.d(TAG, "Pushing status bar up")
-        showToast("Schiebe Statusleiste hoch", false)
+    private fun pullStatusBarDownWithGesture() {
+        Log.d(TAG, "Pulling status bar down with gesture")
+        showToast("Versuche Statusleiste mit Geste herunterzuziehen", false)
         
-        try {
-            // First try using the global action if available
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                // Try to press back as a way to close notifications
-                val result = performGlobalAction(GLOBAL_ACTION_BACK)
-                if (result) {
-                    Log.d(TAG, "Successfully pushed status bar up using back action")
-                    showToast("Statusleiste erfolgreich hochgeschoben", false)
-                    return
-                } else {
-                    Log.e(TAG, "Failed to push status bar up using back action")
-                }
-            }
-            
-            // Fallback to gesture
-            performStatusBarUpGesture()
-        } catch (e: Exception) {
-            Log.e(TAG, "Error pushing status bar up: ${e.message}")
-            showToast("Fehler beim Hochschieben der Statusleiste: ${e.message}", true)
-        }
-    }
-    
-    /**
-     * Perform a gesture to pull down the status bar
-     */
-    private fun performStatusBarDownGesture() {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.N) {
             Log.e(TAG, "Gesture API is not available on this Android version")
             showToast("Gesten-API ist auf dieser Android-Version nicht verfügbar", true)
@@ -457,8 +1239,8 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
         try {
             // Create a swipe down gesture from top of screen
             val path = Path()
-            path.moveTo(screenWidth / 2f, 0f) // Start from middle top
-            path.lineTo(screenWidth / 2f, screenHeight / 3f) // Swipe down to 1/3 of screen
+            path.moveTo(screenWidth / 2f, 0f)
+            path.lineTo(screenWidth / 2f, screenHeight / 3f)
             
             val gesture = GestureDescription.Builder()
                 .addStroke(GestureDescription.StrokeDescription(path, 0, 300))
@@ -468,82 +1250,113 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
             val dispatchResult = dispatchGesture(gesture, object : GestureResultCallback() {
                 override fun onCompleted(gestureDescription: GestureDescription) {
                     super.onCompleted(gestureDescription)
-                    Log.d(TAG, "Status bar down gesture completed")
+                    Log.d(TAG, "Pull down gesture completed")
                     showToast("Statusleiste erfolgreich heruntergezogen", false)
                 }
                 
                 override fun onCancelled(gestureDescription: GestureDescription) {
                     super.onCancelled(gestureDescription)
-                    Log.e(TAG, "Status bar down gesture cancelled")
-                    showToast("Geste zum Herunterziehen der Statusleiste abgebrochen", true)
+                    Log.e(TAG, "Pull down gesture cancelled")
+                    showToast("Herunterziehen der Statusleiste abgebrochen", true)
                 }
             }, null)
             
             if (!dispatchResult) {
-                Log.e(TAG, "Failed to dispatch status bar down gesture")
-                showToast("Fehler beim Senden der Geste zum Herunterziehen der Statusleiste", true)
+                Log.e(TAG, "Failed to dispatch pull down gesture")
+                showToast("Fehler beim Senden der Herunterzieh-Geste", true)
             }
         } catch (e: Exception) {
-            Log.e(TAG, "Error performing status bar down gesture: ${e.message}")
-            showToast("Fehler bei der Geste zum Herunterziehen der Statusleiste: ${e.message}", true)
+            Log.e(TAG, "Error pulling status bar down with gesture: ${e.message}")
+            showToast("Fehler beim Herunterziehen der Statusleiste mit Geste: ${e.message}", true)
         }
     }
     
     /**
-     * Perform a gesture to pull down the status bar twice
+     * Pull down the status bar twice (quick settings)
      */
-    private fun performStatusBarDownTwiceGesture() {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.N) {
-            Log.e(TAG, "Gesture API is not available on this Android version")
-            showToast("Gesten-API ist auf dieser Android-Version nicht verfügbar", true)
-            return
-        }
+    fun pullStatusBarDownTwice() {
+        Log.d(TAG, "Pulling status bar down twice")
+        showToast("Ziehe Statusleiste zweimal herunter", false)
         
         try {
-            // First pull down the status bar
-            performStatusBarDownGesture()
-            
-            // Then pull down again after a delay
-            handler.postDelayed({
-                // Create a second swipe down gesture
-                val path = Path()
-                path.moveTo(screenWidth / 2f, screenHeight / 6f) // Start from middle of notification shade
-                path.lineTo(screenWidth / 2f, screenHeight / 2f) // Swipe down to middle of screen
+            // First pull down to show notifications
+            val result1 = performGlobalAction(AccessibilityService.GLOBAL_ACTION_NOTIFICATIONS)
+            if (result1) {
+                Log.d(TAG, "Successfully pulled status bar down once")
                 
-                val gesture = GestureDescription.Builder()
-                    .addStroke(GestureDescription.StrokeDescription(path, 0, 300))
-                    .build()
-                
-                // Dispatch the gesture
-                val dispatchResult = dispatchGesture(gesture, object : GestureResultCallback() {
-                    override fun onCompleted(gestureDescription: GestureDescription) {
-                        super.onCompleted(gestureDescription)
-                        Log.d(TAG, "Status bar down twice gesture completed")
-                        showToast("Schnelleinstellungen erfolgreich geöffnet", false)
+                // Wait a moment before pulling down again
+                handler.postDelayed({
+                    // Try to pull down again to show quick settings
+                    // On some devices, we need to use GLOBAL_ACTION_QUICK_SETTINGS
+                    // On others, we need to use a gesture
+                    
+                    // Try GLOBAL_ACTION_QUICK_SETTINGS first if available
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                        val result2 = performGlobalAction(AccessibilityService.GLOBAL_ACTION_QUICK_SETTINGS)
+                        if (result2) {
+                            Log.d(TAG, "Successfully pulled status bar down twice using GLOBAL_ACTION_QUICK_SETTINGS")
+                            showToast("Schnelleinstellungen erfolgreich geöffnet", false)
+                            return@postDelayed
+                        }
                     }
                     
-                    override fun onCancelled(gestureDescription: GestureDescription) {
-                        super.onCancelled(gestureDescription)
-                        Log.e(TAG, "Status bar down twice gesture cancelled")
-                        showToast("Geste zum Öffnen der Schnelleinstellungen abgebrochen", true)
-                    }
-                }, null)
+                    // Fallback to using a gesture
+                    pullStatusBarDownWithGesture()
+                }, 500) // 500ms delay
+            } else {
+                Log.e(TAG, "Failed to pull status bar down once")
+                showToast("Fehler beim ersten Herunterziehen der Statusleiste", true)
                 
-                if (!dispatchResult) {
-                    Log.e(TAG, "Failed to dispatch status bar down twice gesture")
-                    showToast("Fehler beim Senden der Geste zum Öffnen der Schnelleinstellungen", true)
-                }
-            }, 500) // Wait 500ms between gestures
+                // Try using a gesture as fallback
+                pullStatusBarDownWithGesture()
+                
+                // Wait a moment before pulling down again
+                handler.postDelayed({
+                    pullStatusBarDownWithGesture()
+                }, 500) // 500ms delay
+            }
         } catch (e: Exception) {
-            Log.e(TAG, "Error performing status bar down twice gesture: ${e.message}")
-            showToast("Fehler bei der Geste zum Öffnen der Schnelleinstellungen: ${e.message}", true)
+            Log.e(TAG, "Error pulling status bar down twice: ${e.message}")
+            showToast("Fehler beim zweimaligen Herunterziehen der Statusleiste: ${e.message}", true)
         }
     }
     
     /**
-     * Perform a gesture to push the status bar up
+     * Push the status bar up (close notifications/quick settings)
      */
-    private fun performStatusBarUpGesture() {
+    fun pushStatusBarUp() {
+        Log.d(TAG, "Pushing status bar up")
+        showToast("Schiebe Statusleiste hoch", false)
+        
+        try {
+            // Try using GLOBAL_ACTION_BACK to close notifications
+            val result = performGlobalAction(AccessibilityService.GLOBAL_ACTION_BACK)
+            if (result) {
+                Log.d(TAG, "Successfully pushed status bar up using BACK action")
+                showToast("Statusleiste erfolgreich hochgeschoben", false)
+            } else {
+                Log.e(TAG, "Failed to push status bar up using BACK action")
+                showToast("Fehler beim Hochschieben der Statusleiste mit BACK-Aktion", true)
+                
+                // Try using a gesture as fallback
+                pushStatusBarUpWithGesture()
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error pushing status bar up: ${e.message}")
+            showToast("Fehler beim Hochschieben der Statusleiste: ${e.message}", true)
+            
+            // Try using a gesture as fallback
+            pushStatusBarUpWithGesture()
+        }
+    }
+    
+    /**
+     * Push the status bar up using a gesture
+     */
+    private fun pushStatusBarUpWithGesture() {
+        Log.d(TAG, "Pushing status bar up with gesture")
+        showToast("Versuche Statusleiste mit Geste hochzuschieben", false)
+        
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.N) {
             Log.e(TAG, "Gesture API is not available on this Android version")
             showToast("Gesten-API ist auf dieser Android-Version nicht verfügbar", true)
@@ -551,10 +1364,10 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
         }
         
         try {
-            // Create a swipe up gesture
+            // Create a swipe up gesture from middle to top of screen
             val path = Path()
-            path.moveTo(screenWidth / 2f, screenHeight / 3f) // Start from 1/3 of screen
-            path.lineTo(screenWidth / 2f, 0f) // Swipe up to top
+            path.moveTo(screenWidth / 2f, screenHeight / 3f)
+            path.lineTo(screenWidth / 2f, 0f)
             
             val gesture = GestureDescription.Builder()
                 .addStroke(GestureDescription.StrokeDescription(path, 0, 300))
@@ -564,24 +1377,24 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
             val dispatchResult = dispatchGesture(gesture, object : GestureResultCallback() {
                 override fun onCompleted(gestureDescription: GestureDescription) {
                     super.onCompleted(gestureDescription)
-                    Log.d(TAG, "Status bar up gesture completed")
+                    Log.d(TAG, "Push up gesture completed")
                     showToast("Statusleiste erfolgreich hochgeschoben", false)
                 }
                 
                 override fun onCancelled(gestureDescription: GestureDescription) {
                     super.onCancelled(gestureDescription)
-                    Log.e(TAG, "Status bar up gesture cancelled")
-                    showToast("Geste zum Hochschieben der Statusleiste abgebrochen", true)
+                    Log.e(TAG, "Push up gesture cancelled")
+                    showToast("Hochschieben der Statusleiste abgebrochen", true)
                 }
             }, null)
             
             if (!dispatchResult) {
-                Log.e(TAG, "Failed to dispatch status bar up gesture")
-                showToast("Fehler beim Senden der Geste zum Hochschieben der Statusleiste", true)
+                Log.e(TAG, "Failed to dispatch push up gesture")
+                showToast("Fehler beim Senden der Hochschieb-Geste", true)
             }
         } catch (e: Exception) {
-            Log.e(TAG, "Error performing status bar up gesture: ${e.message}")
-            showToast("Fehler bei der Geste zum Hochschieben der Statusleiste: ${e.message}", true)
+            Log.e(TAG, "Error pushing status bar up with gesture: ${e.message}")
+            showToast("Fehler beim Hochschieben der Statusleiste mit Geste: ${e.message}", true)
         }
     }
     
@@ -593,10 +1406,50 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
         showToast("Scrolle nach oben", false)
         
         try {
-            // Create a swipe up gesture
+            // Try to find a scrollable node and scroll it
+            val scrollableNode = findScrollableNode(rootNode)
+            if (scrollableNode != null) {
+                val result = scrollableNode.performAction(AccessibilityNodeInfo.ACTION_SCROLL_BACKWARD)
+                scrollableNode.recycle()
+                
+                if (result) {
+                    Log.d(TAG, "Successfully scrolled up using node")
+                    showToast("Erfolgreich nach oben gescrollt", false)
+                    return
+                } else {
+                    Log.e(TAG, "Failed to scroll up using node")
+                }
+            }
+            
+            // Fallback to using a gesture
+            scrollUpWithGesture()
+        } catch (e: Exception) {
+            Log.e(TAG, "Error scrolling up: ${e.message}")
+            showToast("Fehler beim Scrollen nach oben: ${e.message}", true)
+            
+            // Try using a gesture as fallback
+            scrollUpWithGesture()
+        }
+    }
+    
+    /**
+     * Scroll up using a gesture
+     */
+    private fun scrollUpWithGesture() {
+        Log.d(TAG, "Scrolling up with gesture")
+        showToast("Versuche mit Geste nach oben zu scrollen", false)
+        
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.N) {
+            Log.e(TAG, "Gesture API is not available on this Android version")
+            showToast("Gesten-API ist auf dieser Android-Version nicht verfügbar", true)
+            return
+        }
+        
+        try {
+            // Create a swipe down gesture (swipe down to scroll up)
             val path = Path()
-            path.moveTo(screenWidth / 2f, screenHeight * 0.7f) // Start from lower middle
-            path.lineTo(screenWidth / 2f, screenHeight * 0.3f) // Swipe up to upper middle
+            path.moveTo(screenWidth / 2f, screenHeight / 3f)
+            path.lineTo(screenWidth / 2f, screenHeight * 2 / 3f)
             
             val gesture = GestureDescription.Builder()
                 .addStroke(GestureDescription.StrokeDescription(path, 0, 300))
@@ -607,23 +1460,23 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
                 override fun onCompleted(gestureDescription: GestureDescription) {
                     super.onCompleted(gestureDescription)
                     Log.d(TAG, "Scroll up gesture completed")
-                    showToast("Nach oben gescrollt", false)
+                    showToast("Erfolgreich nach oben gescrollt", false)
                 }
                 
                 override fun onCancelled(gestureDescription: GestureDescription) {
                     super.onCancelled(gestureDescription)
                     Log.e(TAG, "Scroll up gesture cancelled")
-                    showToast("Geste zum Scrollen nach oben abgebrochen", true)
+                    showToast("Scrollen nach oben abgebrochen", true)
                 }
             }, null)
             
             if (!dispatchResult) {
                 Log.e(TAG, "Failed to dispatch scroll up gesture")
-                showToast("Fehler beim Senden der Geste zum Scrollen nach oben", true)
+                showToast("Fehler beim Senden der Scroll-nach-oben-Geste", true)
             }
         } catch (e: Exception) {
-            Log.e(TAG, "Error scrolling up: ${e.message}")
-            showToast("Fehler beim Scrollen nach oben: ${e.message}", true)
+            Log.e(TAG, "Error scrolling up with gesture: ${e.message}")
+            showToast("Fehler beim Scrollen nach oben mit Geste: ${e.message}", true)
         }
     }
     
@@ -635,10 +1488,50 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
         showToast("Scrolle nach unten", false)
         
         try {
-            // Create a swipe down gesture
+            // Try to find a scrollable node and scroll it
+            val scrollableNode = findScrollableNode(rootNode)
+            if (scrollableNode != null) {
+                val result = scrollableNode.performAction(AccessibilityNodeInfo.ACTION_SCROLL_FORWARD)
+                scrollableNode.recycle()
+                
+                if (result) {
+                    Log.d(TAG, "Successfully scrolled down using node")
+                    showToast("Erfolgreich nach unten gescrollt", false)
+                    return
+                } else {
+                    Log.e(TAG, "Failed to scroll down using node")
+                }
+            }
+            
+            // Fallback to using a gesture
+            scrollDownWithGesture()
+        } catch (e: Exception) {
+            Log.e(TAG, "Error scrolling down: ${e.message}")
+            showToast("Fehler beim Scrollen nach unten: ${e.message}", true)
+            
+            // Try using a gesture as fallback
+            scrollDownWithGesture()
+        }
+    }
+    
+    /**
+     * Scroll down using a gesture
+     */
+    private fun scrollDownWithGesture() {
+        Log.d(TAG, "Scrolling down with gesture")
+        showToast("Versuche mit Geste nach unten zu scrollen", false)
+        
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.N) {
+            Log.e(TAG, "Gesture API is not available on this Android version")
+            showToast("Gesten-API ist auf dieser Android-Version nicht verfügbar", true)
+            return
+        }
+        
+        try {
+            // Create a swipe up gesture (swipe up to scroll down)
             val path = Path()
-            path.moveTo(screenWidth / 2f, screenHeight * 0.3f) // Start from upper middle
-            path.lineTo(screenWidth / 2f, screenHeight * 0.7f) // Swipe down to lower middle
+            path.moveTo(screenWidth / 2f, screenHeight * 2 / 3f)
+            path.lineTo(screenWidth / 2f, screenHeight / 3f)
             
             val gesture = GestureDescription.Builder()
                 .addStroke(GestureDescription.StrokeDescription(path, 0, 300))
@@ -649,23 +1542,23 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
                 override fun onCompleted(gestureDescription: GestureDescription) {
                     super.onCompleted(gestureDescription)
                     Log.d(TAG, "Scroll down gesture completed")
-                    showToast("Nach unten gescrollt", false)
+                    showToast("Erfolgreich nach unten gescrollt", false)
                 }
                 
                 override fun onCancelled(gestureDescription: GestureDescription) {
                     super.onCancelled(gestureDescription)
                     Log.e(TAG, "Scroll down gesture cancelled")
-                    showToast("Geste zum Scrollen nach unten abgebrochen", true)
+                    showToast("Scrollen nach unten abgebrochen", true)
                 }
             }, null)
             
             if (!dispatchResult) {
                 Log.e(TAG, "Failed to dispatch scroll down gesture")
-                showToast("Fehler beim Senden der Geste zum Scrollen nach unten", true)
+                showToast("Fehler beim Senden der Scroll-nach-unten-Geste", true)
             }
         } catch (e: Exception) {
-            Log.e(TAG, "Error scrolling down: ${e.message}")
-            showToast("Fehler beim Scrollen nach unten: ${e.message}", true)
+            Log.e(TAG, "Error scrolling down with gesture: ${e.message}")
+            showToast("Fehler beim Scrollen nach unten mit Geste: ${e.message}", true)
         }
     }
     
@@ -677,10 +1570,50 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
         showToast("Scrolle nach links", false)
         
         try {
-            // Create a swipe left gesture
+            // Try to find a horizontally scrollable node and scroll it
+            val scrollableNode = findHorizontallyScrollableNode(rootNode)
+            if (scrollableNode != null) {
+                val result = scrollableNode.performAction(AccessibilityNodeInfo.ACTION_SCROLL_BACKWARD)
+                scrollableNode.recycle()
+                
+                if (result) {
+                    Log.d(TAG, "Successfully scrolled left using node")
+                    showToast("Erfolgreich nach links gescrollt", false)
+                    return
+                } else {
+                    Log.e(TAG, "Failed to scroll left using node")
+                }
+            }
+            
+            // Fallback to using a gesture
+            scrollLeftWithGesture()
+        } catch (e: Exception) {
+            Log.e(TAG, "Error scrolling left: ${e.message}")
+            showToast("Fehler beim Scrollen nach links: ${e.message}", true)
+            
+            // Try using a gesture as fallback
+            scrollLeftWithGesture()
+        }
+    }
+    
+    /**
+     * Scroll left using a gesture
+     */
+    private fun scrollLeftWithGesture() {
+        Log.d(TAG, "Scrolling left with gesture")
+        showToast("Versuche mit Geste nach links zu scrollen", false)
+        
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.N) {
+            Log.e(TAG, "Gesture API is not available on this Android version")
+            showToast("Gesten-API ist auf dieser Android-Version nicht verfügbar", true)
+            return
+        }
+        
+        try {
+            // Create a swipe right gesture (swipe right to scroll left)
             val path = Path()
-            path.moveTo(screenWidth * 0.7f, screenHeight / 2f) // Start from right middle
-            path.lineTo(screenWidth * 0.3f, screenHeight / 2f) // Swipe left to left middle
+            path.moveTo(screenWidth / 3f, screenHeight / 2f)
+            path.lineTo(screenWidth * 2 / 3f, screenHeight / 2f)
             
             val gesture = GestureDescription.Builder()
                 .addStroke(GestureDescription.StrokeDescription(path, 0, 300))
@@ -691,23 +1624,23 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
                 override fun onCompleted(gestureDescription: GestureDescription) {
                     super.onCompleted(gestureDescription)
                     Log.d(TAG, "Scroll left gesture completed")
-                    showToast("Nach links gescrollt", false)
+                    showToast("Erfolgreich nach links gescrollt", false)
                 }
                 
                 override fun onCancelled(gestureDescription: GestureDescription) {
                     super.onCancelled(gestureDescription)
                     Log.e(TAG, "Scroll left gesture cancelled")
-                    showToast("Geste zum Scrollen nach links abgebrochen", true)
+                    showToast("Scrollen nach links abgebrochen", true)
                 }
             }, null)
             
             if (!dispatchResult) {
                 Log.e(TAG, "Failed to dispatch scroll left gesture")
-                showToast("Fehler beim Senden der Geste zum Scrollen nach links", true)
+                showToast("Fehler beim Senden der Scroll-nach-links-Geste", true)
             }
         } catch (e: Exception) {
-            Log.e(TAG, "Error scrolling left: ${e.message}")
-            showToast("Fehler beim Scrollen nach links: ${e.message}", true)
+            Log.e(TAG, "Error scrolling left with gesture: ${e.message}")
+            showToast("Fehler beim Scrollen nach links mit Geste: ${e.message}", true)
         }
     }
     
@@ -719,10 +1652,50 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
         showToast("Scrolle nach rechts", false)
         
         try {
-            // Create a swipe right gesture
+            // Try to find a horizontally scrollable node and scroll it
+            val scrollableNode = findHorizontallyScrollableNode(rootNode)
+            if (scrollableNode != null) {
+                val result = scrollableNode.performAction(AccessibilityNodeInfo.ACTION_SCROLL_FORWARD)
+                scrollableNode.recycle()
+                
+                if (result) {
+                    Log.d(TAG, "Successfully scrolled right using node")
+                    showToast("Erfolgreich nach rechts gescrollt", false)
+                    return
+                } else {
+                    Log.e(TAG, "Failed to scroll right using node")
+                }
+            }
+            
+            // Fallback to using a gesture
+            scrollRightWithGesture()
+        } catch (e: Exception) {
+            Log.e(TAG, "Error scrolling right: ${e.message}")
+            showToast("Fehler beim Scrollen nach rechts: ${e.message}", true)
+            
+            // Try using a gesture as fallback
+            scrollRightWithGesture()
+        }
+    }
+    
+    /**
+     * Scroll right using a gesture
+     */
+    private fun scrollRightWithGesture() {
+        Log.d(TAG, "Scrolling right with gesture")
+        showToast("Versuche mit Geste nach rechts zu scrollen", false)
+        
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.N) {
+            Log.e(TAG, "Gesture API is not available on this Android version")
+            showToast("Gesten-API ist auf dieser Android-Version nicht verfügbar", true)
+            return
+        }
+        
+        try {
+            // Create a swipe left gesture (swipe left to scroll right)
             val path = Path()
-            path.moveTo(screenWidth * 0.3f, screenHeight / 2f) // Start from left middle
-            path.lineTo(screenWidth * 0.7f, screenHeight / 2f) // Swipe right to right middle
+            path.moveTo(screenWidth * 2 / 3f, screenHeight / 2f)
+            path.lineTo(screenWidth / 3f, screenHeight / 2f)
             
             val gesture = GestureDescription.Builder()
                 .addStroke(GestureDescription.StrokeDescription(path, 0, 300))
@@ -733,24 +1706,82 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
                 override fun onCompleted(gestureDescription: GestureDescription) {
                     super.onCompleted(gestureDescription)
                     Log.d(TAG, "Scroll right gesture completed")
-                    showToast("Nach rechts gescrollt", false)
+                    showToast("Erfolgreich nach rechts gescrollt", false)
                 }
                 
                 override fun onCancelled(gestureDescription: GestureDescription) {
                     super.onCancelled(gestureDescription)
                     Log.e(TAG, "Scroll right gesture cancelled")
-                    showToast("Geste zum Scrollen nach rechts abgebrochen", true)
+                    showToast("Scrollen nach rechts abgebrochen", true)
                 }
             }, null)
             
             if (!dispatchResult) {
                 Log.e(TAG, "Failed to dispatch scroll right gesture")
-                showToast("Fehler beim Senden der Geste zum Scrollen nach rechts", true)
+                showToast("Fehler beim Senden der Scroll-nach-rechts-Geste", true)
             }
         } catch (e: Exception) {
-            Log.e(TAG, "Error scrolling right: ${e.message}")
-            showToast("Fehler beim Scrollen nach rechts: ${e.message}", true)
+            Log.e(TAG, "Error scrolling right with gesture: ${e.message}")
+            showToast("Fehler beim Scrollen nach rechts mit Geste: ${e.message}", true)
         }
+    }
+    
+    /**
+     * Find a scrollable node in the accessibility tree
+     */
+    private fun findScrollableNode(node: AccessibilityNodeInfo?): AccessibilityNodeInfo? {
+        if (node == null) return null
+        
+        // Check if this node is scrollable
+        if (node.isScrollable) {
+            return AccessibilityNodeInfo.obtain(node)
+        }
+        
+        // Check child nodes
+        for (i in 0 until node.childCount) {
+            val child = node.getChild(i) ?: continue
+            val result = findScrollableNode(child)
+            if (result != null) {
+                child.recycle()
+                return result
+            }
+            child.recycle()
+        }
+        
+        return null
+    }
+    
+    /**
+     * Find a horizontally scrollable node in the accessibility tree
+     */
+    private fun findHorizontallyScrollableNode(node: AccessibilityNodeInfo?): AccessibilityNodeInfo? {
+        if (node == null) return null
+        
+        // Check if this node is scrollable
+        if (node.isScrollable) {
+            // Try to determine if it's horizontally scrollable
+            // This is a heuristic, as there's no direct way to check
+            val rect = Rect()
+            node.getBoundsInScreen(rect)
+            
+            // If the node is wider than it is tall, it's likely horizontally scrollable
+            if (rect.width() > rect.height()) {
+                return AccessibilityNodeInfo.obtain(node)
+            }
+        }
+        
+        // Check child nodes
+        for (i in 0 until node.childCount) {
+            val child = node.getChild(i) ?: continue
+            val result = findHorizontallyScrollableNode(child)
+            if (result != null) {
+                child.recycle()
+                return result
+            }
+            child.recycle()
+        }
+        
+        return null
     }
     
     /**
@@ -758,286 +1789,20 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
      */
     fun openApp(appName: String) {
         Log.d(TAG, "Opening app: $appName")
-        showToast("Versuche App zu öffnen: \"$appName\"", false)
+        showToast("Öffne App: $appName", false)
         
         try {
-            // Try to find the app in the launcher
-            refreshRootNode()
+            // Go to home screen first
+            pressHomeButton()
             
-            // First try to find by exact name
-            var node = findNodeByText(rootNode!!, appName)
-            
-            // If not found, try to find by partial match
-            if (node == null) {
-                Log.d(TAG, "App not found by exact name, trying partial match")
-                node = findNodeByPartialText(rootNode!!, appName)
-            }
-            
-            if (node != null) {
-                Log.d(TAG, "Found app icon: $appName")
-                showToast("App-Icon gefunden: \"$appName\"", false)
-                
-                // Perform click on the app icon
-                val clickResult = performClickOnNode(node)
-                
-                if (clickResult) {
-                    Log.d(TAG, "Successfully clicked on app icon: $appName")
-                    showToast("App \"$appName\" erfolgreich geöffnet", false)
-                } else {
-                    Log.e(TAG, "Failed to click on app icon: $appName")
-                    showToast("Fehler beim Klicken auf App-Icon, versuche alternative Methoden", true)
-                    
-                    // Try alternative methods
-                    tryAlternativeClickMethods(node, appName)
-                }
-                
-                // Recycle the node
-                node.recycle()
-            } else {
-                Log.e(TAG, "Could not find app: $appName")
-                showToast("App \"$appName\" nicht gefunden, versuche Launcher zu öffnen", true)
-                
-                // Try to go to home screen first
-                pressHome()
-                
-                // Wait a moment for the home screen to appear
-                handler.postDelayed({
-                    // Refresh the root node
-                    refreshRootNode()
-                    
-                    // Try again to find the app
-                    val homeNode = findNodeByText(rootNode!!, appName)
-                    
-                    if (homeNode != null) {
-                        Log.d(TAG, "Found app icon on home screen: $appName")
-                        showToast("App-Icon auf Startbildschirm gefunden: \"$appName\"", false)
-                        
-                        // Perform click on the app icon
-                        val clickResult = performClickOnNode(homeNode)
-                        
-                        if (clickResult) {
-                            Log.d(TAG, "Successfully clicked on app icon: $appName")
-                            showToast("App \"$appName\" erfolgreich geöffnet", false)
-                        } else {
-                            Log.e(TAG, "Failed to click on app icon: $appName")
-                            showToast("Fehler beim Klicken auf App-Icon", true)
-                        }
-                        
-                        // Recycle the node
-                        homeNode.recycle()
-                    } else {
-                        Log.e(TAG, "Could not find app on home screen: $appName")
-                        showToast("App \"$appName\" nicht auf Startbildschirm gefunden", true)
-                        
-                        // Try to launch via intent as last resort
-                        launchAppViaIntent(appName)
-                    }
-                }, 1000) // Wait 1 second for home screen to appear
-            }
+            // Wait a moment for the home screen to appear
+            handler.postDelayed({
+                // Try to find and click the app icon
+                findAndClickButtonByText(appName)
+            }, 500) // 500ms delay
         } catch (e: Exception) {
             Log.e(TAG, "Error opening app: ${e.message}")
             showToast("Fehler beim Öffnen der App: ${e.message}", true)
         }
-    }
-    
-    /**
-     * Launch an app via intent
-     */
-    private fun launchAppViaIntent(appName: String) {
-        try {
-            Log.d(TAG, "Trying to launch app via intent: $appName")
-            showToast("Versuche App über Intent zu starten: \"$appName\"", false)
-            
-            // Get the package manager
-            val packageManager = applicationContext.packageManager
-            
-            // Get a list of installed apps
-            val installedApps = packageManager.getInstalledApplications(0)
-            
-            // Find the app by name
-            val app = installedApps.find { 
-                it.loadLabel(packageManager).toString().equals(appName, ignoreCase = true) ||
-                it.loadLabel(packageManager).toString().contains(appName, ignoreCase = true)
-            }
-            
-            if (app != null) {
-                Log.d(TAG, "Found app package: ${app.packageName}")
-                showToast("App-Paket gefunden: ${app.packageName}", false)
-                
-                // Get the launch intent for the app
-                val launchIntent = packageManager.getLaunchIntentForPackage(app.packageName)
-                
-                if (launchIntent != null) {
-                    // Add flags to start as a new task
-                    launchIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                    
-                    // Start the app
-                    applicationContext.startActivity(launchIntent)
-                    
-                    Log.d(TAG, "Successfully launched app via intent: $appName")
-                    showToast("App \"$appName\" erfolgreich über Intent gestartet", false)
-                } else {
-                    Log.e(TAG, "No launch intent found for app: $appName")
-                    showToast("Kein Start-Intent für App \"$appName\" gefunden", true)
-                }
-            } else {
-                Log.e(TAG, "Could not find app package for: $appName")
-                showToast("App-Paket für \"$appName\" nicht gefunden", true)
-            }
-        } catch (e: Exception) {
-            Log.e(TAG, "Error launching app via intent: ${e.message}")
-            showToast("Fehler beim Starten der App über Intent: ${e.message}", true)
-        }
-    }
-    
-    /**
-     * Find a node by partial text match recursively
-     */
-    private fun findNodeByPartialText(node: AccessibilityNodeInfo, text: String): AccessibilityNodeInfo? {
-        // Check if this node has text that contains the search text
-        if (node.text != null && node.text.toString().contains(text, ignoreCase = true)) {
-            return AccessibilityNodeInfo.obtain(node)
-        }
-        
-        // Check all child nodes
-        for (i in 0 until node.childCount) {
-            val child = node.getChild(i) ?: continue
-            val result = findNodeByPartialText(child, text)
-            child.recycle()
-            
-            if (result != null) {
-                return result
-            }
-        }
-        
-        return null
-    }
-    
-    // Include all existing methods from the original service...
-    
-    /**
-     * Find and click a button with the specified text
-     */
-    fun findAndClickButtonByText(buttonText: String) {
-        // Implementation from original service
-    }
-    
-    /**
-     * Try alternative click methods if the standard click fails
-     */
-    private fun tryAlternativeClickMethods(node: AccessibilityNodeInfo, buttonText: String) {
-        // Implementation from original service
-    }
-    
-    /**
-     * Find and click a button with the specified content description
-     */
-    private fun findAndClickButtonByContentDescription(description: String) {
-        // Implementation from original service
-    }
-    
-    /**
-     * Find and click a button with the specified class name
-     */
-    private fun findAndClickButtonByClassName(className: String) {
-        // Implementation from original service
-    }
-    
-    /**
-     * Find a node by text recursively
-     */
-    private fun findNodeByText(node: AccessibilityNodeInfo, text: String): AccessibilityNodeInfo? {
-        // Implementation from original service
-    }
-    
-    /**
-     * Find a node by content description recursively
-     */
-    private fun findNodeByContentDescription(node: AccessibilityNodeInfo, description: String): AccessibilityNodeInfo? {
-        // Implementation from original service
-    }
-    
-    /**
-     * Find a node by class name recursively
-     */
-    private fun findNodeByClassName(node: AccessibilityNodeInfo, className: String): AccessibilityNodeInfo? {
-        // Implementation from original service
-    }
-    
-    /**
-     * Perform a click on the specified node
-     */
-    private fun performClickOnNode(node: AccessibilityNodeInfo): Boolean {
-        // Implementation from original service
-    }
-    
-    /**
-     * Tap at the specified coordinates
-     */
-    fun tapAtCoordinates(x: Float, y: Float) {
-        // Implementation from original service
-    }
-    
-    /**
-     * Tap at the specified coordinates with a longer duration
-     */
-    private fun tapAtCoordinatesWithLongerDuration(x: Float, y: Float) {
-        // Implementation from original service
-    }
-    
-    /**
-     * Take a screenshot by simulating hardware button presses
-     */
-    fun takeScreenshot() {
-        // Implementation from original service
-    }
-    
-    /**
-     * Simulate pressing Power + Volume Down buttons to take a screenshot
-     */
-    private fun simulateScreenshotButtonCombination() {
-        // Implementation from original service
-    }
-    
-    /**
-     * Perform a key press
-     */
-    private fun performKeyPress(keyCode: Int): Boolean {
-        // Implementation from original service
-    }
-    
-    /**
-     * Retrieve the latest screenshot from the standard screenshot folder
-     */
-    private fun retrieveLatestScreenshot() {
-        // Implementation from original service
-    }
-    
-    /**
-     * Find the latest screenshot file in standard locations
-     */
-    private fun findLatestScreenshotFile(): File? {
-        // Implementation from original service
-    }
-    
-    /**
-     * Find the latest screenshot using MediaStore
-     */
-    private fun findLatestScreenshotViaMediaStore(): File? {
-        // Implementation from original service
-    }
-    
-    /**
-     * Add the screenshot to the conversation
-     */
-    private fun addScreenshotToConversation(screenshotUri: Uri) {
-        // Implementation from original service
-    }
-    
-    /**
-     * Show a toast message
-     */
-    private fun showToast(message: String, isError: Boolean) {
-        // Implementation from original service
     }
 }
