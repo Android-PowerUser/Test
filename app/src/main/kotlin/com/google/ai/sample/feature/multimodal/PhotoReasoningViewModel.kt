@@ -93,7 +93,7 @@ class PhotoReasoningViewModel(
         _detectedCommands.value = emptyList()
         _commandExecutionStatus.value = ""
         
-        // Add user message to chat history
+        // Add user message to chat history - only the actual user input, not the system message
         val userMessage = PhotoReasoningMessage(
             text = userInput,
             participant = PhotoParticipant.USER,
