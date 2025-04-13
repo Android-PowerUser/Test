@@ -439,7 +439,7 @@ fun PhotoReasoningScreen(
 
 @Preview
 @Composable
-fun PhotoReasoningScreenPreview() {
+fun PhotoReasoningScreenPreviewWithContent() {
     PhotoReasoningScreen(
         uiState = PhotoReasoningUiState.Success("This is a preview of the photo reasoning screen."),
         commandExecutionStatus = "Befehl ausgeführt: Screenshot aufnehmen",
@@ -453,6 +453,6 @@ fun PhotoReasoningScreenPreview() {
 
 @Composable
 @Preview(showSystemUi = true)
-fun PhotoReasoningScreenPreview() {
+fun PhotoReasoningScreenPreviewEmpty() {
     PhotoReasoningScreen()
 }
