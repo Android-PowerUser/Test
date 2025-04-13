@@ -50,24 +50,24 @@ object CommandParser {
     
     // Home button patterns
     private val PRESS_HOME_PATTERNS = listOf(
-        Regex("(?i)\\b(?:press|click|tap|go to|navigate to|drücke|klicke|tippe auf|gehe zu|navigiere zu) (?:the )?(?:home|home button|home screen|startbildschirm|home-taste|home-button|startseite)\\b"),
-        Regex("(?i)\\b(?:home|startbildschirm|startseite)\\b"),
+        Regex("(?i)\\b(?:press|click|tap|go to|navigate to|drücke|klicke|tippe auf|gehe zu) (?:the )?(?:home|home button|home screen|startseite|home-taste|home-bildschirm|startbildschirm)\\b"),
+        Regex("(?i)\\b(?:return|go back|zurück) (?:to )?(?:the )?(?:home|home screen|startseite|startbildschirm)\\b"),
         Regex("(?i)\\bpressHome\\(\\)"),
         Regex("(?i)\\bgoHome\\(\\)")
     )
     
     // Back button patterns
     private val PRESS_BACK_PATTERNS = listOf(
-        Regex("(?i)\\b(?:press|click|tap|go|navigate|drücke|klicke|tippe auf|gehe|navigiere) (?:the )?(?:back|back button|zurück|zurück-taste|zurück-button|zurücktaste)\\b"),
-        Regex("(?i)\\b(?:back|zurück)\\b"),
+        Regex("(?i)\\b(?:press|click|tap|go|navigate|drücke|klicke|tippe auf|gehe) (?:the )?(?:back|back button|zurück|zurück-taste|zurücktaste)\\b"),
+        Regex("(?i)\\b(?:go back|navigate back|zurückgehen|zurück gehen|zurück navigieren)\\b"),
         Regex("(?i)\\bpressBack\\(\\)"),
         Regex("(?i)\\bgoBack\\(\\)")
     )
     
     // Recent apps patterns
     private val SHOW_RECENT_APPS_PATTERNS = listOf(
-        Regex("(?i)\\b(?:show|display|open|view|zeige|öffne|anzeigen) (?:the )?(?:recent apps|recent applications|recent|recents|letzte apps|zuletzt verwendete apps|app-übersicht|übersicht|task manager|multitasking)\\b"),
-        Regex("(?i)\\b(?:recent apps|recent applications|recents|letzte apps|app-übersicht|übersicht)\\b"),
+        Regex("(?i)\\b(?:show|open|display|view|zeige|öffne|anzeigen) (?:the )?(?:recent|recent apps|recent applications|recents|app overview|task manager|letzte|letzte apps|letzte anwendungen|app-übersicht|aufgabenmanager)\\b"),
+        Regex("(?i)\\b(?:press|click|tap|drücke|klicke|tippe auf) (?:the )?(?:recent apps|recents|overview|letzte apps|übersicht) (?:button|key|taste|knopf)?\\b"),
         Regex("(?i)\\bshowRecentApps\\(\\)"),
         Regex("(?i)\\bopenRecentApps\\(\\)")
     )
@@ -75,7 +75,7 @@ object CommandParser {
     // Status bar down patterns
     private val PULL_STATUS_BAR_DOWN_PATTERNS = listOf(
         Regex("(?i)\\b(?:pull|swipe|drag|ziehe|wische) (?:down|herunter|nach unten) (?:the )?(?:status bar|notification bar|notifications|statusleiste|benachrichtigungsleiste|benachrichtigungen)\\b"),
-        Regex("(?i)\\b(?:open|show|display|öffne|zeige) (?:the )?(?:status bar|notification bar|notifications|statusleiste|benachrichtigungsleiste|benachrichtigungen)\\b"),
+        Regex("(?i)\\b(?:open|show|display|öffne|zeige) (?:the )?(?:status bar|notification bar|notifications|notification shade|notification panel|statusleiste|benachrichtigungsleiste|benachrichtigungen)\\b"),
         Regex("(?i)\\bpullStatusBarDown\\(\\)"),
         Regex("(?i)\\bopenNotifications\\(\\)")
     )
@@ -83,48 +83,48 @@ object CommandParser {
     // Status bar down twice patterns
     private val PULL_STATUS_BAR_DOWN_TWICE_PATTERNS = listOf(
         Regex("(?i)\\b(?:pull|swipe|drag|ziehe|wische) (?:down|herunter|nach unten) (?:the )?(?:status bar|notification bar|statusleiste|benachrichtigungsleiste) (?:twice|two times|2 times|zweimal|2 mal)\\b"),
-        Regex("(?i)\\b(?:open|show|display|öffne|zeige) (?:the )?(?:quick settings|quick toggles|schnelleinstellungen)\\b"),
+        Regex("(?i)\\b(?:open|show|display|öffne|zeige) (?:the )?(?:quick settings|quick toggles|system toggles|schnelleinstellungen|systemeinstellungen)\\b"),
         Regex("(?i)\\bpullStatusBarDownTwice\\(\\)"),
         Regex("(?i)\\bopenQuickSettings\\(\\)")
     )
     
     // Status bar up patterns
     private val PUSH_STATUS_BAR_UP_PATTERNS = listOf(
-        Regex("(?i)\\b(?:push|swipe|drag|close|schiebe|wische|schließe) (?:up|hoch|nach oben) (?:the )?(?:status bar|notification bar|notifications|statusleiste|benachrichtigungsleiste|benachrichtigungen)\\b"),
-        Regex("(?i)\\b(?:close|dismiss|hide|schließe|verberge) (?:the )?(?:status bar|notification bar|notifications|statusleiste|benachrichtigungsleiste|benachrichtigungen)\\b"),
+        Regex("(?i)\\b(?:push|swipe|drag|close|schiebe|wische|schließe) (?:up|nach oben|hoch) (?:the )?(?:status bar|notification bar|notifications|statusleiste|benachrichtigungsleiste|benachrichtigungen)\\b"),
+        Regex("(?i)\\b(?:close|dismiss|hide|schließe|verwerfe|verstecke) (?:the )?(?:status bar|notification bar|notifications|notification shade|notification panel|statusleiste|benachrichtigungsleiste|benachrichtigungen)\\b"),
         Regex("(?i)\\bpushStatusBarUp\\(\\)"),
         Regex("(?i)\\bcloseNotifications\\(\\)")
     )
     
     // Scroll up patterns
     private val SCROLL_UP_PATTERNS = listOf(
-        Regex("(?i)\\b(?:scroll|swipe|wische|scrolle) (?:up|nach oben|hoch)\\b"),
+        Regex("(?i)\\b(?:scroll|swipe|flick|rolle|wische|scrolle) (?:up|upward|nach oben|aufwärts|hoch)\\b"),
         Regex("(?i)\\bscrollUp\\(\\)")
     )
     
     // Scroll down patterns
     private val SCROLL_DOWN_PATTERNS = listOf(
-        Regex("(?i)\\b(?:scroll|swipe|wische|scrolle) (?:down|nach unten|runter)\\b"),
+        Regex("(?i)\\b(?:scroll|swipe|flick|rolle|wische|scrolle) (?:down|downward|nach unten|abwärts|runter)\\b"),
         Regex("(?i)\\bscrollDown\\(\\)")
     )
     
     // Scroll left patterns
     private val SCROLL_LEFT_PATTERNS = listOf(
-        Regex("(?i)\\b(?:scroll|swipe|wische|scrolle) (?:left|nach links|links)\\b"),
+        Regex("(?i)\\b(?:scroll|swipe|flick|rolle|wische|scrolle) (?:left|leftward|nach links|linkswärts|links)\\b"),
         Regex("(?i)\\bscrollLeft\\(\\)")
     )
     
     // Scroll right patterns
     private val SCROLL_RIGHT_PATTERNS = listOf(
-        Regex("(?i)\\b(?:scroll|swipe|wische|scrolle) (?:right|nach rechts|rechts)\\b"),
+        Regex("(?i)\\b(?:scroll|swipe|flick|rolle|wische|scrolle) (?:right|rightward|nach rechts|rechtswärts|rechts)\\b"),
         Regex("(?i)\\bscrollRight\\(\\)")
     )
     
     // Open app patterns
     private val OPEN_APP_PATTERNS = listOf(
-        Regex("(?i)\\b(?:open|launch|start|öffne|starte) (?:the )?(?:app|application|anwendung)? [\"']([^\"']+)[\"']"),
-        Regex("(?i)\\b(?:open|launch|start|öffne|starte) (?:the )?(?:app|application|anwendung) ([\\w\\s\\-]+)\\b"),
-        Regex("(?i)\\b(?:open|launch|start|öffne|starte) ([\\w\\s\\-]+) (?:app|application|anwendung)\\b"),
+        Regex("(?i)\\b(?:open|launch|start|öffne|starte) (?:the )?(?:app|application|anwendung|applikation)(?: named| called| namens)? [\"']([^\"']+)[\"']"),
+        Regex("(?i)\\b(?:open|launch|start|öffne|starte) (?:the )?[\"']([^\"']+)[\"'] (?:app|application|anwendung|applikation)"),
+        Regex("(?i)\\b(?:open|launch|start|öffne|starte) (?:the )?(?:app|application|anwendung|applikation)(?: named| called| namens)? ([\\w\\s\\-]+)(?:\\s|$)"),
         Regex("(?i)\\bopenApp\\([\"']([^\"']+)[\"']\\)"),
         Regex("(?i)\\blaunchApp\\([\"']([^\"']+)[\"']\\)")
     )

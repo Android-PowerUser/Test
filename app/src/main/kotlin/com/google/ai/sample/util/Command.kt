@@ -70,7 +70,7 @@ sealed class Command {
     object ScrollRight : Command()
     
     /**
-     * Command to open a specific app
+     * Command to open a specific app by name
      */
     data class OpenApp(val appName: String) : Command()
 }
