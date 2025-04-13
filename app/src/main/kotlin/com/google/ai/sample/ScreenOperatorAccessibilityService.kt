@@ -634,6 +634,7 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
                 
                 // Use the accessibility service to take a screenshot
                 takeScreenshot(
+                    1000, // timeout in milliseconds
                     mainExecutor,
                     object : TakeScreenshotCallback {
                         override fun onSuccess(screenshot: ScreenshotResult) {
