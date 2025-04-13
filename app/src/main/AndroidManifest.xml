@@ -56,8 +56,7 @@
             android:name=".ScreenOperatorAccessibilityService"
             android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE"
             android:exported="true"
-            android:enabled="true"
-            android:foregroundServiceType="accessibilityService">
+            android:enabled="true">
             <intent-filter>
                 <action android:name="android.accessibilityservice.AccessibilityService" />
             </intent-filter>
