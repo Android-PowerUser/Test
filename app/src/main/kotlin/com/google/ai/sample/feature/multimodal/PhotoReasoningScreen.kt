@@ -384,8 +384,8 @@ fun PhotoReasoningScreen(
                         model = imageUri,
                         contentDescription = null,
                         modifier = Modifier
-                            .padding(4.dp)
-                            .requiredSize(72.dp)
+                            .padding(end = 8.dp)
+                            .requiredSize(100.dp)
                     )
                 }
             }
@@ -441,6 +441,17 @@ fun PhotoReasoningScreen(
                             is Command.ClickButton -> "Klick auf Button: \"${command.buttonText}\""
                             is Command.TapCoordinates -> "Tippen auf Koordinaten: (${command.x}, ${command.y})"
                             is Command.TakeScreenshot -> "Screenshot aufnehmen"
+                            is Command.OpenApp -> "App öffnen: \"${command.appName}\""
+                            is Command.PressBack -> "Zurück-Taste drücken"
+                            is Command.PressHome -> "Home-Taste drücken"
+                            is Command.PullStatusBarDown -> "Statusleiste herunterziehen"
+                            is Command.PullStatusBarDownTwice -> "Statusleiste zweimal herunterziehen"
+                            is Command.PushStatusBarUp -> "Statusleiste hochschieben"
+                            is Command.ScrollDown -> "Nach unten scrollen"
+                            is Command.ScrollUp -> "Nach oben scrollen"
+                            is Command.ScrollLeft -> "Nach links scrollen"
+                            is Command.ScrollRight -> "Nach rechts scrollen"
+                            is Command.ShowRecentApps -> "Letzte Apps anzeigen"
                         }
                         
                         Text(
@@ -465,7 +476,7 @@ fun PhotoReasoningScreen(
 fun UserChatBubble(
     text: String,
     isPending: Boolean,
-    imageUris: List<String> = emptyList()
+    imageUris: List<Uri> = emptyList()
 ) {
     Row(
         modifier = Modifier
@@ -491,15 +502,14 @@ fun UserChatBubble(
                 
                 // Display images if any
                 if (imageUris.isNotEmpty()) {
-                    LazyRow(
-                        modifier = Modifier.padding(top = 8.dp)
-                    ) {
+                    Spacer(modifier = Modifier.height(8.dp))
+                    LazyRow {
                         items(imageUris) { uri ->
                             AsyncImage(
                                 model = uri,
                                 contentDescription = null,
                                 modifier = Modifier
-                                    .padding(4.dp)
+                                    .padding(end = 8.dp)
                                     .requiredSize(100.dp)
                             )
                         }
@@ -594,34 +604,4 @@ fun ErrorChatBubble(
             )
         }
     }
-}
-
-@Preview
-@Composable
-fun PhotoReasoningScreenPreviewWithContent() {
-    PhotoReasoningScreen(
-        uiState = PhotoReasoningUiState.Success("This is a preview of the photo reasoning screen."),
-        commandExecutionStatus = "Befehl ausgeführt: Screenshot aufnehmen",
-        detectedCommands = listOf(
-            Command.TakeScreenshot,
-            Command.ClickButton("OK")
-        ),
-        systemMessage = "Dies ist eine System-Nachricht für die KI",
-        chatMessages = listOf(
-            PhotoReasoningMessage(
-                text = "Hallo, wie kann ich dir helfen?",
-                participant = PhotoParticipant.USER
-            ),
-            PhotoReasoningMessage(
-                text = "Ich bin hier, um dir zu helfen. Was möchtest du wissen?",
-                participant = PhotoParticipant.MODEL
-            )
-        )
-    )
-}
-
-@Composable
-@Preview(showSystemUi = true)
-fun PhotoReasoningScreenPreviewEmpty() {
-    PhotoReasoningScreen()
 }
