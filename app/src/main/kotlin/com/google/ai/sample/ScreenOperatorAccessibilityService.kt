@@ -650,6 +650,12 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
             interactiveElements.forEachIndexed { index, element ->
                 screenInfo.append("${index + 1}. ")
                 
+                // Get element ID if available
+                val elementId = getNodeId(element)
+                if (elementId.isNotEmpty()) {
+                    screenInfo.append("ID: \"$elementId\" ")
+                }
+                
                 // Add element text if available
                 if (!element.text.isNullOrEmpty()) {
                     screenInfo.append("Text: \"${element.text}\" ")
@@ -658,6 +664,12 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
                 // Add element content description if available
                 if (!element.contentDescription.isNullOrEmpty()) {
                     screenInfo.append("Beschreibung: \"${element.contentDescription}\" ")
+                }
+                
+                // Try to get the button name from the view hierarchy
+                val buttonName = getButtonName(element)
+                if (buttonName.isNotEmpty()) {
+                    screenInfo.append("Name: \"$buttonName\" ")
                 }
                 
                 // Add element class name
@@ -680,6 +692,95 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
         
         Log.d(TAG, "Screen information captured: ${screenInfo.length} characters")
         return screenInfo.toString()
+    }
+    
+    /**
+     * Get the ID of a node if available
+     */
+    private fun getNodeId(node: AccessibilityNodeInfo): String {
+        try {
+            val viewIdResourceName = node.viewIdResourceName
+            if (!viewIdResourceName.isNullOrEmpty()) {
+                // Extract the ID name from the resource name (package:id/name)
+                val parts = viewIdResourceName.split("/")
+                if (parts.size > 1) {
+                    return parts[1]
+                }
+                return viewIdResourceName
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error getting node ID: ${e.message}")
+        }
+        return ""
+    }
+    
+    /**
+     * Try to get the button name from various properties
+     */
+    private fun getButtonName(node: AccessibilityNodeInfo): String {
+        try {
+            // First check if the node has text
+            if (!node.text.isNullOrEmpty()) {
+                return node.text.toString()
+            }
+            
+            // Then check content description
+            if (!node.contentDescription.isNullOrEmpty()) {
+                return node.contentDescription.toString()
+            }
+            
+            // Check if it's a known button type by class name
+            val className = node.className?.toString() ?: ""
+            if (className.contains("Button", ignoreCase = true) || 
+                className.contains("ImageButton", ignoreCase = true)) {
+                
+                // For buttons without text, try to infer name from siblings or parent
+                val parent = node.parent
+                if (parent != null) {
+                    // Check if parent has text that might describe this button
+                    if (!parent.text.isNullOrEmpty()) {
+                        val parentText = parent.text.toString()
+                        parent.recycle()
+                        return parentText
+                    }
+                    
+                    // Check siblings for text that might be related
+                    for (i in 0 until parent.childCount) {
+                        val sibling = parent.getChild(i) ?: continue
+                        if (sibling != node && !sibling.text.isNullOrEmpty()) {
+                            val siblingText = sibling.text.toString()
+                            sibling.recycle()
+                            parent.recycle()
+                            return siblingText
+                        }
+                        sibling.recycle()
+                    }
+                    parent.recycle()
+                }
+                
+                // If it's a button but we couldn't find a name, use a generic name
+                return "Button"
+            }
+            
+            // For EditText fields, try to get hint text
+            if (className.contains("EditText", ignoreCase = true)) {
+                // Try to get hint text using reflection (not always available)
+                try {
+                    val hintTextMethod = node.javaClass.getMethod("getHintText")
+                    val hintText = hintTextMethod.invoke(node)?.toString()
+                    if (!hintText.isNullOrEmpty()) {
+                        return "Textfeld: $hintText"
+                    }
+                } catch (e: Exception) {
+                    // Reflection failed, ignore
+                }
+                
+                return "Textfeld"
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error getting button name: ${e.message}")
+        }
+        return ""
     }
     
     /**
