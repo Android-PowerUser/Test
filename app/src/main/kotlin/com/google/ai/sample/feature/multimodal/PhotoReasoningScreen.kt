@@ -173,7 +173,7 @@ fun PhotoReasoningScreen(
     onClearChatHistory: () -> Unit = {}
 ) {
     var userQuestion by rememberSaveable { mutableStateOf("") }
-    val imageUris = rememberSaveable(saver = UriSaver()) { mutableStateListOf() }
+    val imageUris = rememberSaveable(saver = UriSaver()) { mutableStateListOf<Uri>() }
     val listState = rememberLazyListState()
     val context = LocalContext.current
     
