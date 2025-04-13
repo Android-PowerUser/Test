@@ -158,60 +158,6 @@ internal fun PhotoReasoningRoute(
         }
     )
 }
-            // Optional: clear the reference when navigating away
-            // mainActivity?.clearPhotoReasoningViewModel()
-        }
-    }
-
-    PhotoReasoningScreen(
-        uiState = photoReasoningUiState,
-        commandExecutionStatus = commandExecutionStatus,
-        detectedCommands = detectedCommands,
-        systemMessage = systemMessage,
-        chatMessages = chatMessages,
-        onSystemMessageChanged = { message ->
-            viewModel.updateSystemMessage(message, context)
-        },
-        onReasonClicked = { inputText, selectedItems ->
-            coroutineScope.launch {
-                Log.d("PhotoReasoningScreen", "Go button clicked, processing images")
-                
-                // Process all selected images
-                val bitmaps = selectedItems.mapNotNull {
-                    Log.d("PhotoReasoningScreen", "Processing image: $it")
-                    val imageRequest = imageRequestBuilder
-                        .data(it)
-                        .precision(Precision.EXACT)
-                        .build()
-                    try {
-                        val result = imageLoader.execute(imageRequest)
-                        if (result is SuccessResult) {
-                            Log.d("PhotoReasoningScreen", "Successfully processed image")
-                            return@mapNotNull (result.drawable as BitmapDrawable).bitmap
-                        } else {
-                            Log.e("PhotoReasoningScreen", "Failed to process image: result is not SuccessResult")
-                            return@mapNotNull null
-                        }
-                    } catch (e: Exception) {
-                        Log.e("PhotoReasoningScreen", "Error processing image: ${e.message}")
-                        return@mapNotNull null
-                    }
-                }
-                
-                Log.d("PhotoReasoningScreen", "Processed ${bitmaps.size} images")
-                
-                // Send to AI
-                viewModel.reason(inputText, bitmaps)
-            }
-        },
-        isAccessibilityServiceEnabled = mainActivity?.let {
-            ScreenOperatorAccessibilityService.isAccessibilityServiceEnabled(it)
-        } ?: false,
-        onEnableAccessibilityService = {
-            mainActivity?.checkAccessibilityServiceEnabled()
-        }
-    )
-}
 
 @Composable
 fun PhotoReasoningScreen(
@@ -511,14 +457,6 @@ fun PhotoReasoningScreen(
                     }
                 }
             }
-        }
-    }
-
-    val pickMedia = rememberLauncherForActivityResult(
-        ActivityResultContracts.PickVisualMedia()
-    ) { imageUri ->
-        imageUri?.let {
-            imageUris.add(it)
         }
     }
 }
