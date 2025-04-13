@@ -195,6 +195,17 @@ fun ChatScreen(
                             is Command.ClickButton -> "Klick auf Button: \"${command.buttonText}\""
                             is Command.TapCoordinates -> "Tippen auf Koordinaten: (${command.x}, ${command.y})"
                             is Command.TakeScreenshot -> "Screenshot aufnehmen"
+                            is Command.OpenApp -> "App öffnen: \"${command.appName}\""
+                            is Command.PressBack -> "Zurück-Taste drücken"
+                            is Command.PressHome -> "Home-Taste drücken"
+                            is Command.PullStatusBarDown -> "Statusleiste herunterziehen"
+                            is Command.PullStatusBarDownTwice -> "Statusleiste zweimal herunterziehen"
+                            is Command.PushStatusBarUp -> "Statusleiste hochschieben"
+                            is Command.ScrollDown -> "Nach unten scrollen"
+                            is Command.ScrollUp -> "Nach oben scrollen"
+                            is Command.ScrollLeft -> "Nach links scrollen"
+                            is Command.ScrollRight -> "Nach rechts scrollen"
+                            is Command.ShowRecentApps -> "Letzte Apps anzeigen"
                         }
                         
                         Text(
