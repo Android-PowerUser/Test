@@ -634,8 +634,8 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
                 
                 // Use the accessibility service to take a screenshot
                 takeScreenshot(
-                    executor = mainExecutor,
-                    callback = object : TakeScreenshotCallback {
+                    mainExecutor,
+                    object : TakeScreenshotCallback {
                         override fun onSuccess(screenshot: ScreenshotResult) {
                             try {
                                 Log.d(TAG, "Screenshot taken successfully")
