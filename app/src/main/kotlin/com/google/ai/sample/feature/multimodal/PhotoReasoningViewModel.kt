@@ -12,7 +12,9 @@ import coil.request.ImageRequest
 import coil.request.SuccessResult
 import coil.size.Precision
 import com.google.ai.client.generativeai.GenerativeModel
+import com.google.ai.client.generativeai.type.GenerationConfig
 import com.google.ai.client.generativeai.type.content
+import com.google.ai.client.generativeai.type.Content
 import com.google.ai.sample.MainActivity
 import com.google.ai.sample.PhotoReasoningApplication
 import com.google.ai.sample.ScreenOperatorAccessibilityService
@@ -21,7 +23,6 @@ import com.google.ai.sample.util.Command
 import com.google.ai.sample.util.CommandParser
 import com.google.ai.sample.util.SystemMessagePreferences
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -72,8 +73,15 @@ class PhotoReasoningViewModel(
     private var imageLoader: ImageLoader? = null
     private var imageRequestBuilder: ImageRequest.Builder? = null
     
-    // Keep track of active jobs to prevent cancellation
-    private val activeJobs = mutableListOf<Job>()
+    // Chat instance for maintaining conversation context
+    private var chat = generativeModel.startChat(
+        history = emptyList(),
+        generationConfig = GenerationConfig.Builder()
+            .temperature(0.7f)
+            .topK(40)
+            .topP(0.95f)
+            .build()
+    )
 
     fun reason(
         userInput: String,
@@ -117,9 +125,10 @@ class PhotoReasoningViewModel(
         _chatState.addMessage(pendingAiMessage)
         _chatMessagesFlow.value = chatMessages
 
-        // Use application scope instead of viewModelScope to prevent cancellation when app goes to background
-        val job = PhotoReasoningApplication.applicationScope.launch(Dispatchers.IO) {
+        // Use application scope to prevent cancellation when app goes to background
+        PhotoReasoningApplication.applicationScope.launch(Dispatchers.IO) {
             try {
+                // Create content with the current images and prompt
                 val inputContent = content {
                     for (bitmap in selectedImages) {
                         image(bitmap)
@@ -127,24 +136,25 @@ class PhotoReasoningViewModel(
                     text(prompt)
                 }
 
+                // Send the message to the chat to maintain context
+                val response = chat.sendMessage(inputContent)
+                
                 var outputContent = ""
-
-                generativeModel.generateContentStream(inputContent)
-                    .collect { response ->
-                        val newText = response.text ?: ""
-                        outputContent += newText
+                
+                // Process the response
+                response.text?.let { modelResponse ->
+                    outputContent = modelResponse
+                    
+                    withContext(Dispatchers.Main) {
+                        _uiState.value = PhotoReasoningUiState.Success(outputContent)
                         
-                        // Update UI on main thread
-                        withContext(Dispatchers.Main) {
-                            _uiState.value = PhotoReasoningUiState.Success(outputContent)
-                            
-                            // Update the AI message in chat history
-                            updateAiMessage(outputContent)
-                            
-                            // Parse and execute commands from the response
-                            processCommands(newText)
-                        }
+                        // Update the AI message in chat history
+                        updateAiMessage(outputContent)
+                        
+                        // Parse and execute commands from the response
+                        processCommands(modelResponse)
                     }
+                }
                 
                 // Save chat history after successful response
                 withContext(Dispatchers.Main) {
@@ -153,7 +163,6 @@ class PhotoReasoningViewModel(
             } catch (e: Exception) {
                 Log.e(TAG, "Error generating content: ${e.message}", e)
                 
-                // Update UI on main thread
                 withContext(Dispatchers.Main) {
                     _uiState.value = PhotoReasoningUiState.Error(e.localizedMessage ?: "Unknown error")
                     _commandExecutionStatus.value = "Fehler bei der Generierung: ${e.localizedMessage}"
@@ -172,14 +181,6 @@ class PhotoReasoningViewModel(
                     saveChatHistory(MainActivity.getInstance()?.applicationContext)
                 }
             }
-        }
-        
-        // Track the job to prevent cancellation
-        synchronized(activeJobs) {
-            activeJobs.add(job)
-            
-            // Clean up completed jobs to prevent memory leaks
-            activeJobs.removeAll { it.isCompleted }
         }
     }
     
@@ -232,8 +233,7 @@ class PhotoReasoningViewModel(
      * Process commands found in the AI response
      */
     private fun processCommands(text: String) {
-        // Use application scope instead of viewModelScope to prevent cancellation when app goes to background
-        val job = PhotoReasoningApplication.applicationScope.launch(Dispatchers.Main) {
+        PhotoReasoningApplication.applicationScope.launch(Dispatchers.Main) {
             try {
                 // Parse commands from the text
                 val commands = CommandParser.parseCommands(text)
@@ -339,14 +339,6 @@ class PhotoReasoningViewModel(
                 )
             }
         }
-        
-        // Track the job to prevent cancellation
-        synchronized(activeJobs) {
-            activeJobs.add(job)
-            
-            // Clean up completed jobs to prevent memory leaks
-            activeJobs.removeAll { it.isCompleted }
-        }
     }
     
     /**
@@ -361,8 +353,7 @@ class PhotoReasoningViewModel(
         context: android.content.Context,
         screenInfo: String? = null
     ) {
-        // Use application scope instead of viewModelScope to prevent cancellation when app goes to background
-        val job = PhotoReasoningApplication.applicationScope.launch(Dispatchers.Main) {
+        PhotoReasoningApplication.applicationScope.launch(Dispatchers.Main) {
             try {
                 Log.d(TAG, "Adding screenshot to conversation: $screenshotUri")
                 
@@ -418,8 +409,8 @@ class PhotoReasoningViewModel(
                         val updatedImages = currentSelectedImages.toMutableList()
                         updatedImages.add(bitmap)
                         
-                        // Update the current selected images
-                        currentSelectedImages = updatedImages
+                        // Update the current selected images - only keep the latest screenshot
+                        currentSelectedImages = listOf(bitmap)
                         
                         // Update status
                         _commandExecutionStatus.value = "Screenshot hinzugefügt, sende an KI..."
@@ -434,7 +425,7 @@ class PhotoReasoningViewModel(
                             "Analysiere diesen Screenshot"
                         }
                         
-                        // Re-send the query with the updated images
+                        // Re-send the query with only the latest screenshot
                         reason(prompt, listOf(bitmap))
                         
                         // Show a toast to indicate the screenshot was added
@@ -491,18 +482,10 @@ class PhotoReasoningViewModel(
                 saveChatHistory(context)
             }
         }
-        
-        // Track the job to prevent cancellation
-        synchronized(activeJobs) {
-            activeJobs.add(job)
-            
-            // Clean up completed jobs to prevent memory leaks
-            activeJobs.removeAll { it.isCompleted }
-        }
     }
     
     /**
-     * Load saved chat history from SharedPreferences
+     * Load saved chat history from SharedPreferences and initialize chat with history
      */
     fun loadChatHistory(context: android.content.Context) {
         val savedMessages = ChatHistoryPreferences.loadChatMessages(context)
@@ -510,6 +493,78 @@ class PhotoReasoningViewModel(
             _chatState.clearMessages()
             savedMessages.forEach { _chatState.addMessage(it) }
             _chatMessagesFlow.value = chatMessages
+            
+            // Rebuild the chat history for the AI
+            rebuildChatHistory()
+        }
+    }
+    
+    /**
+     * Rebuild the chat history for the AI based on the current messages
+     */
+    private fun rebuildChatHistory() {
+        // Convert the current chat messages to Content objects for the chat history
+        val history = mutableListOf<Content>()
+        
+        // Group messages by participant to create proper conversation turns
+        var currentUserContent = ""
+        var currentModelContent = ""
+        
+        for (message in chatMessages) {
+            when (message.participant) {
+                PhotoParticipant.USER -> {
+                    // If we have model content and are now seeing a user message,
+                    // add the model content to history and reset
+                    if (currentModelContent.isNotEmpty()) {
+                        history.add(content(role = "model") { text(currentModelContent) })
+                        currentModelContent = ""
+                    }
+                    
+                    // Append to current user content
+                    if (currentUserContent.isNotEmpty()) {
+                        currentUserContent += "\n\n"
+                    }
+                    currentUserContent += message.text
+                }
+                PhotoParticipant.MODEL -> {
+                    // If we have user content and are now seeing a model message,
+                    // add the user content to history and reset
+                    if (currentUserContent.isNotEmpty()) {
+                        history.add(content(role = "user") { text(currentUserContent) })
+                        currentUserContent = ""
+                    }
+                    
+                    // Append to current model content
+                    if (currentModelContent.isNotEmpty()) {
+                        currentModelContent += "\n\n"
+                    }
+                    currentModelContent += message.text
+                }
+                PhotoParticipant.ERROR -> {
+                    // Errors are not included in the AI history
+                    continue
+                }
+            }
+        }
+        
+        // Add any remaining content
+        if (currentUserContent.isNotEmpty()) {
+            history.add(content(role = "user") { text(currentUserContent) })
+        }
+        if (currentModelContent.isNotEmpty()) {
+            history.add(content(role = "model") { text(currentModelContent) })
+        }
+        
+        // Create a new chat with the rebuilt history
+        if (history.isNotEmpty()) {
+            chat = generativeModel.startChat(
+                history = history,
+                generationConfig = GenerationConfig.Builder()
+                    .temperature(0.7f)
+                    .topK(40)
+                    .topP(0.95f)
+                    .build()
+            )
         }
     }
     
@@ -529,21 +584,20 @@ class PhotoReasoningViewModel(
         _chatState.clearMessages()
         _chatMessagesFlow.value = emptyList()
         
+        // Reset the chat with empty history
+        chat = generativeModel.startChat(
+            history = emptyList(),
+            generationConfig = GenerationConfig.Builder()
+                .temperature(0.7f)
+                .topK(40)
+                .topP(0.95f)
+                .build()
+        )
+        
         // Also clear from SharedPreferences if context is provided
         context?.let {
             ChatHistoryPreferences.clearChatMessages(it)
         }
-    }
-    
-    /**
-     * Called when ViewModel is cleared
-     * We override this to ensure our background jobs continue running
-     */
-    override fun onCleared() {
-        super.onCleared()
-        Log.d(TAG, "ViewModel cleared, but background jobs will continue running")
-        // We intentionally do NOT cancel the jobs in activeJobs
-        // This allows them to continue running in the background
     }
     
     /**
