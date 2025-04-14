@@ -80,6 +80,20 @@ class PhotoReasoningViewModel(
     private var chat = generativeModel.startChat(
         history = emptyList()
     )
+    
+    // Flag to track if chat history has been loaded
+    private var chatHistoryLoaded = false
+
+    // Initialize the ViewModel by loading chat history
+    init {
+        // Load chat history in the background when ViewModel is created
+        viewModelScope.launch(Dispatchers.IO) {
+            val context = MainActivity.getInstance()?.applicationContext
+            if (context != null) {
+                loadChatHistory(context)
+            }
+        }
+    }
 
     fun reason(
         userInput: String,
@@ -486,6 +500,11 @@ class PhotoReasoningViewModel(
         val systemMessageText = SystemMessagePreferences.loadSystemMessage(context)
         _systemMessage.value = systemMessageText
         Log.d(TAG, "System message loaded: $systemMessageText")
+        
+        // Also load chat history if not already loaded
+        if (!chatHistoryLoaded) {
+            loadChatHistory(context)
+        }
     }
     
     /**
@@ -522,21 +541,31 @@ class PhotoReasoningViewModel(
         try {
             val messages = ChatHistoryPreferences.loadChatMessages(context)
             
-            // Clear current messages
-            _chatState.clearMessages()
-            
-            // Add loaded messages
-            for (message in messages) {
-                _chatState.addMessage(message)
+            // Only load if there are messages and they haven't been loaded already
+            if (messages.isNotEmpty()) {
+                Log.d(TAG, "Loading chat history: ${messages.size} messages")
+                
+                // Clear current messages
+                _chatState.clearMessages()
+                
+                // Add loaded messages
+                for (message in messages) {
+                    _chatState.addMessage(message)
+                }
+                
+                // Update the flow
+                _chatMessagesFlow.value = chatMessages
+                
+                Log.d(TAG, "Chat history loaded: ${messages.size} messages")
+                
+                // Rebuild chat history to ensure context is maintained
+                rebuildChatHistory()
+                
+                // Mark as loaded
+                chatHistoryLoaded = true
+            } else {
+                Log.d(TAG, "No chat history to load")
             }
-            
-            // Update the flow
-            _chatMessagesFlow.value = chatMessages
-            
-            Log.d(TAG, "Chat history loaded: ${messages.size} messages")
-            
-            // Rebuild chat history to ensure context is maintained
-            rebuildChatHistory()
         } catch (e: Exception) {
             Log.e(TAG, "Error loading chat history: ${e.message}", e)
         }
