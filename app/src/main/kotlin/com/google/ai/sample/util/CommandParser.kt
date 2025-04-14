@@ -60,6 +60,30 @@ object CommandParser {
         Regex("(?i)\\b(?:zurück zum|zurück zur) (?:home|startseite|hauptbildschirm)\\b")
     )
     
+    // Back button patterns - for pressing the back button
+    private val BACK_BUTTON_PATTERNS = listOf(
+        // Function-like patterns
+        Regex("(?i)\\bback\\(\\)"),
+        Regex("(?i)\\bpressBack\\(\\)"),
+        Regex("(?i)\\bgoBack\\(\\)"),
+        
+        // Natural language patterns
+        Regex("(?i)\\b(?:press|click|tap|go|navigate|return|drücke|klicke|tippe auf|gehe|navigiere|kehre) (?:the )?back(?: button)?\\b"),
+        Regex("(?i)\\b(?:zurück|zurückgehen)\\b")
+    )
+    
+    // Recent apps patterns - for showing recent apps
+    private val RECENT_APPS_PATTERNS = listOf(
+        // Function-like patterns
+        Regex("(?i)\\brecentApps\\(\\)"),
+        Regex("(?i)\\bshowRecentApps\\(\\)"),
+        Regex("(?i)\\bopenRecentApps\\(\\)"),
+        
+        // Natural language patterns
+        Regex("(?i)\\b(?:show|open|display|view|zeige|öffne|anzeigen) (?:the )?recent(?: apps| applications| tasks)?\\b"),
+        Regex("(?i)\\b(?:letzte apps|letzte anwendungen|app übersicht|app-übersicht|übersicht)\\b")
+    )
+    
     // Buffer for storing partial text between calls
     private var textBuffer = ""
     
@@ -114,6 +138,8 @@ object CommandParser {
                     is Command.TapCoordinates -> Log.d(TAG, "Command details: TapCoordinates(${command.x}, ${command.y})")
                     is Command.TakeScreenshot -> Log.d(TAG, "Command details: TakeScreenshot")
                     is Command.PressHomeButton -> Log.d(TAG, "Command details: PressHomeButton")
+                    is Command.PressBackButton -> Log.d(TAG, "Command details: PressBackButton")
+                    is Command.ShowRecentApps -> Log.d(TAG, "Command details: ShowRecentApps")
                 }
             }
         } catch (e: Exception) {
@@ -138,6 +164,12 @@ object CommandParser {
         
         // Look for home button commands
         findHomeButtonCommands(text, commands)
+        
+        // Look for back button commands
+        findBackButtonCommands(text, commands)
+        
+        // Look for recent apps commands
+        findRecentAppsCommands(text, commands)
     }
     
     /**
@@ -242,6 +274,42 @@ object CommandParser {
     }
     
     /**
+     * Find back button commands in the text
+     */
+    private fun findBackButtonCommands(text: String, commands: MutableList<Command>) {
+        // Try each pattern
+        for (pattern in BACK_BUTTON_PATTERNS) {
+            if (pattern.containsMatchIn(text)) {
+                // Check if this command is already in the list (avoid duplicates)
+                if (!commands.any { it is Command.PressBackButton }) {
+                    Log.d(TAG, "Found back button command with pattern ${pattern.pattern}")
+                    commands.add(Command.PressBackButton)
+                    // Only add one back button command even if multiple matches are found
+                    break
+                }
+            }
+        }
+    }
+    
+    /**
+     * Find recent apps commands in the text
+     */
+    private fun findRecentAppsCommands(text: String, commands: MutableList<Command>) {
+        // Try each pattern
+        for (pattern in RECENT_APPS_PATTERNS) {
+            if (pattern.containsMatchIn(text)) {
+                // Check if this command is already in the list (avoid duplicates)
+                if (!commands.any { it is Command.ShowRecentApps }) {
+                    Log.d(TAG, "Found recent apps command with pattern ${pattern.pattern}")
+                    commands.add(Command.ShowRecentApps)
+                    // Only add one recent apps command even if multiple matches are found
+                    break
+                }
+            }
+        }
+    }
+    
+    /**
      * Clear the text buffer
      */
     fun clearBuffer() {
@@ -295,4 +363,14 @@ sealed class Command {
      * Command to press the home button
      */
     object PressHomeButton : Command()
+    
+    /**
+     * Command to press the back button
+     */
+    object PressBackButton : Command()
+    
+    /**
+     * Command to show recent apps
+     */
+    object ShowRecentApps : Command()
 }
