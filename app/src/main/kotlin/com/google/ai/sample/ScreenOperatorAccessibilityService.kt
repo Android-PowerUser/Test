@@ -505,15 +505,7 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
             val className = rootNode.className?.toString() ?: "Unknown"
             
             // Get the window title (safely)
-            val windowTitle = try {
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
-                    rootNode.windowTitle?.toString() ?: "Unknown"
-                } else {
-                    "Unknown"
-                }
-            } catch (e: Exception) {
-                "Unknown"
-            }
+            val title = "Unknown"
             
             // Get the content description
             val contentDescription = rootNode.contentDescription?.toString() ?: "None"
@@ -528,7 +520,7 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
             val screenInfo = StringBuilder()
             screenInfo.append("App: $packageName\n")
             screenInfo.append("Screen: $className\n")
-            screenInfo.append("Title: $windowTitle\n")
+            screenInfo.append("Title: $title\n")
             screenInfo.append("Description: $contentDescription\n")
             screenInfo.append("Child Count: $childCount\n\n")
             
