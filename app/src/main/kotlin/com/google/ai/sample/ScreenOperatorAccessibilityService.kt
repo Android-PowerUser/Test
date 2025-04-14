@@ -110,6 +110,11 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
                     showToast("Versuche Screenshot aufzunehmen", false)
                     serviceInstance?.takeScreenshot()
                 }
+                is Command.PressHomeButton -> {
+                    Log.d(TAG, "Pressing home button")
+                    showToast("Versuche Home-Button zu drücken", false)
+                    serviceInstance?.pressHomeButton()
+                }
             }
         }
         
@@ -942,6 +947,30 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
         } catch (e: Exception) {
             Log.e(TAG, "Error performing key press: ${e.message}")
             return false
+        }
+    }
+    
+    /**
+     * Press the home button
+     */
+    fun pressHomeButton() {
+        Log.d(TAG, "Pressing home button")
+        showToast("Drücke Home-Button...", false)
+        
+        try {
+            // Use the global action to press the home button
+            val result = performGlobalAction(GLOBAL_ACTION_HOME)
+            
+            if (result) {
+                Log.d(TAG, "Successfully pressed home button")
+                showToast("Home-Button erfolgreich gedrückt", false)
+            } else {
+                Log.e(TAG, "Failed to press home button")
+                showToast("Fehler beim Drücken des Home-Buttons", true)
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error pressing home button: ${e.message}")
+            showToast("Fehler beim Drücken des Home-Buttons: ${e.message}", true)
         }
     }
     
