@@ -412,7 +412,8 @@ class PhotoReasoningViewModel(
                 val userMessage = PhotoReasoningMessage(
                     text = messageText,
                     participant = PhotoParticipant.USER,
-                    isPending = false
+                    isPending = false,
+                    image = result // Include the image in the message
                 )
                 _chatState.addMessage(userMessage)
                 _chatMessagesFlow.value = chatMessages
@@ -461,7 +462,53 @@ class PhotoReasoningViewModel(
                 val userMessage = PhotoReasoningMessage(
                     text = messageText,
                     participant = PhotoParticipant.USER,
-                    isPending = false
+                    isPending = false,
+                    image = screenshot // Include the image in the message
+                )
+                _chatState.addMessage(userMessage)
+                _chatMessagesFlow.value = chatMessages
+                
+                // Save chat history
+                saveChatHistory(MainActivity.getInstance()?.applicationContext)
+                
+                // Update the current selected images to include only the latest screenshot
+                currentSelectedImages = listOf(screenshot)
+                
+                // Update status
+                _commandExecutionStatus.value = "Screenshot zur Konversation hinzugefügt"
+                
+                // Rebuild chat history to ensure context is maintained
+                rebuildChatHistory()
+            } catch (e: Exception) {
+                Log.e(TAG, "Error adding screenshot to conversation: ${e.message}", e)
+                _commandExecutionStatus.value = "Fehler beim Hinzufügen des Screenshots: ${e.message}"
+            }
+        }
+    }
+    
+    /**
+     * Add a screenshot to the conversation with screen info
+     * 
+     * @param screenshot Bitmap of the screenshot
+     * @param screenInfo Information about screen elements
+     */
+    fun addScreenshotToConversation(screenshot: Bitmap, screenInfo: String) {
+        PhotoReasoningApplication.applicationScope.launch(Dispatchers.Main) {
+            try {
+                Log.d(TAG, "Adding screenshot to conversation with screen info")
+                
+                // Update status
+                _commandExecutionStatus.value = "Verarbeite Screenshot..."
+                
+                // Create message text with screen info
+                val messageText = "Screenshot aufgenommen\n\n$screenInfo"
+                
+                // Add user message to chat history
+                val userMessage = PhotoReasoningMessage(
+                    text = messageText,
+                    participant = PhotoParticipant.USER,
+                    isPending = false,
+                    image = screenshot // Include the image in the message
                 )
                 _chatState.addMessage(userMessage)
                 _chatMessagesFlow.value = chatMessages
