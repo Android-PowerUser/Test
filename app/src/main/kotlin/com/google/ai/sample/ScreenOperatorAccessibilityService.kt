@@ -2,16 +2,16 @@ package com.google.ai.sample
 
 import android.accessibilityservice.AccessibilityService
 import android.accessibilityservice.GestureDescription
-import android.accessibilityservice.GestureDescription.StrokeDescription
-import android.app.ActivityManager
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
+import android.graphics.Color
 import android.graphics.Path
 import android.graphics.PixelFormat
-import android.graphics.Point
 import android.graphics.Rect
+import android.graphics.drawable.ShapeDrawable
+import android.graphics.drawable.shapes.OvalShape
 import android.net.Uri
 import android.os.Build
 import android.os.Environment
@@ -19,10 +19,9 @@ import android.os.Handler
 import android.os.Looper
 import android.provider.MediaStore
 import android.provider.Settings
+import android.util.DisplayMetrics
 import android.util.Log
 import android.view.Gravity
-import android.view.KeyEvent
-import android.view.LayoutInflater
 import android.view.View
 import android.view.WindowManager
 import android.view.accessibility.AccessibilityEvent
@@ -33,17 +32,44 @@ import androidx.core.content.FileProvider
 import com.google.ai.sample.feature.multimodal.PhotoReasoningViewModel
 import com.google.ai.sample.util.Command
 import java.io.File
-import java.io.FileOutputStream
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
-import java.util.concurrent.atomic.AtomicBoolean
+import kotlin.math.max
+import kotlin.math.min
 
 class ScreenOperatorAccessibilityService : AccessibilityService() {
+    private val TAG = "ScreenOperatorService"
+    
+    // Handler for main thread operations
+    private val mainHandler = Handler(Looper.getMainLooper())
+    
+    // Window manager for overlay
+    private var windowManager: WindowManager? = null
+    
+    // Overlay view
+    private var overlayView: View? = null
+    
+    // Overlay parameters
+    private var overlayParams: WindowManager.LayoutParams? = null
+    
+    // Display metrics
+    private var displayMetrics: DisplayMetrics? = null
+    
+    // Screen width and height
+    private var screenWidth = 0
+    private var screenHeight = 0
+    
+    // Static instance for access from other components
     companion object {
-        private const val TAG = "ScreenOperatorService"
         private var instance: ScreenOperatorAccessibilityService? = null
-        private val isServiceAvailable = AtomicBoolean(false)
+        
+        /**
+         * Check if the service is available
+         */
+        fun isServiceAvailable(): Boolean {
+            return instance != null
+        }
         
         /**
          * Check if the accessibility service is enabled
@@ -55,112 +81,77 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
                     Settings.Secure.ACCESSIBILITY_ENABLED
                 )
             } catch (e: Settings.SettingNotFoundException) {
-                Log.e(TAG, "Error finding setting, default accessibility to not found: ${e.message}")
-                return false
+                0
             }
             
-            if (accessibilityEnabled != 1) {
-                Log.v(TAG, "Accessibility is disabled")
-                return false
+            if (accessibilityEnabled == 1) {
+                val enabledServices = Settings.Secure.getString(
+                    context.contentResolver,
+                    Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES
+                ) ?: return false
+                
+                return enabledServices.contains(context.packageName + "/" + ScreenOperatorAccessibilityService::class.java.name)
             }
             
-            val serviceString = "${context.packageName}/${ScreenOperatorAccessibilityService::class.java.canonicalName}"
-            val enabledServices = Settings.Secure.getString(
-                context.contentResolver,
-                Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES
-            ) ?: return false
-            
-            return enabledServices.split(':').any { it.equals(serviceString, ignoreCase = true) }
-        }
-        
-        /**
-         * Open accessibility settings
-         */
-        fun openAccessibilitySettings(context: Context) {
-            val intent = Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)
-            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-            context.startActivity(intent)
-        }
-        
-        /**
-         * Check if the service instance is available
-         */
-        fun isServiceAvailable(): Boolean {
-            return isServiceAvailable.get() && instance != null
+            return false
         }
         
         /**
          * Execute a command
          */
         fun executeCommand(command: Command) {
-            if (!isServiceAvailable()) {
-                Log.e(TAG, "Service is not available")
+            if (instance == null) {
+                Log.e("ScreenOperatorService", "Service instance is null, cannot execute command")
                 return
             }
             
-            val service = instance ?: return
-            
             when (command) {
-                is Command.ClickButton -> service.clickButton(command.buttonText)
-                is Command.TapCoordinates -> service.tapCoordinates(command.x, command.y)
-                is Command.TakeScreenshot -> service.takeScreenshot()
-                is Command.OpenApp -> service.openApp(command.appName)
-                is Command.PressBack -> service.pressBack()
-                is Command.PressHome -> service.pressHome()
-                is Command.PullStatusBarDown -> service.pullStatusBarDown()
-                is Command.PullStatusBarDownTwice -> service.pullStatusBarDownTwice()
-                is Command.PushStatusBarUp -> service.pushStatusBarUp()
-                is Command.ScrollDown -> service.scrollDown()
-                is Command.ScrollUp -> service.scrollUp()
-                is Command.ScrollLeft -> service.scrollLeft()
-                is Command.ScrollRight -> service.scrollRight()
-                is Command.ShowRecentApps -> service.showRecentApps()
+                is Command.ClickButton -> instance?.clickButton(command.buttonText)
+                is Command.TapCoordinates -> instance?.tapCoordinates(command.x, command.y)
+                is Command.TakeScreenshot -> instance?.takeScreenshot()
+                is Command.OpenApp -> instance?.openApp(command.appName)
+                is Command.PressBack -> instance?.pressBack()
+                is Command.PressHome -> instance?.pressHome()
+                is Command.PullStatusBarDown -> instance?.pullStatusBarDown()
+                is Command.PullStatusBarDownTwice -> instance?.pullStatusBarDownTwice()
+                is Command.PushStatusBarUp -> instance?.pushStatusBarUp()
+                is Command.ScrollDown -> instance?.scrollDown()
+                is Command.ScrollUp -> instance?.scrollUp()
+                is Command.ScrollLeft -> instance?.scrollLeft()
+                is Command.ScrollRight -> instance?.scrollRight()
+                is Command.ShowRecentApps -> instance?.showRecentApps()
             }
         }
     }
-    
-    private var windowManager: WindowManager? = null
-    private var overlayView: View? = null
-    private var overlayParams: WindowManager.LayoutParams? = null
-    private var displayWidth = 0
-    private var displayHeight = 0
-    private val mainHandler = Handler(Looper.getMainLooper())
     
     override fun onServiceConnected() {
         super.onServiceConnected()
+        
         Log.d(TAG, "Service connected")
         
+        // Store the instance
         instance = this
-        isServiceAvailable.set(true)
         
-        // Get display metrics
+        // Initialize window manager
         windowManager = getSystemService(WINDOW_SERVICE) as WindowManager
         
-        val display = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            windowManager?.currentWindowMetrics?.let {
-                Point(it.bounds.width(), it.bounds.height())
-            }
+        // Initialize display metrics
+        displayMetrics = resources.displayMetrics
+        
+        // Get screen dimensions
+        if (displayMetrics != null) {
+            screenWidth = displayMetrics!!.widthPixels
+            screenHeight = displayMetrics!!.heightPixels
         } else {
-            val point = Point()
-            @Suppress("DEPRECATION")
-            windowManager?.defaultDisplay?.getSize(point)
-            point
+            // Fallback values if display metrics are not available
+            screenWidth = 1080
+            screenHeight = 1920
         }
         
-        display?.let {
-            displayWidth = it.x
-            displayHeight = it.y
-        } ?: run {
-            // Fallback values if display is null
-            displayWidth = 1080
-            displayHeight = 1920
-        }
-        
-        // Show toast
-        showToast("Screen Operator Service aktiviert", false)
+        Log.d(TAG, "Screen dimensions: $screenWidth x $screenHeight")
     }
     
-    override fun onAccessibilityEvent(event: AccessibilityEvent) {
+    override fun onAccessibilityEvent(event: AccessibilityEvent?) {
         // Not used in this implementation
     }
     
@@ -170,13 +161,25 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
     
     override fun onDestroy() {
         super.onDestroy()
+        
         Log.d(TAG, "Service destroyed")
         
+        // Clear the instance
         instance = null
-        isServiceAvailable.set(false)
-        
-        // Remove overlay if it exists
-        removeOverlay()
+    }
+    
+    /**
+     * Show a toast message
+     */
+    private fun showToast(message: String, isError: Boolean) {
+        mainHandler.post {
+            try {
+                val toast = Toast.makeText(applicationContext, message, Toast.LENGTH_SHORT)
+                toast.show()
+            } catch (e: Exception) {
+                Log.e(TAG, "Error showing toast: ${e.message}")
+            }
+        }
     }
     
     /**
@@ -189,95 +192,116 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
             // Get the root node
             val rootNode = rootInActiveWindow ?: return
             
-            // Find the button node
-            val buttonNode = findButtonNode(rootNode, buttonText)
+            // Find nodes with the given text
+            val nodes = rootNode.findAccessibilityNodeInfosByText(buttonText)
             
-            if (buttonNode != null) {
-                // Get the button bounds
-                val rect = Rect()
-                buttonNode.getBoundsInScreen(rect)
-                
-                // Click the center of the button
-                val x = rect.centerX().toFloat()
-                val y = rect.centerY().toFloat()
-                
-                // Perform the click
-                tapCoordinates(x, y)
-                
-                // Show toast
-                showToast("Button \"$buttonText\" geklickt", false)
-                
-                // Recycle the node
-                buttonNode.recycle()
-            } else {
-                Log.e(TAG, "Button not found: $buttonText")
-                showToast("Button \"$buttonText\" nicht gefunden", true)
+            if (nodes.isEmpty()) {
+                Log.e(TAG, "No button found with text: $buttonText")
+                showToast("Kein Button mit Text \"$buttonText\" gefunden", true)
+                rootNode.recycle()
+                return
             }
             
-            // Recycle the root node
+            // Find the first clickable node
+            var clickableNode: AccessibilityNodeInfo? = null
+            
+            for (node in nodes) {
+                if (node.isClickable) {
+                    clickableNode = node
+                    break
+                }
+                
+                // Check if any parent is clickable
+                var parent = node.parent
+                while (parent != null) {
+                    if (parent.isClickable) {
+                        clickableNode = parent
+                        break
+                    }
+                    
+                    val temp = parent.parent
+                    parent.recycle()
+                    parent = temp
+                }
+                
+                if (clickableNode != null) {
+                    break
+                }
+            }
+            
+            if (clickableNode == null) {
+                Log.e(TAG, "No clickable node found for button: $buttonText")
+                showToast("Kein klickbarer Button mit Text \"$buttonText\" gefunden", true)
+                rootNode.recycle()
+                return
+            }
+            
+            // Get the node bounds
+            val rect = Rect()
+            clickableNode.getBoundsInScreen(rect)
+            
+            // Click the node
+            val result = clickableNode.performAction(AccessibilityNodeInfo.ACTION_CLICK)
+            
+            if (result) {
+                Log.d(TAG, "Button clicked: $buttonText")
+                showToast("Button \"$buttonText\" geklickt", false)
+                
+                // Show tap indicator
+                showTapIndicator(rect.centerX(), rect.centerY())
+            } else {
+                Log.e(TAG, "Failed to click button: $buttonText")
+                showToast("Fehler beim Klicken auf Button \"$buttonText\"", true)
+                
+                // Try tapping the coordinates as a fallback
+                tapCoordinates(rect.centerX(), rect.centerY())
+            }
+            
+            // Recycle nodes
+            clickableNode.recycle()
             rootNode.recycle()
         } catch (e: Exception) {
             Log.e(TAG, "Error clicking button: ${e.message}")
-            showToast("Fehler beim Klicken auf Button: ${e.message}", true)
-        }
-    }
-    
-    /**
-     * Find a button node with the given text
-     */
-    private fun findButtonNode(rootNode: AccessibilityNodeInfo, buttonText: String): AccessibilityNodeInfo? {
-        // Try to find by exact text
-        var nodes = rootNode.findAccessibilityNodeInfosByText(buttonText)
-        
-        if (nodes.isEmpty()) {
-            // Try to find by partial text (case insensitive)
-            val lowerButtonText = buttonText.lowercase()
-            nodes = rootNode.findAccessibilityNodeInfosByText(lowerButtonText)
-        }
-        
-        // Filter for clickable nodes
-        val clickableNodes = nodes.filter { it.isClickable }
-        
-        return if (clickableNodes.isNotEmpty()) {
-            clickableNodes.first()
-        } else if (nodes.isNotEmpty()) {
-            // If no clickable nodes found, return the first node
-            nodes.first()
-        } else {
-            null
+            showToast("Fehler beim Klicken auf Button \"$buttonText\": ${e.message}", true)
         }
     }
     
     /**
      * Tap at the given coordinates
      */
-    private fun tapCoordinates(x: Float, y: Float) {
+    private fun tapCoordinates(x: Int, y: Int) {
         Log.d(TAG, "Tapping coordinates: ($x, $y)")
         
         try {
+            // Ensure coordinates are within screen bounds
+            val boundedX = max(0, min(x, screenWidth))
+            val boundedY = max(0, min(y, screenHeight))
+            
             // Create a path for the gesture
             val path = Path()
-            path.moveTo(x, y)
-            
-            // Create a stroke description
-            val stroke = StrokeDescription(path, 0, 100)
+            path.moveTo(boundedX.toFloat(), boundedY.toFloat())
             
             // Create a gesture description
             val gestureDescription = GestureDescription.Builder()
-                .addStroke(stroke)
+                .addStroke(GestureDescription.StrokeDescription(path, 0, 100))
                 .build()
             
             // Dispatch the gesture
-            dispatchGesture(gestureDescription, null, null)
+            val result = dispatchGesture(gestureDescription, null, null)
             
-            // Show toast
-            showToast("Koordinaten ($x, $y) getippt", false)
-            
-            // Show tap indicator
-            showTapIndicator(x.toInt(), y.toInt())
+            if (result) {
+                Log.d(TAG, "Coordinates tapped: ($boundedX, $boundedY)")
+                showToast("Koordinaten ($boundedX, $boundedY) getippt", false)
+                
+                // Show tap indicator
+                showTapIndicator(boundedX, boundedY)
+            } else {
+                Log.e(TAG, "Failed to tap coordinates: ($boundedX, $boundedY)")
+                showToast("Fehler beim Tippen auf Koordinaten ($boundedX, $boundedY)", true)
+            }
         } catch (e: Exception) {
             Log.e(TAG, "Error tapping coordinates: ${e.message}")
-            showToast("Fehler beim Tippen auf Koordinaten: ${e.message}", true)
+            showToast("Fehler beim Tippen auf Koordinaten ($x, $y): ${e.message}", true)
         }
     }
     
@@ -289,14 +313,21 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
             // Remove any existing overlay
             removeOverlay()
             
-            // Create a new overlay
-            val inflater = LayoutInflater.from(this)
-            // Erstelle einen einfachen View anstatt R.layout.tap_indicator zu verwenden
-            val circleView = View(this)
-            circleView.setBackgroundResource(android.R.drawable.radiobutton_on_background)
-            overlayView = circleView
+            // Create a new overlay view
+            overlayView = FrameLayout(applicationContext).apply {
+                // Create a circular shape
+                val shape = ShapeDrawable(OvalShape())
+                shape.paint.color = Color.RED
+                shape.alpha = 128
+                
+                // Set the background
+                background = shape
+                
+                // Set the size
+                layoutParams = FrameLayout.LayoutParams(100, 100)
+            }
             
-            // Create layout parameters
+            // Create overlay parameters
             overlayParams = WindowManager.LayoutParams(
                 WindowManager.LayoutParams.WRAP_CONTENT,
                 WindowManager.LayoutParams.WRAP_CONTENT,
@@ -413,7 +444,7 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
                     Log.e(TAG, "Screenshot not found in system directory")
                     showToast("Screenshot nicht gefunden", true)
                 }
-            }, 2000) // Wait 2 seconds for the system to save the screenshot
+            }, 1000) // Wait 1 second for the system to save the screenshot
         } catch (e: Exception) {
             Log.e(TAG, "Error taking screenshot: ${e.message}")
             showToast("Fehler beim Aufnehmen des Screenshots: ${e.message}", true)
@@ -486,7 +517,8 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
                     val files = dir.listFiles()
                     if (files != null) {
                         for (file in files) {
-                            if (file.isFile && file.name.contains("screenshot", ignoreCase = true)) {
+                            if (file.isFile && (file.name.contains("screenshot", ignoreCase = true) || 
+                                               file.name.startsWith("Screenshot_", ignoreCase = true))) {
                                 screenshotFiles.add(file)
                             }
                         }
@@ -698,7 +730,7 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
                     showToast("App \"$appName\" geöffnet", false)
                 } else {
                     Log.e(TAG, "Launch intent not found for app: $appName")
-                    showToast("Launch Intent für App \"$appName\" nicht gefunden", true)
+                    showToast("Fehler: Launch Intent für App \"$appName\" nicht gefunden", true)
                 }
             } else {
                 Log.e(TAG, "App not found: $appName")
@@ -706,7 +738,7 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
             }
         } catch (e: Exception) {
             Log.e(TAG, "Error opening app: ${e.message}")
-            showToast("Fehler beim Öffnen der App: ${e.message}", true)
+            showToast("Fehler beim Öffnen der App \"$appName\": ${e.message}", true)
         }
     }
     
@@ -717,11 +749,15 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
         Log.d(TAG, "Pressing back button")
         
         try {
-            // Perform global action
-            performGlobalAction(GLOBAL_ACTION_BACK)
+            val result = performGlobalAction(GLOBAL_ACTION_BACK)
             
-            // Show toast
-            showToast("Zurück-Taste gedrückt", false)
+            if (result) {
+                Log.d(TAG, "Back button pressed")
+                showToast("Zurück-Taste gedrückt", false)
+            } else {
+                Log.e(TAG, "Failed to press back button")
+                showToast("Fehler beim Drücken der Zurück-Taste", true)
+            }
         } catch (e: Exception) {
             Log.e(TAG, "Error pressing back button: ${e.message}")
             showToast("Fehler beim Drücken der Zurück-Taste: ${e.message}", true)
@@ -735,11 +771,15 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
         Log.d(TAG, "Pressing home button")
         
         try {
-            // Perform global action
-            performGlobalAction(GLOBAL_ACTION_HOME)
+            val result = performGlobalAction(GLOBAL_ACTION_HOME)
             
-            // Show toast
-            showToast("Home-Taste gedrückt", false)
+            if (result) {
+                Log.d(TAG, "Home button pressed")
+                showToast("Home-Taste gedrückt", false)
+            } else {
+                Log.e(TAG, "Failed to press home button")
+                showToast("Fehler beim Drücken der Home-Taste", true)
+            }
         } catch (e: Exception) {
             Log.e(TAG, "Error pressing home button: ${e.message}")
             showToast("Fehler beim Drücken der Home-Taste: ${e.message}", true)
@@ -747,17 +787,21 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
     }
     
     /**
-     * Pull down the status bar
+     * Pull the status bar down
      */
     private fun pullStatusBarDown() {
         Log.d(TAG, "Pulling status bar down")
         
         try {
-            // Perform global action
-            performGlobalAction(GLOBAL_ACTION_NOTIFICATIONS)
+            val result = performGlobalAction(GLOBAL_ACTION_NOTIFICATIONS)
             
-            // Show toast
-            showToast("Statusleiste heruntergezogen", false)
+            if (result) {
+                Log.d(TAG, "Status bar pulled down")
+                showToast("Statusleiste heruntergezogen", false)
+            } else {
+                Log.e(TAG, "Failed to pull status bar down")
+                showToast("Fehler beim Herunterziehen der Statusleiste", true)
+            }
         } catch (e: Exception) {
             Log.e(TAG, "Error pulling status bar down: ${e.message}")
             showToast("Fehler beim Herunterziehen der Statusleiste: ${e.message}", true)
@@ -765,23 +809,33 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
     }
     
     /**
-     * Pull down the status bar twice (for quick settings)
+     * Pull the status bar down twice
      */
     private fun pullStatusBarDownTwice() {
         Log.d(TAG, "Pulling status bar down twice")
         
         try {
-            // Perform global action for notifications
-            performGlobalAction(GLOBAL_ACTION_NOTIFICATIONS)
+            // Pull down once
+            val result1 = performGlobalAction(GLOBAL_ACTION_NOTIFICATIONS)
             
-            // Wait a moment
-            Thread.sleep(500)
-            
-            // Perform global action for quick settings
-            performGlobalAction(GLOBAL_ACTION_QUICK_SETTINGS)
-            
-            // Show toast
-            showToast("Statusleiste zweimal heruntergezogen", false)
+            if (result1) {
+                // Wait a moment
+                Thread.sleep(500)
+                
+                // Pull down again
+                val result2 = performGlobalAction(GLOBAL_ACTION_QUICK_SETTINGS)
+                
+                if (result2) {
+                    Log.d(TAG, "Status bar pulled down twice")
+                    showToast("Statusleiste zweimal heruntergezogen", false)
+                } else {
+                    Log.e(TAG, "Failed to pull status bar down second time")
+                    showToast("Fehler beim zweiten Herunterziehen der Statusleiste", true)
+                }
+            } else {
+                Log.e(TAG, "Failed to pull status bar down first time")
+                showToast("Fehler beim ersten Herunterziehen der Statusleiste", true)
+            }
         } catch (e: Exception) {
             Log.e(TAG, "Error pulling status bar down twice: ${e.message}")
             showToast("Fehler beim zweimaligen Herunterziehen der Statusleiste: ${e.message}", true)
@@ -789,17 +843,22 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
     }
     
     /**
-     * Push up the status bar
+     * Push the status bar up
      */
     private fun pushStatusBarUp() {
         Log.d(TAG, "Pushing status bar up")
         
         try {
-            // Perform global action
-            performGlobalAction(GLOBAL_ACTION_BACK)
+            // Press back to close the notification shade
+            val result = performGlobalAction(GLOBAL_ACTION_BACK)
             
-            // Show toast
-            showToast("Statusleiste hochgeschoben", false)
+            if (result) {
+                Log.d(TAG, "Status bar pushed up")
+                showToast("Statusleiste hochgeschoben", false)
+            } else {
+                Log.e(TAG, "Failed to push status bar up")
+                showToast("Fehler beim Hochschieben der Statusleiste", true)
+            }
         } catch (e: Exception) {
             Log.e(TAG, "Error pushing status bar up: ${e.message}")
             showToast("Fehler beim Hochschieben der Statusleiste: ${e.message}", true)
@@ -815,22 +874,24 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
         try {
             // Create a path for the gesture
             val path = Path()
-            path.moveTo(displayWidth / 2f, displayHeight * 0.7f)
-            path.lineTo(displayWidth / 2f, displayHeight * 0.3f)
-            
-            // Create a stroke description
-            val stroke = StrokeDescription(path, 0, 100)
+            path.moveTo(screenWidth / 2f, screenHeight * 0.7f)
+            path.lineTo(screenWidth / 2f, screenHeight * 0.3f)
             
             // Create a gesture description
             val gestureDescription = GestureDescription.Builder()
-                .addStroke(stroke)
+                .addStroke(GestureDescription.StrokeDescription(path, 0, 500))
                 .build()
             
             // Dispatch the gesture
-            dispatchGesture(gestureDescription, null, null)
+            val result = dispatchGesture(gestureDescription, null, null)
             
-            // Show toast
-            showToast("Nach unten gescrollt", false)
+            if (result) {
+                Log.d(TAG, "Scrolled down")
+                showToast("Nach unten gescrollt", false)
+            } else {
+                Log.e(TAG, "Failed to scroll down")
+                showToast("Fehler beim Scrollen nach unten", true)
+            }
         } catch (e: Exception) {
             Log.e(TAG, "Error scrolling down: ${e.message}")
             showToast("Fehler beim Scrollen nach unten: ${e.message}", true)
@@ -846,22 +907,24 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
         try {
             // Create a path for the gesture
             val path = Path()
-            path.moveTo(displayWidth / 2f, displayHeight * 0.3f)
-            path.lineTo(displayWidth / 2f, displayHeight * 0.7f)
-            
-            // Create a stroke description
-            val stroke = StrokeDescription(path, 0, 100)
+            path.moveTo(screenWidth / 2f, screenHeight * 0.3f)
+            path.lineTo(screenWidth / 2f, screenHeight * 0.7f)
             
             // Create a gesture description
             val gestureDescription = GestureDescription.Builder()
-                .addStroke(stroke)
+                .addStroke(GestureDescription.StrokeDescription(path, 0, 500))
                 .build()
             
             // Dispatch the gesture
-            dispatchGesture(gestureDescription, null, null)
+            val result = dispatchGesture(gestureDescription, null, null)
             
-            // Show toast
-            showToast("Nach oben gescrollt", false)
+            if (result) {
+                Log.d(TAG, "Scrolled up")
+                showToast("Nach oben gescrollt", false)
+            } else {
+                Log.e(TAG, "Failed to scroll up")
+                showToast("Fehler beim Scrollen nach oben", true)
+            }
         } catch (e: Exception) {
             Log.e(TAG, "Error scrolling up: ${e.message}")
             showToast("Fehler beim Scrollen nach oben: ${e.message}", true)
@@ -877,22 +940,24 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
         try {
             // Create a path for the gesture
             val path = Path()
-            path.moveTo(displayWidth * 0.3f, displayHeight / 2f)
-            path.lineTo(displayWidth * 0.7f, displayHeight / 2f)
-            
-            // Create a stroke description
-            val stroke = StrokeDescription(path, 0, 100)
+            path.moveTo(screenWidth * 0.3f, screenHeight / 2f)
+            path.lineTo(screenWidth * 0.7f, screenHeight / 2f)
             
             // Create a gesture description
             val gestureDescription = GestureDescription.Builder()
-                .addStroke(stroke)
+                .addStroke(GestureDescription.StrokeDescription(path, 0, 500))
                 .build()
             
             // Dispatch the gesture
-            dispatchGesture(gestureDescription, null, null)
+            val result = dispatchGesture(gestureDescription, null, null)
             
-            // Show toast
-            showToast("Nach links gescrollt", false)
+            if (result) {
+                Log.d(TAG, "Scrolled left")
+                showToast("Nach links gescrollt", false)
+            } else {
+                Log.e(TAG, "Failed to scroll left")
+                showToast("Fehler beim Scrollen nach links", true)
+            }
         } catch (e: Exception) {
             Log.e(TAG, "Error scrolling left: ${e.message}")
             showToast("Fehler beim Scrollen nach links: ${e.message}", true)
@@ -908,22 +973,24 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
         try {
             // Create a path for the gesture
             val path = Path()
-            path.moveTo(displayWidth * 0.7f, displayHeight / 2f)
-            path.lineTo(displayWidth * 0.3f, displayHeight / 2f)
-            
-            // Create a stroke description
-            val stroke = StrokeDescription(path, 0, 100)
+            path.moveTo(screenWidth * 0.7f, screenHeight / 2f)
+            path.lineTo(screenWidth * 0.3f, screenHeight / 2f)
             
             // Create a gesture description
             val gestureDescription = GestureDescription.Builder()
-                .addStroke(stroke)
+                .addStroke(GestureDescription.StrokeDescription(path, 0, 500))
                 .build()
             
             // Dispatch the gesture
-            dispatchGesture(gestureDescription, null, null)
+            val result = dispatchGesture(gestureDescription, null, null)
             
-            // Show toast
-            showToast("Nach rechts gescrollt", false)
+            if (result) {
+                Log.d(TAG, "Scrolled right")
+                showToast("Nach rechts gescrollt", false)
+            } else {
+                Log.e(TAG, "Failed to scroll right")
+                showToast("Fehler beim Scrollen nach rechts", true)
+            }
         } catch (e: Exception) {
             Log.e(TAG, "Error scrolling right: ${e.message}")
             showToast("Fehler beim Scrollen nach rechts: ${e.message}", true)
@@ -937,27 +1004,18 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
         Log.d(TAG, "Showing recent apps")
         
         try {
-            // Perform global action
-            performGlobalAction(GLOBAL_ACTION_RECENTS)
+            val result = performGlobalAction(GLOBAL_ACTION_RECENTS)
             
-            // Show toast
-            showToast("Letzte Apps angezeigt", false)
+            if (result) {
+                Log.d(TAG, "Recent apps shown")
+                showToast("Letzte Apps angezeigt", false)
+            } else {
+                Log.e(TAG, "Failed to show recent apps")
+                showToast("Fehler beim Anzeigen der letzten Apps", true)
+            }
         } catch (e: Exception) {
             Log.e(TAG, "Error showing recent apps: ${e.message}")
             showToast("Fehler beim Anzeigen der letzten Apps: ${e.message}", true)
-        }
-    }
-    
-    /**
-     * Show a toast message
-     */
-    private fun showToast(message: String, isError: Boolean) {
-        mainHandler.post {
-            Toast.makeText(
-                applicationContext,
-                message,
-                if (isError) Toast.LENGTH_LONG else Toast.LENGTH_SHORT
-            ).show()
         }
     }
 }
