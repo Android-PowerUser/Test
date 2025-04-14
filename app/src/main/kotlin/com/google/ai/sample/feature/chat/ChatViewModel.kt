@@ -121,6 +121,8 @@ class ChatViewModel(
                             is Command.PressHomeButton -> "Home-Button drücken"
                             is Command.PressBackButton -> "Zurück-Button drücken"
                             is Command.ShowRecentApps -> "Übersicht der letzten Apps öffnen"
+                            is Command.ScrollDown -> "Nach unten scrollen"
+                            is Command.ScrollUp -> "Nach oben scrollen"
                         }
                     }
                     
@@ -173,6 +175,8 @@ class ChatViewModel(
                             is Command.PressHomeButton -> "Home-Button drücken"
                             is Command.PressBackButton -> "Zurück-Button drücken"
                             is Command.ShowRecentApps -> "Übersicht der letzten Apps öffnen"
+                            is Command.ScrollDown -> "Nach unten scrollen"
+                            is Command.ScrollUp -> "Nach oben scrollen"
                         }
                         
                         _commandExecutionStatus.value = "Führe aus: $commandDescription (${index + 1}/${commands.size})"

@@ -198,6 +198,8 @@ fun ChatScreen(
                             is Command.PressHomeButton -> "Home-Button drücken"
                             is Command.PressBackButton -> "Zurück-Button drücken"
                             is Command.ShowRecentApps -> "Übersicht der letzten Apps öffnen"
+                            is Command.ScrollDown -> "Nach unten scrollen"
+                            is Command.ScrollUp -> "Nach oben scrollen"
                         }
                         
                         Text(
