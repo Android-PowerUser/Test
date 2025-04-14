@@ -135,6 +135,16 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
                     showToast("Versuche nach oben zu scrollen", false)
                     serviceInstance?.scrollUp()
                 }
+                is Command.ScrollDownFromCoordinates -> {
+                    Log.d(TAG, "Scrolling down from coordinates (${command.x}, ${command.y}) with distance ${command.distance} and duration ${command.duration}ms")
+                    showToast("Versuche von Position (${command.x}, ${command.y}) nach unten zu scrollen", false)
+                    serviceInstance?.scrollDown(command.x, command.y, command.distance, command.duration)
+                }
+                is Command.ScrollUpFromCoordinates -> {
+                    Log.d(TAG, "Scrolling up from coordinates (${command.x}, ${command.y}) with distance ${command.distance} and duration ${command.duration}ms")
+                    showToast("Versuche von Position (${command.x}, ${command.y}) nach oben zu scrollen", false)
+                    serviceInstance?.scrollUp(command.x, command.y, command.distance, command.duration)
+                }
             }
         }
         
@@ -1097,6 +1107,60 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
     }
     
     /**
+     * Scroll down from specific coordinates with custom distance and duration
+     * 
+     * @param x Starting X coordinate
+     * @param y Starting Y coordinate
+     * @param distance Distance in pixels to scroll
+     * @param duration Duration of the scroll gesture in milliseconds
+     */
+    fun scrollDown(x: Float, y: Float, distance: Float, duration: Long) {
+        Log.d(TAG, "Scrolling down from ($x, $y) with distance $distance and duration $duration ms")
+        showToast("Scrolle nach unten von bestimmter Position...", false)
+        
+        try {
+            // Create a path for the gesture (swipe from specified position upward by the specified distance)
+            val swipePath = Path()
+            swipePath.moveTo(x, y) // Start from specified position
+            swipePath.lineTo(x, y - distance) // Move upward by the specified distance
+            
+            // Create a gesture builder and add the swipe
+            val gestureBuilder = GestureDescription.Builder()
+            val gesture = GestureDescription.StrokeDescription(
+                swipePath, 
+                0, // start time
+                duration // custom duration in milliseconds
+            )
+            gestureBuilder.addStroke(gesture)
+            
+            // Dispatch the gesture
+            val result = dispatchGesture(
+                gestureBuilder.build(),
+                object : GestureResultCallback() {
+                    override fun onCompleted(gestureDescription: GestureDescription) {
+                        Log.d(TAG, "Coordinate-based scroll down gesture completed")
+                        showToast("Erfolgreich nach unten gescrollt von Position ($x, $y)", false)
+                    }
+                    
+                    override fun onCancelled(gestureDescription: GestureDescription) {
+                        Log.e(TAG, "Coordinate-based scroll down gesture cancelled")
+                        showToast("Scrollen nach unten von Position ($x, $y) abgebrochen", true)
+                    }
+                },
+                null // handler
+            )
+            
+            if (!result) {
+                Log.e(TAG, "Failed to dispatch coordinate-based scroll down gesture")
+                showToast("Fehler beim Scrollen nach unten von Position ($x, $y)", true)
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error scrolling down from coordinates: ${e.message}")
+            showToast("Fehler beim Scrollen nach unten von Position ($x, $y): ${e.message}", true)
+        }
+    }
+    
+    /**
      * Scroll up on the screen using gesture
      */
     fun scrollUp() {
@@ -1147,6 +1211,60 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
         } catch (e: Exception) {
             Log.e(TAG, "Error scrolling up: ${e.message}")
             showToast("Fehler beim Scrollen nach oben: ${e.message}", true)
+        }
+    }
+    
+    /**
+     * Scroll up from specific coordinates with custom distance and duration
+     * 
+     * @param x Starting X coordinate
+     * @param y Starting Y coordinate
+     * @param distance Distance in pixels to scroll
+     * @param duration Duration of the scroll gesture in milliseconds
+     */
+    fun scrollUp(x: Float, y: Float, distance: Float, duration: Long) {
+        Log.d(TAG, "Scrolling up from ($x, $y) with distance $distance and duration $duration ms")
+        showToast("Scrolle nach oben von bestimmter Position...", false)
+        
+        try {
+            // Create a path for the gesture (swipe from specified position downward by the specified distance)
+            val swipePath = Path()
+            swipePath.moveTo(x, y) // Start from specified position
+            swipePath.lineTo(x, y + distance) // Move downward by the specified distance
+            
+            // Create a gesture builder and add the swipe
+            val gestureBuilder = GestureDescription.Builder()
+            val gesture = GestureDescription.StrokeDescription(
+                swipePath, 
+                0, // start time
+                duration // custom duration in milliseconds
+            )
+            gestureBuilder.addStroke(gesture)
+            
+            // Dispatch the gesture
+            val result = dispatchGesture(
+                gestureBuilder.build(),
+                object : GestureResultCallback() {
+                    override fun onCompleted(gestureDescription: GestureDescription) {
+                        Log.d(TAG, "Coordinate-based scroll up gesture completed")
+                        showToast("Erfolgreich nach oben gescrollt von Position ($x, $y)", false)
+                    }
+                    
+                    override fun onCancelled(gestureDescription: GestureDescription) {
+                        Log.e(TAG, "Coordinate-based scroll up gesture cancelled")
+                        showToast("Scrollen nach oben von Position ($x, $y) abgebrochen", true)
+                    }
+                },
+                null // handler
+            )
+            
+            if (!result) {
+                Log.e(TAG, "Failed to dispatch coordinate-based scroll up gesture")
+                showToast("Fehler beim Scrollen nach oben von Position ($x, $y)", true)
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error scrolling up from coordinates: ${e.message}")
+            showToast("Fehler beim Scrollen nach oben von Position ($x, $y): ${e.message}", true)
         }
     }
     
