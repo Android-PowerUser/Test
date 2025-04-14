@@ -408,12 +408,15 @@ class PhotoReasoningViewModel(
                     "Screenshot aufgenommen"
                 }
                 
+                // Convert URI to string for storage in message
+                val uriString = screenshotUri.toString()
+                
                 // Add user message to chat history
                 val userMessage = PhotoReasoningMessage(
                     text = messageText,
                     participant = PhotoParticipant.USER,
                     isPending = false,
-                    image = result // Include the image in the message
+                    imageUris = listOf(uriString)
                 )
                 _chatState.addMessage(userMessage)
                 _chatMessagesFlow.value = chatMessages
@@ -462,8 +465,8 @@ class PhotoReasoningViewModel(
                 val userMessage = PhotoReasoningMessage(
                     text = messageText,
                     participant = PhotoParticipant.USER,
-                    isPending = false,
-                    image = screenshot // Include the image in the message
+                    isPending = false
+                    // No imageUris here as we're using the bitmap directly in currentSelectedImages
                 )
                 _chatState.addMessage(userMessage)
                 _chatMessagesFlow.value = chatMessages
@@ -507,8 +510,8 @@ class PhotoReasoningViewModel(
                 val userMessage = PhotoReasoningMessage(
                     text = messageText,
                     participant = PhotoParticipant.USER,
-                    isPending = false,
-                    image = screenshot // Include the image in the message
+                    isPending = false
+                    // No imageUris here as we're using the bitmap directly in currentSelectedImages
                 )
                 _chatState.addMessage(userMessage)
                 _chatMessagesFlow.value = chatMessages
