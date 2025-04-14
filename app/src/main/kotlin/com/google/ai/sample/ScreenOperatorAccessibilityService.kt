@@ -115,6 +115,16 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
                     showToast("Versuche Home-Button zu drücken", false)
                     serviceInstance?.pressHomeButton()
                 }
+                is Command.PressBackButton -> {
+                    Log.d(TAG, "Pressing back button")
+                    showToast("Versuche Zurück-Button zu drücken", false)
+                    serviceInstance?.pressBackButton()
+                }
+                is Command.ShowRecentApps -> {
+                    Log.d(TAG, "Showing recent apps")
+                    showToast("Versuche Übersicht der letzten Apps zu öffnen", false)
+                    serviceInstance?.showRecentApps()
+                }
             }
         }
         
@@ -971,6 +981,54 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
         } catch (e: Exception) {
             Log.e(TAG, "Error pressing home button: ${e.message}")
             showToast("Fehler beim Drücken des Home-Buttons: ${e.message}", true)
+        }
+    }
+    
+    /**
+     * Press the back button
+     */
+    fun pressBackButton() {
+        Log.d(TAG, "Pressing back button")
+        showToast("Drücke Zurück-Button...", false)
+        
+        try {
+            // Use the global action to press the back button
+            val result = performGlobalAction(GLOBAL_ACTION_BACK)
+            
+            if (result) {
+                Log.d(TAG, "Successfully pressed back button")
+                showToast("Zurück-Button erfolgreich gedrückt", false)
+            } else {
+                Log.e(TAG, "Failed to press back button")
+                showToast("Fehler beim Drücken des Zurück-Buttons", true)
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error pressing back button: ${e.message}")
+            showToast("Fehler beim Drücken des Zurück-Buttons: ${e.message}", true)
+        }
+    }
+    
+    /**
+     * Show recent apps overview
+     */
+    fun showRecentApps() {
+        Log.d(TAG, "Showing recent apps")
+        showToast("Öffne Übersicht der letzten Apps...", false)
+        
+        try {
+            // Use the global action to show recent apps
+            val result = performGlobalAction(GLOBAL_ACTION_RECENTS)
+            
+            if (result) {
+                Log.d(TAG, "Successfully showed recent apps")
+                showToast("Übersicht der letzten Apps erfolgreich geöffnet", false)
+            } else {
+                Log.e(TAG, "Failed to show recent apps")
+                showToast("Fehler beim Öffnen der Übersicht der letzten Apps", true)
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error showing recent apps: ${e.message}")
+            showToast("Fehler beim Öffnen der Übersicht der letzten Apps: ${e.message}", true)
         }
     }
     
