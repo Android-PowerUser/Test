@@ -42,9 +42,6 @@ class PhotoReasoningViewModel(
     // Keep track of the latest screenshot URI
     private var latestScreenshotUri: Uri? = null
     
-    // Keep track of the latest screenshot bitmap
-    private var latestScreenshotBitmap: Bitmap? = null
-    
     // Keep track of the current selected images
     private var currentSelectedImages: List<Bitmap> = emptyList()
     
@@ -404,9 +401,6 @@ class PhotoReasoningViewModel(
                     }
                 }
                 
-                // Store the latest screenshot bitmap
-                latestScreenshotBitmap = result
-                
                 // Create message text with screen info if available
                 val messageText = if (screenInfo != null && screenInfo.isNotEmpty()) {
                     "Screenshot aufgenommen\n\n$screenInfo"
@@ -456,9 +450,6 @@ class PhotoReasoningViewModel(
         PhotoReasoningApplication.applicationScope.launch(Dispatchers.Main) {
             try {
                 Log.d(TAG, "Adding screenshot to conversation (Bitmap)")
-                
-                // Store the latest screenshot bitmap
-                latestScreenshotBitmap = screenshot
                 
                 // Update status
                 _commandExecutionStatus.value = "Verarbeite Screenshot..."
@@ -592,7 +583,6 @@ class PhotoReasoningViewModel(
             
             // Clear latest screenshot references
             latestScreenshotUri = null
-            latestScreenshotBitmap = null
             currentSelectedImages = emptyList()
             
             Log.d(TAG, "Chat history cleared")
