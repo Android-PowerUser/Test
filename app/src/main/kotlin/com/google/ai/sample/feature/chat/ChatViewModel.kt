@@ -123,6 +123,8 @@ class ChatViewModel(
                             is Command.ShowRecentApps -> "Übersicht der letzten Apps öffnen"
                             is Command.ScrollDown -> "Nach unten scrollen"
                             is Command.ScrollUp -> "Nach oben scrollen"
+                            is Command.ScrollDownFromCoordinates -> "Nach unten scrollen von Position (${it.x}, ${it.y}) mit Distanz ${it.distance}px und Dauer ${it.duration}ms"
+                            is Command.ScrollUpFromCoordinates -> "Nach oben scrollen von Position (${it.x}, ${it.y}) mit Distanz ${it.distance}px und Dauer ${it.duration}ms"
                         }
                     }
                     
@@ -177,6 +179,8 @@ class ChatViewModel(
                             is Command.ShowRecentApps -> "Übersicht der letzten Apps öffnen"
                             is Command.ScrollDown -> "Nach unten scrollen"
                             is Command.ScrollUp -> "Nach oben scrollen"
+                            is Command.ScrollDownFromCoordinates -> "Nach unten scrollen von Position (${command.x}, ${command.y}) mit Distanz ${command.distance}px und Dauer ${command.duration}ms"
+                            is Command.ScrollUpFromCoordinates -> "Nach oben scrollen von Position (${command.x}, ${command.y}) mit Distanz ${command.distance}px und Dauer ${command.duration}ms"
                         }
                         
                         _commandExecutionStatus.value = "Führe aus: $commandDescription (${index + 1}/${commands.size})"
