@@ -195,6 +195,7 @@ fun ChatScreen(
                             is Command.ClickButton -> "Klick auf Button: \"${command.buttonText}\""
                             is Command.TapCoordinates -> "Tippen auf Koordinaten: (${command.x}, ${command.y})"
                             is Command.TakeScreenshot -> "Screenshot aufnehmen"
+                            is Command.PressHomeButton -> "Home-Button drücken"
                         }
                         
                         Text(
