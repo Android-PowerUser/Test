@@ -246,6 +246,7 @@ class PhotoReasoningViewModel(
                             is Command.ClickButton -> "Klick auf Button: \"${it.buttonText}\""
                             is Command.TapCoordinates -> "Tippen auf Koordinaten: (${it.x}, ${it.y})"
                             is Command.TakeScreenshot -> "Screenshot aufnehmen"
+                            is Command.PressHomeButton -> "Home-Button drücken"
                         }
                     }
                     
@@ -295,6 +296,7 @@ class PhotoReasoningViewModel(
                             is Command.ClickButton -> "Klick auf Button: \"${command.buttonText}\""
                             is Command.TapCoordinates -> "Tippen auf Koordinaten: (${command.x}, ${command.y})"
                             is Command.TakeScreenshot -> "Screenshot aufnehmen"
+                            is Command.PressHomeButton -> "Home-Button drücken"
                         }
                         
                         _commandExecutionStatus.value = "Führe aus: $commandDescription (${index + 1}/${commands.size})"
