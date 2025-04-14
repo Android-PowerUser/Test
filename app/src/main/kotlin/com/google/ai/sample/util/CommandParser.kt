@@ -166,6 +166,8 @@ object CommandParser {
                     is Command.ShowRecentApps -> Log.d(TAG, "Command details: ShowRecentApps")
                     is Command.ScrollDown -> Log.d(TAG, "Command details: ScrollDown")
                     is Command.ScrollUp -> Log.d(TAG, "Command details: ScrollUp")
+                    is Command.ScrollDownFromCoordinates -> Log.d(TAG, "Command details: ScrollDownFromCoordinates(${command.x}, ${command.y}, ${command.distance}, ${command.duration})")
+                    is Command.ScrollUpFromCoordinates -> Log.d(TAG, "Command details: ScrollUpFromCoordinates(${command.x}, ${command.y}, ${command.distance}, ${command.duration})")
                 }
             }
         } catch (e: Exception) {
