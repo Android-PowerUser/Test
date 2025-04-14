@@ -344,8 +344,8 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
             
             // Set the position
             overlayParams?.gravity = Gravity.TOP or Gravity.START
-            overlayParams?.x = x - 50 // Center the 100dp wide indicator
-            overlayParams?.y = y - 50 // Center the 100dp tall indicator
+            overlayParams?.x = (x - 50).toInt() // Center the 100dp wide indicator
+            overlayParams?.y = (y - 50).toInt() // Center the 100dp tall indicator
             
             // Add the view to the window
             windowManager?.addView(overlayView, overlayParams)
