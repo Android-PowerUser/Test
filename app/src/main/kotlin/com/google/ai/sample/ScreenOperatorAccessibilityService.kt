@@ -125,6 +125,16 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
                     showToast("Versuche Übersicht der letzten Apps zu öffnen", false)
                     serviceInstance?.showRecentApps()
                 }
+                is Command.ScrollDown -> {
+                    Log.d(TAG, "Scrolling down")
+                    showToast("Versuche nach unten zu scrollen", false)
+                    serviceInstance?.scrollDown()
+                }
+                is Command.ScrollUp -> {
+                    Log.d(TAG, "Scrolling up")
+                    showToast("Versuche nach oben zu scrollen", false)
+                    serviceInstance?.scrollUp()
+                }
             }
         }
         
@@ -1029,6 +1039,54 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
         } catch (e: Exception) {
             Log.e(TAG, "Error showing recent apps: ${e.message}")
             showToast("Fehler beim Öffnen der Übersicht der letzten Apps: ${e.message}", true)
+        }
+    }
+    
+    /**
+     * Scroll down on the screen
+     */
+    fun scrollDown() {
+        Log.d(TAG, "Scrolling down")
+        showToast("Scrolle nach unten...", false)
+        
+        try {
+            // Use the global action to scroll down
+            val result = performGlobalAction(GLOBAL_ACTION_SCROLL_DOWN)
+            
+            if (result) {
+                Log.d(TAG, "Successfully scrolled down")
+                showToast("Erfolgreich nach unten gescrollt", false)
+            } else {
+                Log.e(TAG, "Failed to scroll down")
+                showToast("Fehler beim Scrollen nach unten", true)
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error scrolling down: ${e.message}")
+            showToast("Fehler beim Scrollen nach unten: ${e.message}", true)
+        }
+    }
+    
+    /**
+     * Scroll up on the screen
+     */
+    fun scrollUp() {
+        Log.d(TAG, "Scrolling up")
+        showToast("Scrolle nach oben...", false)
+        
+        try {
+            // Use the global action to scroll up
+            val result = performGlobalAction(GLOBAL_ACTION_SCROLL_UP)
+            
+            if (result) {
+                Log.d(TAG, "Successfully scrolled up")
+                showToast("Erfolgreich nach oben gescrollt", false)
+            } else {
+                Log.e(TAG, "Failed to scroll up")
+                showToast("Fehler beim Scrollen nach oben", true)
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error scrolling up: ${e.message}")
+            showToast("Fehler beim Scrollen nach oben: ${e.message}", true)
         }
     }
     
