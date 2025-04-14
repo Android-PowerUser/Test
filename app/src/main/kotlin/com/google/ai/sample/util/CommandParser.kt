@@ -345,15 +345,38 @@ object CommandParser {
      * Find scroll down commands in the text
      */
     private fun findScrollDownCommands(text: String, commands: MutableList<Command>) {
-        // Try each pattern
-        for (pattern in SCROLL_DOWN_PATTERNS) {
-            if (pattern.containsMatchIn(text)) {
-                // Check if this command is already in the list (avoid duplicates)
-                if (!commands.any { it is Command.ScrollDown }) {
-                    Log.d(TAG, "Found scroll down command with pattern ${pattern.pattern}")
-                    commands.add(Command.ScrollDown)
-                    // Only add one scroll down command even if multiple matches are found
-                    break
+        // First check for coordinate-based scroll down commands
+        val coordPattern = Regex("(?i)\\bscrollDown\\s*\\(\\s*(\\d+)\\s*,\\s*(\\d+)\\s*,\\s*(\\d+)\\s*,\\s*(\\d+)\\s*\\)")
+        val matches = coordPattern.findAll(text)
+        
+        for (match in matches) {
+            if (match.groupValues.size >= 5) {
+                try {
+                    val x = match.groupValues[1].toFloat()
+                    val y = match.groupValues[2].toFloat()
+                    val distance = match.groupValues[3].toFloat()
+                    val duration = match.groupValues[4].toLong()
+                    
+                    Log.d(TAG, "Found coordinate-based scroll down command: scrollDown($x, $y, $distance, $duration)")
+                    commands.add(Command.ScrollDownFromCoordinates(x, y, distance, duration))
+                } catch (e: Exception) {
+                    Log.e(TAG, "Error parsing coordinate-based scroll down command: ${e.message}")
+                }
+            }
+        }
+        
+        // If no coordinate-based commands were found, look for simple scroll down commands
+        if (!commands.any { it is Command.ScrollDownFromCoordinates }) {
+            // Try each pattern
+            for (pattern in SCROLL_DOWN_PATTERNS) {
+                if (pattern.containsMatchIn(text)) {
+                    // Check if this command is already in the list (avoid duplicates)
+                    if (!commands.any { it is Command.ScrollDown }) {
+                        Log.d(TAG, "Found scroll down command with pattern ${pattern.pattern}")
+                        commands.add(Command.ScrollDown)
+                        // Only add one scroll down command even if multiple matches are found
+                        break
+                    }
                 }
             }
         }
@@ -363,15 +386,38 @@ object CommandParser {
      * Find scroll up commands in the text
      */
     private fun findScrollUpCommands(text: String, commands: MutableList<Command>) {
-        // Try each pattern
-        for (pattern in SCROLL_UP_PATTERNS) {
-            if (pattern.containsMatchIn(text)) {
-                // Check if this command is already in the list (avoid duplicates)
-                if (!commands.any { it is Command.ScrollUp }) {
-                    Log.d(TAG, "Found scroll up command with pattern ${pattern.pattern}")
-                    commands.add(Command.ScrollUp)
-                    // Only add one scroll up command even if multiple matches are found
-                    break
+        // First check for coordinate-based scroll up commands
+        val coordPattern = Regex("(?i)\\bscrollUp\\s*\\(\\s*(\\d+)\\s*,\\s*(\\d+)\\s*,\\s*(\\d+)\\s*,\\s*(\\d+)\\s*\\)")
+        val matches = coordPattern.findAll(text)
+        
+        for (match in matches) {
+            if (match.groupValues.size >= 5) {
+                try {
+                    val x = match.groupValues[1].toFloat()
+                    val y = match.groupValues[2].toFloat()
+                    val distance = match.groupValues[3].toFloat()
+                    val duration = match.groupValues[4].toLong()
+                    
+                    Log.d(TAG, "Found coordinate-based scroll up command: scrollUp($x, $y, $distance, $duration)")
+                    commands.add(Command.ScrollUpFromCoordinates(x, y, distance, duration))
+                } catch (e: Exception) {
+                    Log.e(TAG, "Error parsing coordinate-based scroll up command: ${e.message}")
+                }
+            }
+        }
+        
+        // If no coordinate-based commands were found, look for simple scroll up commands
+        if (!commands.any { it is Command.ScrollUpFromCoordinates }) {
+            // Try each pattern
+            for (pattern in SCROLL_UP_PATTERNS) {
+                if (pattern.containsMatchIn(text)) {
+                    // Check if this command is already in the list (avoid duplicates)
+                    if (!commands.any { it is Command.ScrollUp }) {
+                        Log.d(TAG, "Found scroll up command with pattern ${pattern.pattern}")
+                        commands.add(Command.ScrollUp)
+                        // Only add one scroll up command even if multiple matches are found
+                        break
+                    }
                 }
             }
         }
@@ -451,4 +497,14 @@ sealed class Command {
      * Command to scroll up
      */
     object ScrollUp : Command()
+    
+    /**
+     * Command to scroll down from specific coordinates with custom distance and duration
+     */
+    data class ScrollDownFromCoordinates(val x: Float, val y: Float, val distance: Float, val duration: Long) : Command()
+    
+    /**
+     * Command to scroll up from specific coordinates with custom distance and duration
+     */
+    data class ScrollUpFromCoordinates(val x: Float, val y: Float, val distance: Float, val duration: Long) : Command()
 }
