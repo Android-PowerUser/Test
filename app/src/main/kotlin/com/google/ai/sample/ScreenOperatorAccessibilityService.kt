@@ -135,6 +135,16 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
                     showToast("Versuche nach oben zu scrollen", false)
                     serviceInstance?.scrollUp()
                 }
+                is Command.ScrollLeft -> {
+                    Log.d(TAG, "Scrolling left")
+                    showToast("Versuche nach links zu scrollen", false)
+                    serviceInstance?.scrollLeft()
+                }
+                is Command.ScrollRight -> {
+                    Log.d(TAG, "Scrolling right")
+                    showToast("Versuche nach rechts zu scrollen", false)
+                    serviceInstance?.scrollRight()
+                }
                 is Command.ScrollDownFromCoordinates -> {
                     Log.d(TAG, "Scrolling down from coordinates (${command.x}, ${command.y}) with distance ${command.distance} and duration ${command.duration}ms")
                     showToast("Versuche von Position (${command.x}, ${command.y}) nach unten zu scrollen", false)
@@ -144,6 +154,16 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
                     Log.d(TAG, "Scrolling up from coordinates (${command.x}, ${command.y}) with distance ${command.distance} and duration ${command.duration}ms")
                     showToast("Versuche von Position (${command.x}, ${command.y}) nach oben zu scrollen", false)
                     serviceInstance?.scrollUp(command.x, command.y, command.distance, command.duration)
+                }
+                is Command.ScrollLeftFromCoordinates -> {
+                    Log.d(TAG, "Scrolling left from coordinates (${command.x}, ${command.y}) with distance ${command.distance} and duration ${command.duration}ms")
+                    showToast("Versuche von Position (${command.x}, ${command.y}) nach links zu scrollen", false)
+                    serviceInstance?.scrollLeft(command.x, command.y, command.distance, command.duration)
+                }
+                is Command.ScrollRightFromCoordinates -> {
+                    Log.d(TAG, "Scrolling right from coordinates (${command.x}, ${command.y}) with distance ${command.distance} and duration ${command.duration}ms")
+                    showToast("Versuche von Position (${command.x}, ${command.y}) nach rechts zu scrollen", false)
+                    serviceInstance?.scrollRight(command.x, command.y, command.distance, command.duration)
                 }
             }
         }
@@ -1265,6 +1285,222 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
         } catch (e: Exception) {
             Log.e(TAG, "Error scrolling up from coordinates: ${e.message}")
             showToast("Fehler beim Scrollen nach oben von Position ($x, $y): ${e.message}", true)
+        }
+    }
+    
+    /**
+     * Scroll left on the screen using gesture
+     */
+    fun scrollLeft() {
+        Log.d(TAG, "Scrolling left")
+        showToast("Scrolle nach links...", false)
+        
+        try {
+            // Get display metrics to calculate swipe coordinates
+            val displayMetrics = resources.displayMetrics
+            val screenHeight = displayMetrics.heightPixels
+            val screenWidth = displayMetrics.widthPixels
+            
+            // Create a path for the gesture (swipe from middle-right to middle-left)
+            val swipePath = Path()
+            swipePath.moveTo(screenWidth * 0.7f, screenHeight / 2f) // Start from 70% across the screen
+            swipePath.lineTo(screenWidth * 0.3f, screenHeight / 2f) // Move to 30% across the screen
+            
+            // Create a gesture builder and add the swipe
+            val gestureBuilder = GestureDescription.Builder()
+            val gesture = GestureDescription.StrokeDescription(
+                swipePath, 
+                0, // start time
+                300 // duration in milliseconds
+            )
+            gestureBuilder.addStroke(gesture)
+            
+            // Dispatch the gesture
+            val result = dispatchGesture(
+                gestureBuilder.build(),
+                object : GestureResultCallback() {
+                    override fun onCompleted(gestureDescription: GestureDescription) {
+                        Log.d(TAG, "Scroll left gesture completed")
+                        showToast("Erfolgreich nach links gescrollt", false)
+                    }
+                    
+                    override fun onCancelled(gestureDescription: GestureDescription) {
+                        Log.e(TAG, "Scroll left gesture cancelled")
+                        showToast("Scrollen nach links abgebrochen", true)
+                    }
+                },
+                null // handler
+            )
+            
+            if (!result) {
+                Log.e(TAG, "Failed to dispatch scroll left gesture")
+                showToast("Fehler beim Scrollen nach links", true)
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error scrolling left: ${e.message}")
+            showToast("Fehler beim Scrollen nach links: ${e.message}", true)
+        }
+    }
+    
+    /**
+     * Scroll left from specific coordinates with custom distance and duration
+     * 
+     * @param x Starting X coordinate
+     * @param y Starting Y coordinate
+     * @param distance Distance in pixels to scroll
+     * @param duration Duration of the scroll gesture in milliseconds
+     */
+    fun scrollLeft(x: Float, y: Float, distance: Float, duration: Long) {
+        Log.d(TAG, "Scrolling left from ($x, $y) with distance $distance and duration $duration ms")
+        showToast("Scrolle nach links von bestimmter Position...", false)
+        
+        try {
+            // Create a path for the gesture (swipe from specified position leftward by the specified distance)
+            val swipePath = Path()
+            swipePath.moveTo(x, y) // Start from specified position
+            swipePath.lineTo(x - distance, y) // Move leftward by the specified distance
+            
+            // Create a gesture builder and add the swipe
+            val gestureBuilder = GestureDescription.Builder()
+            val gesture = GestureDescription.StrokeDescription(
+                swipePath, 
+                0, // start time
+                duration // custom duration in milliseconds
+            )
+            gestureBuilder.addStroke(gesture)
+            
+            // Dispatch the gesture
+            val result = dispatchGesture(
+                gestureBuilder.build(),
+                object : GestureResultCallback() {
+                    override fun onCompleted(gestureDescription: GestureDescription) {
+                        Log.d(TAG, "Coordinate-based scroll left gesture completed")
+                        showToast("Erfolgreich nach links gescrollt von Position ($x, $y)", false)
+                    }
+                    
+                    override fun onCancelled(gestureDescription: GestureDescription) {
+                        Log.e(TAG, "Coordinate-based scroll left gesture cancelled")
+                        showToast("Scrollen nach links von Position ($x, $y) abgebrochen", true)
+                    }
+                },
+                null // handler
+            )
+            
+            if (!result) {
+                Log.e(TAG, "Failed to dispatch coordinate-based scroll left gesture")
+                showToast("Fehler beim Scrollen nach links von Position ($x, $y)", true)
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error scrolling left from coordinates: ${e.message}")
+            showToast("Fehler beim Scrollen nach links von Position ($x, $y): ${e.message}", true)
+        }
+    }
+    
+    /**
+     * Scroll right on the screen using gesture
+     */
+    fun scrollRight() {
+        Log.d(TAG, "Scrolling right")
+        showToast("Scrolle nach rechts...", false)
+        
+        try {
+            // Get display metrics to calculate swipe coordinates
+            val displayMetrics = resources.displayMetrics
+            val screenHeight = displayMetrics.heightPixels
+            val screenWidth = displayMetrics.widthPixels
+            
+            // Create a path for the gesture (swipe from middle-left to middle-right)
+            val swipePath = Path()
+            swipePath.moveTo(screenWidth * 0.3f, screenHeight / 2f) // Start from 30% across the screen
+            swipePath.lineTo(screenWidth * 0.7f, screenHeight / 2f) // Move to 70% across the screen
+            
+            // Create a gesture builder and add the swipe
+            val gestureBuilder = GestureDescription.Builder()
+            val gesture = GestureDescription.StrokeDescription(
+                swipePath, 
+                0, // start time
+                300 // duration in milliseconds
+            )
+            gestureBuilder.addStroke(gesture)
+            
+            // Dispatch the gesture
+            val result = dispatchGesture(
+                gestureBuilder.build(),
+                object : GestureResultCallback() {
+                    override fun onCompleted(gestureDescription: GestureDescription) {
+                        Log.d(TAG, "Scroll right gesture completed")
+                        showToast("Erfolgreich nach rechts gescrollt", false)
+                    }
+                    
+                    override fun onCancelled(gestureDescription: GestureDescription) {
+                        Log.e(TAG, "Scroll right gesture cancelled")
+                        showToast("Scrollen nach rechts abgebrochen", true)
+                    }
+                },
+                null // handler
+            )
+            
+            if (!result) {
+                Log.e(TAG, "Failed to dispatch scroll right gesture")
+                showToast("Fehler beim Scrollen nach rechts", true)
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error scrolling right: ${e.message}")
+            showToast("Fehler beim Scrollen nach rechts: ${e.message}", true)
+        }
+    }
+    
+    /**
+     * Scroll right from specific coordinates with custom distance and duration
+     * 
+     * @param x Starting X coordinate
+     * @param y Starting Y coordinate
+     * @param distance Distance in pixels to scroll
+     * @param duration Duration of the scroll gesture in milliseconds
+     */
+    fun scrollRight(x: Float, y: Float, distance: Float, duration: Long) {
+        Log.d(TAG, "Scrolling right from ($x, $y) with distance $distance and duration $duration ms")
+        showToast("Scrolle nach rechts von bestimmter Position...", false)
+        
+        try {
+            // Create a path for the gesture (swipe from specified position rightward by the specified distance)
+            val swipePath = Path()
+            swipePath.moveTo(x, y) // Start from specified position
+            swipePath.lineTo(x + distance, y) // Move rightward by the specified distance
+            
+            // Create a gesture builder and add the swipe
+            val gestureBuilder = GestureDescription.Builder()
+            val gesture = GestureDescription.StrokeDescription(
+                swipePath, 
+                0, // start time
+                duration // custom duration in milliseconds
+            )
+            gestureBuilder.addStroke(gesture)
+            
+            // Dispatch the gesture
+            val result = dispatchGesture(
+                gestureBuilder.build(),
+                object : GestureResultCallback() {
+                    override fun onCompleted(gestureDescription: GestureDescription) {
+                        Log.d(TAG, "Coordinate-based scroll right gesture completed")
+                        showToast("Erfolgreich nach rechts gescrollt von Position ($x, $y)", false)
+                    }
+                    
+                    override fun onCancelled(gestureDescription: GestureDescription) {
+                        Log.e(TAG, "Coordinate-based scroll right gesture cancelled")
+                        showToast("Scrollen nach rechts von Position ($x, $y) abgebrochen", true)
+                    }
+                },
+                null // handler
+            )
+            
+            if (!result) {
+                Log.e(TAG, "Failed to dispatch coordinate-based scroll right gesture")
+                showToast("Fehler beim Scrollen nach rechts von Position ($x, $y)", true)
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error scrolling right from coordinates: ${e.message}")
+            showToast("Fehler beim Scrollen nach rechts von Position ($x, $y): ${e.message}", true)
         }
     }
     
