@@ -48,6 +48,18 @@ object CommandParser {
         Regex("(?i)\\bcaptureScreen\\(\\)")
     )
     
+    // Home button patterns - for pressing the home button
+    private val HOME_BUTTON_PATTERNS = listOf(
+        // Function-like patterns
+        Regex("(?i)\\bhome\\(\\)"),
+        Regex("(?i)\\bpressHome\\(\\)"),
+        Regex("(?i)\\bgoHome\\(\\)"),
+        
+        // Natural language patterns
+        Regex("(?i)\\b(?:press|click|tap|go to|navigate to|return to|drücke|klicke|tippe auf|gehe zu|navigiere zu|kehre zurück zu) (?:the )?home(?: button| screen)?\\b"),
+        Regex("(?i)\\b(?:zurück zum|zurück zur) (?:home|startseite|hauptbildschirm)\\b")
+    )
+    
     // Buffer for storing partial text between calls
     private var textBuffer = ""
     
@@ -101,6 +113,7 @@ object CommandParser {
                     is Command.ClickButton -> Log.d(TAG, "Command details: ClickButton(\"${command.buttonText}\")")
                     is Command.TapCoordinates -> Log.d(TAG, "Command details: TapCoordinates(${command.x}, ${command.y})")
                     is Command.TakeScreenshot -> Log.d(TAG, "Command details: TakeScreenshot")
+                    is Command.PressHomeButton -> Log.d(TAG, "Command details: PressHomeButton")
                 }
             }
         } catch (e: Exception) {
@@ -122,6 +135,9 @@ object CommandParser {
         
         // Look for take screenshot commands
         findTakeScreenshotCommands(text, commands)
+        
+        // Look for home button commands
+        findHomeButtonCommands(text, commands)
     }
     
     /**
@@ -208,6 +224,24 @@ object CommandParser {
     }
     
     /**
+     * Find home button commands in the text
+     */
+    private fun findHomeButtonCommands(text: String, commands: MutableList<Command>) {
+        // Try each pattern
+        for (pattern in HOME_BUTTON_PATTERNS) {
+            if (pattern.containsMatchIn(text)) {
+                // Check if this command is already in the list (avoid duplicates)
+                if (!commands.any { it is Command.PressHomeButton }) {
+                    Log.d(TAG, "Found home button command with pattern ${pattern.pattern}")
+                    commands.add(Command.PressHomeButton)
+                    // Only add one home button command even if multiple matches are found
+                    break
+                }
+            }
+        }
+    }
+    
+    /**
      * Clear the text buffer
      */
     fun clearBuffer() {
@@ -256,4 +290,9 @@ sealed class Command {
      * Command to take a screenshot
      */
     object TakeScreenshot : Command()
+    
+    /**
+     * Command to press the home button
+     */
+    object PressHomeButton : Command()
 }
