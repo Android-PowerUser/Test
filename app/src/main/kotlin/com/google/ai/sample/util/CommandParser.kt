@@ -84,6 +84,30 @@ object CommandParser {
         Regex("(?i)\\b(?:letzte apps|letzte anwendungen|app übersicht|app-übersicht|übersicht)\\b")
     )
     
+    // Scroll down patterns - for scrolling down
+    private val SCROLL_DOWN_PATTERNS = listOf(
+        // Function-like patterns
+        Regex("(?i)\\bscrollDown\\(\\)"),
+        Regex("(?i)\\bscrollDownPage\\(\\)"),
+        Regex("(?i)\\bpageDown\\(\\)"),
+        
+        // Natural language patterns
+        Regex("(?i)\\b(?:scroll|swipe|move|nach unten|runter) (?:down|nach unten|runter)\\b"),
+        Regex("(?i)\\b(?:nach unten scrollen|runter scrollen|nach unten wischen|runter wischen)\\b")
+    )
+    
+    // Scroll up patterns - for scrolling up
+    private val SCROLL_UP_PATTERNS = listOf(
+        // Function-like patterns
+        Regex("(?i)\\bscrollUp\\(\\)"),
+        Regex("(?i)\\bscrollUpPage\\(\\)"),
+        Regex("(?i)\\bpageUp\\(\\)"),
+        
+        // Natural language patterns
+        Regex("(?i)\\b(?:scroll|swipe|move|nach oben|hoch) (?:up|nach oben|hoch)\\b"),
+        Regex("(?i)\\b(?:nach oben scrollen|hoch scrollen|nach oben wischen|hoch wischen)\\b")
+    )
+    
     // Buffer for storing partial text between calls
     private var textBuffer = ""
     
@@ -140,6 +164,8 @@ object CommandParser {
                     is Command.PressHomeButton -> Log.d(TAG, "Command details: PressHomeButton")
                     is Command.PressBackButton -> Log.d(TAG, "Command details: PressBackButton")
                     is Command.ShowRecentApps -> Log.d(TAG, "Command details: ShowRecentApps")
+                    is Command.ScrollDown -> Log.d(TAG, "Command details: ScrollDown")
+                    is Command.ScrollUp -> Log.d(TAG, "Command details: ScrollUp")
                 }
             }
         } catch (e: Exception) {
@@ -170,6 +196,12 @@ object CommandParser {
         
         // Look for recent apps commands
         findRecentAppsCommands(text, commands)
+        
+        // Look for scroll down commands
+        findScrollDownCommands(text, commands)
+        
+        // Look for scroll up commands
+        findScrollUpCommands(text, commands)
     }
     
     /**
@@ -310,6 +342,42 @@ object CommandParser {
     }
     
     /**
+     * Find scroll down commands in the text
+     */
+    private fun findScrollDownCommands(text: String, commands: MutableList<Command>) {
+        // Try each pattern
+        for (pattern in SCROLL_DOWN_PATTERNS) {
+            if (pattern.containsMatchIn(text)) {
+                // Check if this command is already in the list (avoid duplicates)
+                if (!commands.any { it is Command.ScrollDown }) {
+                    Log.d(TAG, "Found scroll down command with pattern ${pattern.pattern}")
+                    commands.add(Command.ScrollDown)
+                    // Only add one scroll down command even if multiple matches are found
+                    break
+                }
+            }
+        }
+    }
+    
+    /**
+     * Find scroll up commands in the text
+     */
+    private fun findScrollUpCommands(text: String, commands: MutableList<Command>) {
+        // Try each pattern
+        for (pattern in SCROLL_UP_PATTERNS) {
+            if (pattern.containsMatchIn(text)) {
+                // Check if this command is already in the list (avoid duplicates)
+                if (!commands.any { it is Command.ScrollUp }) {
+                    Log.d(TAG, "Found scroll up command with pattern ${pattern.pattern}")
+                    commands.add(Command.ScrollUp)
+                    // Only add one scroll up command even if multiple matches are found
+                    break
+                }
+            }
+        }
+    }
+    
+    /**
      * Clear the text buffer
      */
     fun clearBuffer() {
@@ -373,4 +441,14 @@ sealed class Command {
      * Command to show recent apps
      */
     object ShowRecentApps : Command()
+    
+    /**
+     * Command to scroll down
+     */
+    object ScrollDown : Command()
+    
+    /**
+     * Command to scroll up
+     */
+    object ScrollUp : Command()
 }
