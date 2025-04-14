@@ -1043,21 +1043,51 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
     }
     
     /**
-     * Scroll down on the screen
+     * Scroll down on the screen using gesture
      */
     fun scrollDown() {
         Log.d(TAG, "Scrolling down")
         showToast("Scrolle nach unten...", false)
         
         try {
-            // Use the global action to scroll down
-            val result = performGlobalAction(GLOBAL_ACTION_SCROLL_DOWN)
+            // Get display metrics to calculate swipe coordinates
+            val displayMetrics = resources.displayMetrics
+            val screenHeight = displayMetrics.heightPixels
+            val screenWidth = displayMetrics.widthPixels
             
-            if (result) {
-                Log.d(TAG, "Successfully scrolled down")
-                showToast("Erfolgreich nach unten gescrollt", false)
-            } else {
-                Log.e(TAG, "Failed to scroll down")
+            // Create a path for the gesture (swipe from middle-bottom to middle-top)
+            val swipePath = Path()
+            swipePath.moveTo(screenWidth / 2f, screenHeight * 0.7f) // Start from 70% down the screen
+            swipePath.lineTo(screenWidth / 2f, screenHeight * 0.3f) // Move to 30% down the screen
+            
+            // Create a gesture builder and add the swipe
+            val gestureBuilder = GestureDescription.Builder()
+            val gesture = GestureDescription.StrokeDescription(
+                swipePath, 
+                0, // start time
+                300 // duration in milliseconds
+            )
+            gestureBuilder.addStroke(gesture)
+            
+            // Dispatch the gesture
+            val result = dispatchGesture(
+                gestureBuilder.build(),
+                object : GestureResultCallback() {
+                    override fun onCompleted(gestureDescription: GestureDescription) {
+                        Log.d(TAG, "Scroll down gesture completed")
+                        showToast("Erfolgreich nach unten gescrollt", false)
+                    }
+                    
+                    override fun onCancelled(gestureDescription: GestureDescription) {
+                        Log.e(TAG, "Scroll down gesture cancelled")
+                        showToast("Scrollen nach unten abgebrochen", true)
+                    }
+                },
+                null // handler
+            )
+            
+            if (!result) {
+                Log.e(TAG, "Failed to dispatch scroll down gesture")
                 showToast("Fehler beim Scrollen nach unten", true)
             }
         } catch (e: Exception) {
@@ -1067,21 +1097,51 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
     }
     
     /**
-     * Scroll up on the screen
+     * Scroll up on the screen using gesture
      */
     fun scrollUp() {
         Log.d(TAG, "Scrolling up")
         showToast("Scrolle nach oben...", false)
         
         try {
-            // Use the global action to scroll up
-            val result = performGlobalAction(GLOBAL_ACTION_SCROLL_UP)
+            // Get display metrics to calculate swipe coordinates
+            val displayMetrics = resources.displayMetrics
+            val screenHeight = displayMetrics.heightPixels
+            val screenWidth = displayMetrics.widthPixels
             
-            if (result) {
-                Log.d(TAG, "Successfully scrolled up")
-                showToast("Erfolgreich nach oben gescrollt", false)
-            } else {
-                Log.e(TAG, "Failed to scroll up")
+            // Create a path for the gesture (swipe from middle-top to middle-bottom)
+            val swipePath = Path()
+            swipePath.moveTo(screenWidth / 2f, screenHeight * 0.3f) // Start from 30% down the screen
+            swipePath.lineTo(screenWidth / 2f, screenHeight * 0.7f) // Move to 70% down the screen
+            
+            // Create a gesture builder and add the swipe
+            val gestureBuilder = GestureDescription.Builder()
+            val gesture = GestureDescription.StrokeDescription(
+                swipePath, 
+                0, // start time
+                300 // duration in milliseconds
+            )
+            gestureBuilder.addStroke(gesture)
+            
+            // Dispatch the gesture
+            val result = dispatchGesture(
+                gestureBuilder.build(),
+                object : GestureResultCallback() {
+                    override fun onCompleted(gestureDescription: GestureDescription) {
+                        Log.d(TAG, "Scroll up gesture completed")
+                        showToast("Erfolgreich nach oben gescrollt", false)
+                    }
+                    
+                    override fun onCancelled(gestureDescription: GestureDescription) {
+                        Log.e(TAG, "Scroll up gesture cancelled")
+                        showToast("Scrollen nach oben abgebrochen", true)
+                    }
+                },
+                null // handler
+            )
+            
+            if (!result) {
+                Log.e(TAG, "Failed to dispatch scroll up gesture")
                 showToast("Fehler beim Scrollen nach oben", true)
             }
         } catch (e: Exception) {
