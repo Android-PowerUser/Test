@@ -446,6 +446,12 @@ fun PhotoReasoningScreen(
                             is Command.ShowRecentApps -> "Übersicht der letzten Apps öffnen"
                             is Command.ScrollDown -> "Nach unten scrollen"
                             is Command.ScrollUp -> "Nach oben scrollen"
+                            is Command.ScrollLeft -> "Nach links scrollen"
+                            is Command.ScrollRight -> "Nach rechts scrollen"
+                            is Command.ScrollDownFromCoordinates -> "Nach unten scrollen von Position (${command.x}, ${command.y}) mit Distanz ${command.distance}px und Dauer ${command.duration}ms"
+                            is Command.ScrollUpFromCoordinates -> "Nach oben scrollen von Position (${command.x}, ${command.y}) mit Distanz ${command.distance}px und Dauer ${command.duration}ms"
+                            is Command.ScrollLeftFromCoordinates -> "Nach links scrollen von Position (${command.x}, ${command.y}) mit Distanz ${command.distance}px und Dauer ${command.duration}ms"
+                            is Command.ScrollRightFromCoordinates -> "Nach rechts scrollen von Position (${command.x}, ${command.y}) mit Distanz ${command.distance}px und Dauer ${command.duration}ms"
                         }
                         
                         Text(
