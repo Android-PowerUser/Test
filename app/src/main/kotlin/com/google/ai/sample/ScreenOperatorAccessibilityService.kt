@@ -14,6 +14,7 @@ import android.graphics.Point
 import android.graphics.Rect
 import android.net.Uri
 import android.os.Build
+import android.os.Environment
 import android.os.Handler
 import android.os.Looper
 import android.provider.MediaStore
@@ -421,62 +422,18 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
                 }
             }
             
-            // Method 2: Simulate key events for POWER + VOLUME_DOWN
-            try {
-                // Press and hold Power button
-                val powerDownEvent = KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_POWER)
-                val injectedPowerDown = injectKeyEvent(powerDownEvent)
-                
-                // Short delay
-                Thread.sleep(100)
-                
-                // Press and hold Volume Down button
-                val volumeDownEvent = KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_VOLUME_DOWN)
-                val injectedVolumeDown = injectKeyEvent(volumeDownEvent)
-                
-                // Short delay
-                Thread.sleep(500)
-                
-                // Release Volume Down button
-                val volumeUpEvent = KeyEvent(KeyEvent.ACTION_UP, KeyEvent.KEYCODE_VOLUME_DOWN)
-                injectKeyEvent(volumeUpEvent)
-                
-                // Release Power button
-                val powerUpEvent = KeyEvent(KeyEvent.ACTION_UP, KeyEvent.KEYCODE_POWER)
-                injectKeyEvent(powerUpEvent)
-                
-                return injectedPowerDown && injectedVolumeDown
-            } catch (e: Exception) {
-                Log.e(TAG, "Error simulating POWER + VOLUME_DOWN: ${e.message}")
-            }
+            // Method 2: Use performGlobalAction for key combinations
+            // Since we can't directly inject key events in AccessibilityService,
+            // we'll use alternative approaches
             
-            // Method 3: Try Volume Up + Volume Down
+            // Try using a broadcast intent (some devices support this)
             try {
-                // Press and hold Volume Up button
-                val volumeUpDownEvent = KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_VOLUME_UP)
-                val injectedVolumeUp = injectKeyEvent(volumeUpDownEvent)
-                
-                // Short delay
-                Thread.sleep(100)
-                
-                // Press and hold Volume Down button
-                val volumeDownDownEvent = KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_VOLUME_DOWN)
-                val injectedVolumeDown = injectKeyEvent(volumeDownDownEvent)
-                
-                // Short delay
-                Thread.sleep(500)
-                
-                // Release Volume Down button
-                val volumeDownUpEvent = KeyEvent(KeyEvent.ACTION_UP, KeyEvent.KEYCODE_VOLUME_DOWN)
-                injectKeyEvent(volumeDownUpEvent)
-                
-                // Release Volume Up button
-                val volumeUpUpEvent = KeyEvent(KeyEvent.ACTION_UP, KeyEvent.KEYCODE_VOLUME_UP)
-                injectKeyEvent(volumeUpUpEvent)
-                
-                return injectedVolumeUp && injectedVolumeDown
+                val intent = Intent("android.intent.action.SCREENSHOT")
+                intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                applicationContext.sendBroadcast(intent)
+                return true
             } catch (e: Exception) {
-                Log.e(TAG, "Error simulating VOLUME_UP + VOLUME_DOWN: ${e.message}")
+                Log.e(TAG, "Error sending screenshot broadcast: ${e.message}")
             }
             
             // If all methods failed, return false
@@ -510,10 +467,20 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
             )
             
             // Find all screenshot files
-            val screenshotFiles = directories
-                .filter { it.exists() && it.isDirectory }
-                .flatMap { it.listFiles()?.toList() ?: emptyList() }
-                .filter { it.isFile && it.name.contains("screenshot", ignoreCase = true) }
+            val screenshotFiles = mutableListOf<File>()
+            
+            for (dir in directories) {
+                if (dir.exists() && dir.isDirectory) {
+                    val files = dir.listFiles()
+                    if (files != null) {
+                        for (file in files) {
+                            if (file.isFile && file.name.contains("screenshot", ignoreCase = true)) {
+                                screenshotFiles.add(file)
+                            }
+                        }
+                    }
+                }
+            }
             
             // Return the most recent file
             return screenshotFiles.maxByOrNull { it.lastModified() }
