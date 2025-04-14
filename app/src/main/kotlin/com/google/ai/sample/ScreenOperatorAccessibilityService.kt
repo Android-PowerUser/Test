@@ -874,8 +874,8 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
         try {
             // Create a path for the gesture
             val path = Path()
-            path.moveTo(screenWidth / 2f, screenHeight * 0.7f)
-            path.lineTo(screenWidth / 2f, screenHeight * 0.3f)
+            path.moveTo((screenWidth / 2).toFloat(), (screenHeight * 0.7).toFloat())
+            path.lineTo((screenWidth / 2).toFloat(), (screenHeight * 0.3).toFloat())
             
             // Create a gesture description
             val gestureDescription = GestureDescription.Builder()
@@ -907,8 +907,8 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
         try {
             // Create a path for the gesture
             val path = Path()
-            path.moveTo(screenWidth / 2f, screenHeight * 0.3f)
-            path.lineTo(screenWidth / 2f, screenHeight * 0.7f)
+            path.moveTo((screenWidth / 2).toFloat(), (screenHeight * 0.3).toFloat())
+            path.lineTo((screenWidth / 2).toFloat(), (screenHeight * 0.7).toFloat())
             
             // Create a gesture description
             val gestureDescription = GestureDescription.Builder()
@@ -940,8 +940,8 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
         try {
             // Create a path for the gesture
             val path = Path()
-            path.moveTo(screenWidth * 0.3f, screenHeight / 2f)
-            path.lineTo(screenWidth * 0.7f, screenHeight / 2f)
+            path.moveTo((screenWidth * 0.3).toFloat(), (screenHeight / 2).toFloat())
+            path.lineTo((screenWidth * 0.7).toFloat(), (screenHeight / 2).toFloat())
             
             // Create a gesture description
             val gestureDescription = GestureDescription.Builder()
@@ -973,8 +973,8 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
         try {
             // Create a path for the gesture
             val path = Path()
-            path.moveTo(screenWidth * 0.7f, screenHeight / 2f)
-            path.lineTo(screenWidth * 0.3f, screenHeight / 2f)
+            path.moveTo((screenWidth * 0.7).toFloat(), (screenHeight / 2).toFloat())
+            path.lineTo((screenWidth * 0.3).toFloat(), (screenHeight / 2).toFloat())
             
             // Create a gesture description
             val gestureDescription = GestureDescription.Builder()
