@@ -247,6 +247,8 @@ class PhotoReasoningViewModel(
                             is Command.TapCoordinates -> "Tippen auf Koordinaten: (${it.x}, ${it.y})"
                             is Command.TakeScreenshot -> "Screenshot aufnehmen"
                             is Command.PressHomeButton -> "Home-Button drücken"
+                            is Command.PressBackButton -> "Zurück-Button drücken"
+                            is Command.ShowRecentApps -> "Übersicht der letzten Apps öffnen"
                         }
                     }
                     
@@ -297,6 +299,8 @@ class PhotoReasoningViewModel(
                             is Command.TapCoordinates -> "Tippen auf Koordinaten: (${command.x}, ${command.y})"
                             is Command.TakeScreenshot -> "Screenshot aufnehmen"
                             is Command.PressHomeButton -> "Home-Button drücken"
+                            is Command.PressBackButton -> "Zurück-Button drücken"
+                            is Command.ShowRecentApps -> "Übersicht der letzten Apps öffnen"
                         }
                         
                         _commandExecutionStatus.value = "Führe aus: $commandDescription (${index + 1}/${commands.size})"
