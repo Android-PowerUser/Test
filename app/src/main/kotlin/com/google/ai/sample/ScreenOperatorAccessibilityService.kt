@@ -374,18 +374,34 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
                         // Copy the screenshot to our app's directory
                         latestScreenshot.copyTo(screenshotFile, overwrite = true)
                         
-                        // Get the URI for the file
-                        val screenshotUri = FileProvider.getUriForFile(
-                            applicationContext,
-                            "${applicationContext.packageName}.fileprovider",
-                            screenshotFile
-                        )
-                        
                         // Get screen information
                         val screenInfo = getScreenInfo()
                         
-                        // Add the screenshot to the conversation
-                        addScreenshotToConversation(screenshotUri, screenInfo)
+                        // Try to use direct bitmap approach first
+                        try {
+                            // Load the bitmap directly
+                            val bitmap = MediaStore.Images.Media.getBitmap(
+                                applicationContext.contentResolver,
+                                Uri.fromFile(latestScreenshot)
+                            )
+                            
+                            // Add the screenshot bitmap directly to the conversation
+                            addScreenshotToConversationWithBitmap(bitmap, screenInfo)
+                        } catch (e: Exception) {
+                            Log.e(TAG, "Error loading bitmap directly, falling back to URI: ${e.message}")
+                            
+                            // Fallback to URI approach
+                            try {
+                                // Get the URI for the file using content URI instead of FileProvider
+                                val screenshotUri = Uri.fromFile(screenshotFile)
+                                
+                                // Add the screenshot to the conversation
+                                addScreenshotToConversation(screenshotUri, screenInfo)
+                            } catch (e2: Exception) {
+                                Log.e(TAG, "Error with URI fallback: ${e2.message}")
+                                throw e2
+                            }
+                        }
                         
                         // Show toast
                         showToast("Screenshot aufgenommen", false)
@@ -422,11 +438,7 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
                 }
             }
             
-            // Method 2: Use performGlobalAction for key combinations
-            // Since we can't directly inject key events in AccessibilityService,
-            // we'll use alternative approaches
-            
-            // Try using a broadcast intent (some devices support this)
+            // Method 2: Use a broadcast intent (some devices support this)
             try {
                 val intent = Intent("android.intent.action.SCREENSHOT")
                 intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
@@ -504,9 +516,6 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
             // Get the class name
             val className = rootNode.className?.toString() ?: "Unknown"
             
-            // Get the window title (safely)
-            val title = "Unknown"
-            
             // Get the content description
             val contentDescription = rootNode.contentDescription?.toString() ?: "None"
             
@@ -520,7 +529,6 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
             val screenInfo = StringBuilder()
             screenInfo.append("App: $packageName\n")
             screenInfo.append("Screen: $className\n")
-            screenInfo.append("Title: $title\n")
             screenInfo.append("Description: $contentDescription\n")
             screenInfo.append("Child Count: $childCount\n\n")
             
@@ -633,6 +641,31 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
     }
     
     /**
+     * Add a screenshot bitmap directly to the conversation
+     */
+    private fun addScreenshotToConversationWithBitmap(screenshot: Bitmap, screenInfo: String) {
+        try {
+            // Get the PhotoReasoningViewModel from MainActivity
+            val photoReasoningViewModel = MainActivity.getInstance()?.getPhotoReasoningViewModel()
+            
+            if (photoReasoningViewModel == null) {
+                Log.e(TAG, "PhotoReasoningViewModel is null, cannot add screenshot to conversation")
+                showToast("Fehler: PhotoReasoningViewModel ist nicht verfügbar", true)
+                return
+            }
+            
+            // Add the screenshot bitmap to the conversation with screen information
+            photoReasoningViewModel.addScreenshotToConversation(screenshot, screenInfo)
+            
+            Log.d(TAG, "Screenshot bitmap added to conversation")
+            showToast("Screenshot zur Konversation hinzugefügt", false)
+        } catch (e: Exception) {
+            Log.e(TAG, "Error adding screenshot bitmap to conversation: ${e.message}")
+            showToast("Fehler beim Hinzufügen des Screenshots zur Konversation: ${e.message}", true)
+        }
+    }
+    
+    /**
      * Open an app with the given name
      */
     private fun openApp(appName: String) {
@@ -714,7 +747,7 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
     }
     
     /**
-     * Pull the status bar down
+     * Pull down the status bar
      */
     private fun pullStatusBarDown() {
         Log.d(TAG, "Pulling status bar down")
@@ -732,13 +765,19 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
     }
     
     /**
-     * Pull the status bar down twice (for quick settings)
+     * Pull down the status bar twice (for quick settings)
      */
     private fun pullStatusBarDownTwice() {
         Log.d(TAG, "Pulling status bar down twice")
         
         try {
-            // Perform global action
+            // Perform global action for notifications
+            performGlobalAction(GLOBAL_ACTION_NOTIFICATIONS)
+            
+            // Wait a moment
+            Thread.sleep(500)
+            
+            // Perform global action for quick settings
             performGlobalAction(GLOBAL_ACTION_QUICK_SETTINGS)
             
             // Show toast
@@ -750,13 +789,13 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
     }
     
     /**
-     * Push the status bar up
+     * Push up the status bar
      */
     private fun pushStatusBarUp() {
         Log.d(TAG, "Pushing status bar up")
         
         try {
-            // Press back to close the notification shade
+            // Perform global action
             performGlobalAction(GLOBAL_ACTION_BACK)
             
             // Show toast
@@ -780,7 +819,7 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
             path.lineTo(displayWidth / 2f, displayHeight * 0.3f)
             
             // Create a stroke description
-            val stroke = StrokeDescription(path, 0, 300)
+            val stroke = StrokeDescription(path, 0, 100)
             
             // Create a gesture description
             val gestureDescription = GestureDescription.Builder()
@@ -811,7 +850,7 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
             path.lineTo(displayWidth / 2f, displayHeight * 0.7f)
             
             // Create a stroke description
-            val stroke = StrokeDescription(path, 0, 300)
+            val stroke = StrokeDescription(path, 0, 100)
             
             // Create a gesture description
             val gestureDescription = GestureDescription.Builder()
@@ -842,7 +881,7 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
             path.lineTo(displayWidth * 0.7f, displayHeight / 2f)
             
             // Create a stroke description
-            val stroke = StrokeDescription(path, 0, 300)
+            val stroke = StrokeDescription(path, 0, 100)
             
             // Create a gesture description
             val gestureDescription = GestureDescription.Builder()
@@ -873,7 +912,7 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
             path.lineTo(displayWidth * 0.3f, displayHeight / 2f)
             
             // Create a stroke description
-            val stroke = StrokeDescription(path, 0, 300)
+            val stroke = StrokeDescription(path, 0, 100)
             
             // Create a gesture description
             val gestureDescription = GestureDescription.Builder()
@@ -914,15 +953,11 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
      */
     private fun showToast(message: String, isError: Boolean) {
         mainHandler.post {
-            try {
-                Toast.makeText(
-                    applicationContext,
-                    message,
-                    if (isError) Toast.LENGTH_LONG else Toast.LENGTH_SHORT
-                ).show()
-            } catch (e: Exception) {
-                Log.e(TAG, "Error showing toast: ${e.message}")
-            }
+            Toast.makeText(
+                applicationContext,
+                message,
+                if (isError) Toast.LENGTH_LONG else Toast.LENGTH_SHORT
+            ).show()
         }
     }
 }
