@@ -20,6 +20,7 @@ import android.provider.MediaStore
 import android.provider.Settings
 import android.util.Log
 import android.view.Gravity
+import android.view.KeyEvent
 import android.view.LayoutInflater
 import android.view.View
 import android.view.WindowManager
@@ -132,22 +133,27 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
         isServiceAvailable.set(true)
         
         // Get display metrics
+        windowManager = getSystemService(WINDOW_SERVICE) as WindowManager
+        
         val display = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            display
+            windowManager?.currentWindowMetrics?.let {
+                Point(it.bounds.width(), it.bounds.height())
+            }
         } else {
+            val point = Point()
             @Suppress("DEPRECATION")
-            windowManager?.defaultDisplay
+            windowManager?.defaultDisplay?.getSize(point)
+            point
         }
         
-        val size = Point()
-        @Suppress("DEPRECATION")
-        display?.getSize(size)
-        
-        displayWidth = size.x
-        displayHeight = size.y
-        
-        // Initialize window manager
-        windowManager = getSystemService(WINDOW_SERVICE) as WindowManager
+        display?.let {
+            displayWidth = it.x
+            displayHeight = it.y
+        } ?: run {
+            // Fallback values if display is null
+            displayWidth = 1080
+            displayHeight = 1920
+        }
         
         // Show toast
         showToast("Screen Operator Service aktiviert", false)
@@ -354,29 +360,43 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
             
             val screenshotFile = File(screenshotsDir, fileName)
             
-            // Take the screenshot
-            val screenshotBitmap = takeScreenshotBitmap() ?: return
+            // Simulate hardware key combination for screenshot
+            val success = simulateScreenshotKeyPress()
             
-            // Save the screenshot to the file
-            FileOutputStream(screenshotFile).use { out ->
-                screenshotBitmap.compress(Bitmap.CompressFormat.PNG, 100, out)
-            }
-            
-            // Get the URI for the file
-            val screenshotUri = FileProvider.getUriForFile(
-                applicationContext,
-                "${applicationContext.packageName}.fileprovider",
-                screenshotFile
-            )
-            
-            // Get screen information
-            val screenInfo = getScreenInfo()
-            
-            // Add the screenshot to the conversation
-            addScreenshotToConversation(screenshotUri, screenInfo)
-            
-            // Show toast
-            showToast("Screenshot aufgenommen", false)
+            // Wait for the screenshot to be taken by the system
+            mainHandler.postDelayed({
+                // Try to find the latest screenshot in the system's screenshot directory
+                val latestScreenshot = findLatestScreenshot()
+                
+                if (latestScreenshot != null) {
+                    try {
+                        // Copy the screenshot to our app's directory
+                        latestScreenshot.copyTo(screenshotFile, overwrite = true)
+                        
+                        // Get the URI for the file
+                        val screenshotUri = FileProvider.getUriForFile(
+                            applicationContext,
+                            "${applicationContext.packageName}.fileprovider",
+                            screenshotFile
+                        )
+                        
+                        // Get screen information
+                        val screenInfo = getScreenInfo()
+                        
+                        // Add the screenshot to the conversation
+                        addScreenshotToConversation(screenshotUri, screenInfo)
+                        
+                        // Show toast
+                        showToast("Screenshot aufgenommen", false)
+                    } catch (e: Exception) {
+                        Log.e(TAG, "Error processing screenshot: ${e.message}")
+                        showToast("Fehler beim Verarbeiten des Screenshots: ${e.message}", true)
+                    }
+                } else {
+                    Log.e(TAG, "Screenshot not found in system directory")
+                    showToast("Screenshot nicht gefunden", true)
+                }
+            }, 2000) // Wait 2 seconds for the system to save the screenshot
         } catch (e: Exception) {
             Log.e(TAG, "Error taking screenshot: ${e.message}")
             showToast("Fehler beim Aufnehmen des Screenshots: ${e.message}", true)
@@ -384,25 +404,122 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
     }
     
     /**
-     * Take a screenshot and return it as a bitmap
+     * Simulate pressing the hardware key combination for screenshot
      */
-    private fun takeScreenshotBitmap(): Bitmap? {
+    private fun simulateScreenshotKeyPress(): Boolean {
         return try {
-            // Get the root node
-            val rootNode = rootInActiveWindow ?: return null
+            // Different devices use different key combinations
+            // Try the most common ones: POWER + VOLUME_DOWN or just VOLUME_DOWN + VOLUME_UP
             
-            // Verwende eine alternative Methode anstelle von ACTION_TAKE_SCREENSHOT
-            // Erstelle ein leeres Bitmap als Platzhalter
-            val bitmap = Bitmap.createBitmap(100, 100, Bitmap.Config.ARGB_8888)
+            // Method 1: Use AccessibilityService to perform global action (Android 9+)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                try {
+                    // Try to use the GLOBAL_ACTION_TAKE_SCREENSHOT action if available
+                    return performGlobalAction(GLOBAL_ACTION_TAKE_SCREENSHOT)
+                } catch (e: Exception) {
+                    Log.e(TAG, "Error using GLOBAL_ACTION_TAKE_SCREENSHOT: ${e.message}")
+                }
+            }
             
-            // Recycle the root node
-            rootNode.recycle()
+            // Method 2: Simulate key events for POWER + VOLUME_DOWN
+            try {
+                // Press and hold Power button
+                val powerDownEvent = KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_POWER)
+                val injectedPowerDown = injectKeyEvent(powerDownEvent)
+                
+                // Short delay
+                Thread.sleep(100)
+                
+                // Press and hold Volume Down button
+                val volumeDownEvent = KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_VOLUME_DOWN)
+                val injectedVolumeDown = injectKeyEvent(volumeDownEvent)
+                
+                // Short delay
+                Thread.sleep(500)
+                
+                // Release Volume Down button
+                val volumeUpEvent = KeyEvent(KeyEvent.ACTION_UP, KeyEvent.KEYCODE_VOLUME_DOWN)
+                injectKeyEvent(volumeUpEvent)
+                
+                // Release Power button
+                val powerUpEvent = KeyEvent(KeyEvent.ACTION_UP, KeyEvent.KEYCODE_POWER)
+                injectKeyEvent(powerUpEvent)
+                
+                return injectedPowerDown && injectedVolumeDown
+            } catch (e: Exception) {
+                Log.e(TAG, "Error simulating POWER + VOLUME_DOWN: ${e.message}")
+            }
             
-            // Return a placeholder bitmap
-            bitmap
+            // Method 3: Try Volume Up + Volume Down
+            try {
+                // Press and hold Volume Up button
+                val volumeUpDownEvent = KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_VOLUME_UP)
+                val injectedVolumeUp = injectKeyEvent(volumeUpDownEvent)
+                
+                // Short delay
+                Thread.sleep(100)
+                
+                // Press and hold Volume Down button
+                val volumeDownDownEvent = KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_VOLUME_DOWN)
+                val injectedVolumeDown = injectKeyEvent(volumeDownDownEvent)
+                
+                // Short delay
+                Thread.sleep(500)
+                
+                // Release Volume Down button
+                val volumeDownUpEvent = KeyEvent(KeyEvent.ACTION_UP, KeyEvent.KEYCODE_VOLUME_DOWN)
+                injectKeyEvent(volumeDownUpEvent)
+                
+                // Release Volume Up button
+                val volumeUpUpEvent = KeyEvent(KeyEvent.ACTION_UP, KeyEvent.KEYCODE_VOLUME_UP)
+                injectKeyEvent(volumeUpUpEvent)
+                
+                return injectedVolumeUp && injectedVolumeDown
+            } catch (e: Exception) {
+                Log.e(TAG, "Error simulating VOLUME_UP + VOLUME_DOWN: ${e.message}")
+            }
+            
+            // If all methods failed, return false
+            false
         } catch (e: Exception) {
-            Log.e(TAG, "Error taking screenshot bitmap: ${e.message}")
-            null
+            Log.e(TAG, "Error simulating screenshot key press: ${e.message}")
+            false
+        }
+    }
+    
+    /**
+     * Find the latest screenshot in the system's screenshot directory
+     */
+    private fun findLatestScreenshot(): File? {
+        try {
+            // Common screenshot directories
+            val directories = listOf(
+                // Primary external storage
+                File(Environment.getExternalStorageDirectory(), "Pictures/Screenshots"),
+                File(Environment.getExternalStorageDirectory(), "DCIM/Screenshots"),
+                // Samsung
+                File(Environment.getExternalStorageDirectory(), "Pictures/ScreenCapture"),
+                // Xiaomi
+                File(Environment.getExternalStorageDirectory(), "MIUI/Gallery/Screenshots"),
+                // Huawei
+                File(Environment.getExternalStorageDirectory(), "Pictures/Screenshots"),
+                // OnePlus
+                File(Environment.getExternalStorageDirectory(), "Pictures/Screenshots"),
+                // Google
+                File(Environment.getExternalStorageDirectory(), "Pictures/Screenshots")
+            )
+            
+            // Find all screenshot files
+            val screenshotFiles = directories
+                .filter { it.exists() && it.isDirectory }
+                .flatMap { it.listFiles()?.toList() ?: emptyList() }
+                .filter { it.isFile && it.name.contains("screenshot", ignoreCase = true) }
+            
+            // Return the most recent file
+            return screenshotFiles.maxByOrNull { it.lastModified() }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error finding latest screenshot: ${e.message}")
+            return null
         }
     }
     
@@ -420,8 +537,16 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
             // Get the class name
             val className = rootNode.className?.toString() ?: "Unknown"
             
-            // Entferne den Verweis auf windowTitle
-            val windowTitle = "Unknown" // Statt rootNode.windowTitle?.toString() ?: "Unknown"
+            // Get the window title (safely)
+            val windowTitle = try {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+                    rootNode.windowTitle?.toString() ?: "Unknown"
+                } else {
+                    "Unknown"
+                }
+            } catch (e: Exception) {
+                "Unknown"
+            }
             
             // Get the content description
             val contentDescription = rootNode.contentDescription?.toString() ?: "None"
