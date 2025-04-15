@@ -225,6 +225,7 @@ object CommandParser {
                     is Command.ScrollLeftFromCoordinates -> Log.d(TAG, "Command details: ScrollLeftFromCoordinates(${command.x}, ${command.y}, ${command.distance}, ${command.duration})")
                     is Command.ScrollRightFromCoordinates -> Log.d(TAG, "Command details: ScrollRightFromCoordinates(${command.x}, ${command.y}, ${command.distance}, ${command.duration})")
                     is Command.OpenApp -> Log.d(TAG, "Command details: OpenApp(\"${command.packageName}\")")
+                    is Command.WriteText -> Log.d(TAG, "Command details: WriteText(\"${command.text}\")")
                 }
             }
         } catch (e: Exception) {
