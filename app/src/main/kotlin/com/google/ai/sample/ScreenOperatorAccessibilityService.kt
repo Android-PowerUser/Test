@@ -471,7 +471,7 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
             Log.d(TAG, "Trying to paste text: $text")
             
             // First, try to select all existing text
-            val selectAllResult = node.performAction(AccessibilityNodeInfo.ACTION_SELECT_ALL)
+            val selectAllResult = node.performAction(android.view.accessibility.AccessibilityNodeInfo.ACTION_SELECT_ALL)
             
             if (selectAllResult) {
                 Log.d(TAG, "Successfully selected all text")
