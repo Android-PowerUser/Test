@@ -792,20 +792,34 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
      * Take a screenshot by simulating hardware button presses
      */
     fun takeScreenshot() {
-        Log.d(TAG, "Taking screenshot by simulating hardware buttons")
-        showToast("Nehme Screenshot auf durch Simulation der Hardware-Tasten...", false)
+        Log.d(TAG, "Taking screenshot")
+        showToast("Nehme Screenshot auf...", false)
         
         try {
             // Capture screen information before taking the screenshot
             val screenInfo = captureScreenInformation()
             
-            // Simulate pressing Power + Volume Down buttons to take a screenshot
-            simulateScreenshotButtonCombination()
+            // Try to use the global action to take a screenshot
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                val result = performGlobalAction(GLOBAL_ACTION_TAKE_SCREENSHOT)
+                if (result) {
+                    Log.d(TAG, "Successfully took screenshot using GLOBAL_ACTION_TAKE_SCREENSHOT")
+                    
+                    // Wait a moment for the screenshot to be saved, then retrieve it
+                    handler.postDelayed({
+                        retrieveLatestScreenshot(screenInfo)
+                    }, 1000) // Wait 1 second for the screenshot to be saved
+                    
+                    return
+                } else {
+                    Log.d(TAG, "Failed to take screenshot using GLOBAL_ACTION_TAKE_SCREENSHOT, trying alternative methods")
+                }
+            }
             
-            // Wait a moment for the screenshot to be saved, then retrieve it
-            handler.postDelayed({
-                retrieveLatestScreenshot(screenInfo)
-            }, 1000) // Wait 1 second for the screenshot to be saved
+            // If the global action failed or is not available, show an error
+            Log.e(TAG, "Could not take screenshot, global action not available or failed")
+            showToast("Fehler beim Aufnehmen des Screenshots: Globale Aktion nicht verfügbar oder fehlgeschlagen", true)
+            
         } catch (e: Exception) {
             Log.e(TAG, "Error taking screenshot: ${e.message}")
             showToast("Fehler beim Aufnehmen des Screenshots: ${e.message}", true)
@@ -1083,60 +1097,186 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
     }
     
     /**
-     * Simulate pressing the Power + Volume Down buttons to take a screenshot
+     * Retrieve the latest screenshot
      */
-    private fun simulateScreenshotButtonCombination() {
-        Log.d(TAG, "Simulating Power + Volume Down button combination")
-        
+    private fun retrieveLatestScreenshot(screenInfo: String) {
         try {
-            // On some devices, we can use the GLOBAL_ACTION_TAKE_SCREENSHOT global action
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-                val result = performGlobalAction(GLOBAL_ACTION_TAKE_SCREENSHOT)
-                if (result) {
-                    Log.d(TAG, "Successfully took screenshot using GLOBAL_ACTION_TAKE_SCREENSHOT")
-                    return
-                } else {
-                    Log.d(TAG, "Failed to take screenshot using GLOBAL_ACTION_TAKE_SCREENSHOT, trying alternative methods")
-                }
-            }
+            Log.d(TAG, "Retrieving latest screenshot")
+            showToast("Suche nach dem aufgenommenen Screenshot...", false)
             
-            // On devices where the global action doesn't work, try to simulate key presses
-            // This requires the INJECT_EVENTS permission which is only granted to system apps
-            // So this might not work on all devices
-            val result = simulateKeyPress(KeyEvent.KEYCODE_VOLUME_DOWN) && 
-                         simulateKeyPress(KeyEvent.KEYCODE_POWER)
+            // Check standard screenshot locations
+            val screenshotFile = findLatestScreenshotFile()
             
-            if (result) {
-                Log.d(TAG, "Successfully simulated Power + Volume Down button combination")
+            if (screenshotFile != null) {
+                Log.d(TAG, "Found screenshot file: ${screenshotFile.absolutePath}")
+                showToast("Screenshot gefunden: ${screenshotFile.name}", false)
+                
+                // Convert file to URI
+                val screenshotUri = Uri.fromFile(screenshotFile)
+                
+                // Add the screenshot to the conversation with screen information
+                addScreenshotToConversation(screenshotUri, screenInfo)
             } else {
-                Log.e(TAG, "Failed to simulate Power + Volume Down button combination")
+                Log.e(TAG, "No screenshot file found")
+                showToast("Kein Screenshot gefunden. Bitte prüfen Sie die Berechtigungen.", true)
             }
         } catch (e: Exception) {
-            Log.e(TAG, "Error simulating screenshot button combination: ${e.message}")
+            Log.e(TAG, "Error retrieving screenshot: ${e.message}")
+            showToast("Fehler beim Abrufen des Screenshots: ${e.message}", true)
         }
     }
     
     /**
-     * Simulate pressing a key
+     * Find the latest screenshot file in standard locations
      */
-    private fun simulateKeyPress(keyCode: Int): Boolean {
-        Log.d(TAG, "Simulating key press: $keyCode")
-        
+    private fun findLatestScreenshotFile(): File? {
         try {
-            // Create down and up key events
-            val downTime = System.currentTimeMillis()
-            val downEvent = KeyEvent(downTime, downTime, KeyEvent.ACTION_DOWN, keyCode, 0)
-            val upEvent = KeyEvent(downTime, System.currentTimeMillis(), KeyEvent.ACTION_UP, keyCode, 0)
+            // List of possible screenshot directories
+            val possibleDirs = listOf(
+                // Primary location on most devices
+                File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES), "Screenshots"),
+                // Secondary location on some devices
+                File(Environment.getExternalStorageDirectory(), "Pictures/Screenshots"),
+                // DCIM location used by some manufacturers
+                File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DCIM), "Screenshots"),
+                // App-specific location
+                File(applicationContext.getExternalFilesDir(Environment.DIRECTORY_PICTURES), "Screenshots")
+            )
             
-            // Dispatch the events
-            val downResult = dispatchKeyEvent(downEvent)
-            val upResult = dispatchKeyEvent(upEvent)
+            // Find the most recent screenshot file
+            var latestFile: File? = null
+            var latestModified: Long = 0
             
-            Log.d(TAG, "Key press simulation result: down=$downResult, up=$upResult")
-            return downResult && upResult
+            for (dir in possibleDirs) {
+                if (dir.exists() && dir.isDirectory) {
+                    Log.d(TAG, "Checking directory: ${dir.absolutePath}")
+                    
+                    val files = dir.listFiles { file ->
+                        file.isFile && (file.name.startsWith("Screenshot") || 
+                                        file.name.startsWith("screenshot")) &&
+                        (file.name.endsWith(".png") || file.name.endsWith(".jpg") || 
+                         file.name.endsWith(".jpeg"))
+                    }
+                    
+                    files?.forEach { file ->
+                        Log.d(TAG, "Found file: ${file.name}, modified: ${file.lastModified()}")
+                        if (file.lastModified() > latestModified) {
+                            latestFile = file
+                            latestModified = file.lastModified()
+                        }
+                    }
+                }
+            }
+            
+            // Check if the file is recent (within the last 10 seconds)
+            if (latestFile != null) {
+                val currentTime = System.currentTimeMillis()
+                val fileAge = currentTime - latestModified
+                
+                if (fileAge <= 10000) { // 10 seconds
+                    Log.d(TAG, "Found recent screenshot: ${latestFile?.absolutePath}, age: ${fileAge}ms")
+                    return latestFile
+                } else {
+                    Log.d(TAG, "Found screenshot is too old: ${latestFile?.absolutePath}, age: ${fileAge}ms")
+                }
+            }
+            
+            // If no recent file found, try to query MediaStore
+            val latestMediaStoreFile = findLatestScreenshotViaMediaStore()
+            if (latestMediaStoreFile != null) {
+                return latestMediaStoreFile
+            }
+            
+            return null
         } catch (e: Exception) {
-            Log.e(TAG, "Error performing key press: ${e.message}")
-            return false
+            Log.e(TAG, "Error finding latest screenshot file: ${e.message}")
+            return null
+        }
+    }
+    
+    /**
+     * Find the latest screenshot using MediaStore
+     */
+    private fun findLatestScreenshotViaMediaStore(): File? {
+        try {
+            val contentResolver = applicationContext.contentResolver
+            val projection = arrayOf(
+                MediaStore.Images.Media.DATA,
+                MediaStore.Images.Media.DATE_ADDED
+            )
+            
+            // Query for recent screenshots
+            val selection = "${MediaStore.Images.Media.DISPLAY_NAME} LIKE ?"
+            val selectionArgs = arrayOf("%screenshot%")
+            val sortOrder = "${MediaStore.Images.Media.DATE_ADDED} DESC"
+            
+            contentResolver.query(
+                MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
+                projection,
+                selection,
+                selectionArgs,
+                sortOrder
+            )?.use { cursor ->
+                if (cursor.moveToFirst()) {
+                    val dataColumnIndex = cursor.getColumnIndexOrThrow(MediaStore.Images.Media.DATA)
+                    val dateColumnIndex = cursor.getColumnIndexOrThrow(MediaStore.Images.Media.DATE_ADDED)
+                    
+                    val filePath = cursor.getString(dataColumnIndex)
+                    val dateAdded = cursor.getLong(dateColumnIndex) * 1000 // Convert to milliseconds
+                    
+                    val file = File(filePath)
+                    if (file.exists()) {
+                        val currentTime = System.currentTimeMillis()
+                        val fileAge = currentTime - dateAdded
+                        
+                        if (fileAge <= 10000) { // 10 seconds
+                            Log.d(TAG, "Found recent screenshot via MediaStore: $filePath, age: ${fileAge}ms")
+                            return file
+                        } else {
+                            Log.d(TAG, "Found screenshot via MediaStore is too old: $filePath, age: ${fileAge}ms")
+                        }
+                    }
+                }
+            }
+            
+            return null
+        } catch (e: Exception) {
+            Log.e(TAG, "Error finding screenshot via MediaStore: ${e.message}")
+            return null
+        }
+    }
+    
+    /**
+     * Add the screenshot to the conversation with screen information
+     */
+    private fun addScreenshotToConversation(screenshotUri: Uri, screenInfo: String) {
+        try {
+            Log.d(TAG, "Adding screenshot to conversation with screen information: $screenshotUri")
+            
+            // Get the MainActivity instance
+            val mainActivity = MainActivity.getInstance()
+            if (mainActivity == null) {
+                Log.e(TAG, "MainActivity instance is null, cannot add screenshot to conversation")
+                showToast("Fehler: MainActivity-Instanz ist nicht verfügbar", true)
+                return
+            }
+            
+            // Get the PhotoReasoningViewModel from MainActivity
+            val photoReasoningViewModel = mainActivity.getPhotoReasoningViewModel()
+            if (photoReasoningViewModel == null) {
+                Log.e(TAG, "PhotoReasoningViewModel is null, cannot add screenshot to conversation")
+                showToast("Fehler: PhotoReasoningViewModel ist nicht verfügbar", true)
+                return
+            }
+            
+            // Add the screenshot to the conversation with screen information
+            photoReasoningViewModel.addScreenshotToConversation(screenshotUri, applicationContext, screenInfo)
+            
+            Log.d(TAG, "Screenshot added to conversation with screen information")
+            showToast("Screenshot mit Bildschirminformationen zur Konversation hinzugefügt", false)
+        } catch (e: Exception) {
+            Log.e(TAG, "Error adding screenshot to conversation: ${e.message}")
+            showToast("Fehler beim Hinzufügen des Screenshots zur Konversation: ${e.message}", true)
         }
     }
     
@@ -1641,190 +1781,6 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
         } catch (e: Exception) {
             Log.e(TAG, "Error scrolling right from coordinates: ${e.message}")
             showToast("Fehler beim Scrollen nach rechts von Position ($x, $y): ${e.message}", true)
-        }
-    }
-    
-    /**
-     * Retrieve the latest screenshot
-     */
-    private fun retrieveLatestScreenshot(screenInfo: String) {
-        try {
-            Log.d(TAG, "Retrieving latest screenshot")
-            showToast("Suche nach dem aufgenommenen Screenshot...", false)
-            
-            // Check standard screenshot locations
-            val screenshotFile = findLatestScreenshotFile()
-            
-            if (screenshotFile != null) {
-                Log.d(TAG, "Found screenshot file: ${screenshotFile.absolutePath}")
-                showToast("Screenshot gefunden: ${screenshotFile.name}", false)
-                
-                // Convert file to URI
-                val screenshotUri = Uri.fromFile(screenshotFile)
-                
-                // Add the screenshot to the conversation with screen information
-                addScreenshotToConversation(screenshotUri, screenInfo)
-            } else {
-                Log.e(TAG, "No screenshot file found")
-                showToast("Kein Screenshot gefunden. Bitte prüfen Sie die Berechtigungen.", true)
-            }
-        } catch (e: Exception) {
-            Log.e(TAG, "Error retrieving screenshot: ${e.message}")
-            showToast("Fehler beim Abrufen des Screenshots: ${e.message}", true)
-        }
-    }
-    
-    /**
-     * Find the latest screenshot file in standard locations
-     */
-    private fun findLatestScreenshotFile(): File? {
-        try {
-            // List of possible screenshot directories
-            val possibleDirs = listOf(
-                // Primary location on most devices
-                File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES), "Screenshots"),
-                // Secondary location on some devices
-                File(Environment.getExternalStorageDirectory(), "Pictures/Screenshots"),
-                // DCIM location used by some manufacturers
-                File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DCIM), "Screenshots"),
-                // App-specific location
-                File(applicationContext.getExternalFilesDir(Environment.DIRECTORY_PICTURES), "Screenshots")
-            )
-            
-            // Find the most recent screenshot file
-            var latestFile: File? = null
-            var latestModified: Long = 0
-            
-            for (dir in possibleDirs) {
-                if (dir.exists() && dir.isDirectory) {
-                    Log.d(TAG, "Checking directory: ${dir.absolutePath}")
-                    
-                    val files = dir.listFiles { file ->
-                        file.isFile && (file.name.startsWith("Screenshot") || 
-                                        file.name.startsWith("screenshot")) &&
-                        (file.name.endsWith(".png") || file.name.endsWith(".jpg") || 
-                         file.name.endsWith(".jpeg"))
-                    }
-                    
-                    files?.forEach { file ->
-                        Log.d(TAG, "Found file: ${file.name}, modified: ${file.lastModified()}")
-                        if (file.lastModified() > latestModified) {
-                            latestFile = file
-                            latestModified = file.lastModified()
-                        }
-                    }
-                }
-            }
-            
-            // Check if the file is recent (within the last 10 seconds)
-            if (latestFile != null) {
-                val currentTime = System.currentTimeMillis()
-                val fileAge = currentTime - latestModified
-                
-                if (fileAge <= 10000) { // 10 seconds
-                    Log.d(TAG, "Found recent screenshot: ${latestFile?.absolutePath}, age: ${fileAge}ms")
-                    return latestFile
-                } else {
-                    Log.d(TAG, "Found screenshot is too old: ${latestFile?.absolutePath}, age: ${fileAge}ms")
-                }
-            }
-            
-            // If no recent file found, try to query MediaStore
-            val latestMediaStoreFile = findLatestScreenshotViaMediaStore()
-            if (latestMediaStoreFile != null) {
-                return latestMediaStoreFile
-            }
-            
-            return null
-        } catch (e: Exception) {
-            Log.e(TAG, "Error finding latest screenshot file: ${e.message}")
-            return null
-        }
-    }
-    
-    /**
-     * Find the latest screenshot using MediaStore
-     */
-    private fun findLatestScreenshotViaMediaStore(): File? {
-        try {
-            val contentResolver = applicationContext.contentResolver
-            val projection = arrayOf(
-                MediaStore.Images.Media.DATA,
-                MediaStore.Images.Media.DATE_ADDED
-            )
-            
-            // Query for recent screenshots
-            val selection = "${MediaStore.Images.Media.DISPLAY_NAME} LIKE ?"
-            val selectionArgs = arrayOf("%screenshot%")
-            val sortOrder = "${MediaStore.Images.Media.DATE_ADDED} DESC"
-            
-            contentResolver.query(
-                MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
-                projection,
-                selection,
-                selectionArgs,
-                sortOrder
-            )?.use { cursor ->
-                if (cursor.moveToFirst()) {
-                    val dataColumnIndex = cursor.getColumnIndexOrThrow(MediaStore.Images.Media.DATA)
-                    val dateColumnIndex = cursor.getColumnIndexOrThrow(MediaStore.Images.Media.DATE_ADDED)
-                    
-                    val filePath = cursor.getString(dataColumnIndex)
-                    val dateAdded = cursor.getLong(dateColumnIndex) * 1000 // Convert to milliseconds
-                    
-                    val file = File(filePath)
-                    if (file.exists()) {
-                        val currentTime = System.currentTimeMillis()
-                        val fileAge = currentTime - dateAdded
-                        
-                        if (fileAge <= 10000) { // 10 seconds
-                            Log.d(TAG, "Found recent screenshot via MediaStore: $filePath, age: ${fileAge}ms")
-                            return file
-                        } else {
-                            Log.d(TAG, "Found screenshot via MediaStore is too old: $filePath, age: ${fileAge}ms")
-                        }
-                    }
-                }
-            }
-            
-            return null
-        } catch (e: Exception) {
-            Log.e(TAG, "Error finding screenshot via MediaStore: ${e.message}")
-            return null
-        }
-    }
-    
-    /**
-     * Add the screenshot to the conversation with screen information
-     */
-    private fun addScreenshotToConversation(screenshotUri: Uri, screenInfo: String) {
-        try {
-            Log.d(TAG, "Adding screenshot to conversation with screen information: $screenshotUri")
-            
-            // Get the MainActivity instance
-            val mainActivity = MainActivity.getInstance()
-            if (mainActivity == null) {
-                Log.e(TAG, "MainActivity instance is null, cannot add screenshot to conversation")
-                showToast("Fehler: MainActivity-Instanz ist nicht verfügbar", true)
-                return
-            }
-            
-            // Get the PhotoReasoningViewModel from MainActivity
-            val photoReasoningViewModel = mainActivity.getPhotoReasoningViewModel()
-            if (photoReasoningViewModel == null) {
-                Log.e(TAG, "PhotoReasoningViewModel is null, cannot add screenshot to conversation")
-                showToast("Fehler: PhotoReasoningViewModel ist nicht verfügbar", true)
-                return
-            }
-            
-            // Add the screenshot to the conversation with screen information
-            photoReasoningViewModel.addScreenshotToConversation(screenshotUri, applicationContext, screenInfo)
-            
-            Log.d(TAG, "Screenshot added to conversation with screen information")
-            showToast("Screenshot mit Bildschirminformationen zur Konversation hinzugefügt", false)
-        } catch (e: Exception) {
-            Log.e(TAG, "Error adding screenshot to conversation: ${e.message}")
-            showToast("Fehler beim Hinzufügen des Screenshots zur Konversation: ${e.message}", true)
         }
     }
     
