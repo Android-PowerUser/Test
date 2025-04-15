@@ -165,6 +165,11 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
                     showToast("Versuche von Position (${command.x}, ${command.y}) nach rechts zu scrollen", false)
                     serviceInstance?.scrollRight(command.x, command.y, command.distance, command.duration)
                 }
+                is Command.OpenApp -> {
+                    Log.d(TAG, "Opening app: ${command.packageName}")
+                    showToast("Versuche App zu öffnen: ${command.packageName}", false)
+                    serviceInstance?.openApp(command.packageName)
+                }
             }
         }
         
@@ -1505,8 +1510,38 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
     }
     
     /**
-     * Retrieve the latest screenshot from the standard screenshot folder
+     * Open an app by package name, trying to reuse existing instance if possible
      */
+    fun openApp(packageName: String) {
+        Log.d(TAG, "Opening app with package name: $packageName")
+        showToast("Versuche App zu öffnen: $packageName", false)
+        
+        try {
+            // Get the package manager
+            val packageManager = applicationContext.packageManager
+            
+            // Try to get the launch intent for the package
+            val launchIntent = packageManager.getLaunchIntentForPackage(packageName)
+            
+            if (launchIntent != null) {
+                // Add flags to reuse existing instance if possible
+                launchIntent.addFlags(Intent.FLAG_ACTIVITY_REORDER_TO_FRONT)
+                
+                // Start the activity
+                launchIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                applicationContext.startActivity(launchIntent)
+                
+                Log.d(TAG, "Successfully opened app: $packageName")
+                showToast("App geöffnet: $packageName", false)
+            } else {
+                Log.e(TAG, "No launch intent found for package: $packageName")
+                showToast("Fehler: Keine App mit dem Paket-Namen $packageName gefunden", true)
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error opening app: ${e.message}", e)
+            showToast("Fehler beim Öffnen der App: ${e.message}", true)
+        }
+    }
     private fun retrieveLatestScreenshot(screenInfo: String) {
         try {
             Log.d(TAG, "Retrieving latest screenshot")
