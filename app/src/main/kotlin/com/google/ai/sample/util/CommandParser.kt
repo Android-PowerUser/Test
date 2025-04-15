@@ -132,6 +132,18 @@ object CommandParser {
         Regex("(?i)\\b(?:nach rechts scrollen|rechts scrollen|nach rechts wischen|rechts wischen)\\b")
     )
     
+    // Open app patterns - for opening apps
+    private val OPEN_APP_PATTERNS = listOf(
+        // Function-like patterns
+        Regex("(?i)\\bopenApp\\([\"']([^\"']+)[\"']\\)"),
+        Regex("(?i)\\blaunchApp\\([\"']([^\"']+)[\"']\\)"),
+        Regex("(?i)\\bstartApp\\([\"']([^\"']+)[\"']\\)"),
+        
+        // Natural language patterns
+        Regex("(?i)\\b(?:open|launch|start|öffne|starte) (?:the )?(?:app|application|anwendung) [\"']([^\"']+)[\"']"),
+        Regex("(?i)\\b(?:öffne|starte) [\"']([^\"']+)[\"']")
+    )
+    
     // Buffer for storing partial text between calls
     private var textBuffer = ""
     
@@ -196,6 +208,7 @@ object CommandParser {
                     is Command.ScrollUpFromCoordinates -> Log.d(TAG, "Command details: ScrollUpFromCoordinates(${command.x}, ${command.y}, ${command.distance}, ${command.duration})")
                     is Command.ScrollLeftFromCoordinates -> Log.d(TAG, "Command details: ScrollLeftFromCoordinates(${command.x}, ${command.y}, ${command.distance}, ${command.duration})")
                     is Command.ScrollRightFromCoordinates -> Log.d(TAG, "Command details: ScrollRightFromCoordinates(${command.x}, ${command.y}, ${command.distance}, ${command.duration})")
+                    is Command.OpenApp -> Log.d(TAG, "Command details: OpenApp(\"${command.packageName}\")")
                 }
             }
         } catch (e: Exception) {
@@ -238,6 +251,9 @@ object CommandParser {
         
         // Look for scroll right commands
         findScrollRightCommands(text, commands)
+        
+        // Look for open app commands
+        findOpenAppCommands(text, commands)
     }
     
     /**
@@ -542,6 +558,32 @@ object CommandParser {
     }
     
     /**
+     * Find open app commands in the text
+     */
+    private fun findOpenAppCommands(text: String, commands: MutableList<Command>) {
+        // Try each pattern
+        for (pattern in OPEN_APP_PATTERNS) {
+            val matches = pattern.findAll(text)
+            for (match in matches) {
+                try {
+                    if (match.groupValues.size > 1) {
+                        val packageName = match.groupValues[1].trim()
+                        if (packageName.isNotEmpty()) {
+                            // Check if this command is already in the list (avoid duplicates)
+                            if (!commands.any { it is Command.OpenApp && it.packageName == packageName }) {
+                                Log.d(TAG, "Found open app command with pattern ${pattern.pattern}: \"$packageName\"")
+                                commands.add(Command.OpenApp(packageName))
+                            }
+                        }
+                    }
+                } catch (e: Exception) {
+                    Log.e(TAG, "Error processing open app match: ${e.message}", e)
+                }
+            }
+        }
+    }
+    
+    /**
      * Clear the text buffer
      */
     fun clearBuffer() {
@@ -645,4 +687,9 @@ sealed class Command {
      * Command to scroll right from specific coordinates with custom distance and duration
      */
     data class ScrollRightFromCoordinates(val x: Float, val y: Float, val distance: Float, val duration: Long) : Command()
+    
+    /**
+     * Command to open an app by package name
+     */
+    data class OpenApp(val packageName: String) : Command()
 }
