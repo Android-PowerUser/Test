@@ -8,18 +8,28 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.content.pm.ResolveInfo
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.graphics.Path
 import android.graphics.Rect
+import android.net.Uri
 import android.os.Build
+import android.os.Environment
 import android.os.Handler
 import android.os.Looper
+import android.provider.MediaStore
 import android.provider.Settings
 import android.util.Log
+import android.view.KeyEvent
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
 import android.widget.Toast
 import com.google.ai.sample.util.AppNamePackageMapper
 import com.google.ai.sample.util.Command
+import java.io.File
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 import java.util.concurrent.atomic.AtomicBoolean
 
 class ScreenOperatorAccessibilityService : AccessibilityService() {
@@ -615,9 +625,7 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
     }
     
     /**
-     * Open an app by name or package name
-     * This improved version first checks if the input is an app name and converts it to a package name,
-     * then tries multiple intent configurations if the first attempt fails
+     * Open an app by name or package name using multiple methods to ensure success
      */
     fun openApp(nameOrPackage: String) {
         Log.d(TAG, "Opening app with name or package: $nameOrPackage")
@@ -633,141 +641,150 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
                 showToast("App-Name '$nameOrPackage' aufgelöst zu Paket-Name '$packageName'", false)
             }
             
-            // Get the package manager
-            val packageManager = applicationContext.packageManager
+            // Get the app name for display purposes
+            val appName = appNamePackageMapper.getAppName(packageName)
             
-            // Get the app name for better user feedback
-            val appName = try {
-                appNamePackageMapper.getAppName(packageName)
-            } catch (e: Exception) {
-                packageName
+            // Try multiple methods to open the app
+            if (openAppUsingLaunchIntent(packageName, appName) ||
+                openAppUsingMainActivity(packageName, appName) ||
+                openAppUsingQueryIntentActivities(packageName, appName)) {
+                // One of the methods succeeded
+                return
             }
             
-            // First try: Use getLaunchIntentForPackage (standard approach)
-            var launchIntent = packageManager.getLaunchIntentForPackage(packageName)
-            
-            if (launchIntent != null) {
-                // Add flags to reuse existing instance if possible
-                launchIntent.addFlags(Intent.FLAG_ACTIVITY_REORDER_TO_FRONT)
-                launchIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                
-                try {
-                    applicationContext.startActivity(launchIntent)
-                    Log.d(TAG, "Successfully opened app using standard launch intent: $packageName")
-                    showToast("App geöffnet: $appName", false)
-                    return
-                } catch (e: Exception) {
-                    Log.e(TAG, "Error starting activity with standard launch intent: ${e.message}")
-                    // Continue to alternative methods
-                }
-            } else {
-                Log.d(TAG, "Standard launch intent is null for package: $packageName, trying alternative methods")
-            }
-            
-            // Second try: Create intent with CATEGORY_LAUNCHER
-            try {
-                val intent = Intent(Intent.ACTION_MAIN)
-                intent.addCategory(Intent.CATEGORY_LAUNCHER)
-                intent.setPackage(packageName)
-                intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                intent.addFlags(Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED)
-                
-                val resolveInfos = packageManager.queryIntentActivities(intent, 0)
-                
-                if (resolveInfos.isNotEmpty()) {
-                    val resolveInfo = resolveInfos[0]
-                    val activityInfo = resolveInfo.activityInfo
-                    val componentName = ComponentName(activityInfo.applicationInfo.packageName, activityInfo.name)
-                    
-                    intent.component = componentName
-                    applicationContext.startActivity(intent)
-                    
-                    Log.d(TAG, "Successfully opened app using CATEGORY_LAUNCHER: $packageName")
-                    showToast("App geöffnet: $appName", false)
-                    return
-                } else {
-                    Log.d(TAG, "No activities found with CATEGORY_LAUNCHER for package: $packageName")
-                }
-            } catch (e: Exception) {
-                Log.e(TAG, "Error with CATEGORY_LAUNCHER approach: ${e.message}")
-                // Continue to next method
-            }
-            
-            // Third try: Create intent with CATEGORY_LEANBACK_LAUNCHER (for Android TV)
-            try {
-                val intent = Intent(Intent.ACTION_MAIN)
-                intent.addCategory(Intent.CATEGORY_LEANBACK_LAUNCHER)
-                intent.setPackage(packageName)
-                intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                intent.addFlags(Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED)
-                
-                val resolveInfos = packageManager.queryIntentActivities(intent, 0)
-                
-                if (resolveInfos.isNotEmpty()) {
-                    val resolveInfo = resolveInfos[0]
-                    val activityInfo = resolveInfo.activityInfo
-                    val componentName = ComponentName(activityInfo.applicationInfo.packageName, activityInfo.name)
-                    
-                    intent.component = componentName
-                    applicationContext.startActivity(intent)
-                    
-                    Log.d(TAG, "Successfully opened app using CATEGORY_LEANBACK_LAUNCHER: $packageName")
-                    showToast("App geöffnet: $appName", false)
-                    return
-                } else {
-                    Log.d(TAG, "No activities found with CATEGORY_LEANBACK_LAUNCHER for package: $packageName")
-                }
-            } catch (e: Exception) {
-                Log.e(TAG, "Error with CATEGORY_LEANBACK_LAUNCHER approach: ${e.message}")
-                // Continue to next method
-            }
-            
-            // Fourth try: Find main activity directly
-            try {
-                val intent = Intent(Intent.ACTION_MAIN)
-                intent.setPackage(packageName)
-                
-                val resolveInfos = packageManager.queryIntentActivities(intent, 0)
-                
-                if (resolveInfos.isNotEmpty()) {
-                    // Sort by priority
-                    val sortedResolveInfos = resolveInfos.sortedByDescending { it.priority }
-                    
-                    for (resolveInfo in sortedResolveInfos) {
-                        try {
-                            val activityInfo = resolveInfo.activityInfo
-                            val componentName = ComponentName(activityInfo.applicationInfo.packageName, activityInfo.name)
-                            
-                            val launchableIntent = Intent(Intent.ACTION_MAIN)
-                            launchableIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                            launchableIntent.addFlags(Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED)
-                            launchableIntent.component = componentName
-                            
-                            applicationContext.startActivity(launchableIntent)
-                            
-                            Log.d(TAG, "Successfully opened app using direct activity approach: $packageName")
-                            showToast("App geöffnet: $appName", false)
-                            return
-                        } catch (e: Exception) {
-                            Log.e(TAG, "Error starting specific activity: ${e.message}")
-                            // Try next activity in the list
-                        }
-                    }
-                } else {
-                    Log.d(TAG, "No activities found for package: $packageName")
-                }
-            } catch (e: Exception) {
-                Log.e(TAG, "Error with direct activity approach: ${e.message}")
-                // All methods failed
-            }
-            
-            // If we get here, all methods failed
+            // If all methods failed, show an error
             Log.e(TAG, "All methods to open app failed for package: $packageName")
             showToast("Fehler: Keine App mit dem Namen oder Paket-Namen '$nameOrPackage' gefunden oder App kann nicht geöffnet werden", true)
             
         } catch (e: Exception) {
             Log.e(TAG, "Error opening app: ${e.message}", e)
             showToast("Fehler beim Öffnen der App: ${e.message}", true)
+        }
+    }
+    
+    /**
+     * Try to open an app using the standard launch intent
+     */
+    private fun openAppUsingLaunchIntent(packageName: String, appName: String): Boolean {
+        try {
+            Log.d(TAG, "Trying to open app using launch intent: $packageName")
+            
+            // Get the package manager
+            val packageManager = applicationContext.packageManager
+            
+            // Try to get the launch intent for the package
+            val launchIntent = packageManager.getLaunchIntentForPackage(packageName)
+            
+            if (launchIntent != null) {
+                // Add flags to reuse existing instance if possible
+                launchIntent.addFlags(Intent.FLAG_ACTIVITY_REORDER_TO_FRONT)
+                
+                // Start the activity
+                launchIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                applicationContext.startActivity(launchIntent)
+                
+                Log.d(TAG, "Successfully opened app using launch intent: $packageName")
+                showToast("App geöffnet: $appName", false)
+                return true
+            } else {
+                Log.d(TAG, "No launch intent found for package: $packageName, trying alternative methods")
+                return false
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error opening app using launch intent: ${e.message}", e)
+            return false
+        }
+    }
+    
+    /**
+     * Try to open an app by directly starting its main activity
+     */
+    private fun openAppUsingMainActivity(packageName: String, appName: String): Boolean {
+        try {
+            Log.d(TAG, "Trying to open app using main activity: $packageName")
+            
+            // Create an intent with ACTION_MAIN
+            val intent = Intent(Intent.ACTION_MAIN)
+            intent.addCategory(Intent.CATEGORY_LAUNCHER)
+            
+            // Get the package manager
+            val packageManager = applicationContext.packageManager
+            
+            // Query for activities that match our intent
+            val resolveInfoList = packageManager.queryIntentActivities(intent, 0)
+            
+            // Find the main activity for our package
+            for (resolveInfo in resolveInfoList) {
+                if (resolveInfo.activityInfo.packageName == packageName) {
+                    // Found the main activity
+                    val className = resolveInfo.activityInfo.name
+                    Log.d(TAG, "Found main activity for package $packageName: $className")
+                    
+                    // Create an intent to launch this specific activity
+                    val launchIntent = Intent(Intent.ACTION_MAIN)
+                    launchIntent.addCategory(Intent.CATEGORY_LAUNCHER)
+                    launchIntent.setClassName(packageName, className)
+                    launchIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED)
+                    
+                    // Start the activity
+                    applicationContext.startActivity(launchIntent)
+                    
+                    Log.d(TAG, "Successfully opened app using main activity: $packageName")
+                    showToast("App geöffnet: $appName", false)
+                    return true
+                }
+            }
+            
+            Log.d(TAG, "No main activity found for package: $packageName, trying next method")
+            return false
+        } catch (e: Exception) {
+            Log.e(TAG, "Error opening app using main activity: ${e.message}", e)
+            return false
+        }
+    }
+    
+    /**
+     * Try to open an app by querying all activities and starting the first one
+     */
+    private fun openAppUsingQueryIntentActivities(packageName: String, appName: String): Boolean {
+        try {
+            Log.d(TAG, "Trying to open app using query intent activities: $packageName")
+            
+            // Create a generic intent
+            val intent = Intent()
+            intent.setPackage(packageName)
+            
+            // Get the package manager
+            val packageManager = applicationContext.packageManager
+            
+            // Query for all activities in the package
+            val resolveInfoList = packageManager.queryIntentActivities(intent, 0)
+            
+            if (resolveInfoList.isNotEmpty()) {
+                // Get the first activity
+                val resolveInfo = resolveInfoList[0]
+                val className = resolveInfo.activityInfo.name
+                
+                Log.d(TAG, "Found activity for package $packageName: $className")
+                
+                // Create an intent to launch this specific activity
+                val launchIntent = Intent()
+                launchIntent.component = ComponentName(packageName, className)
+                launchIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                
+                // Start the activity
+                applicationContext.startActivity(launchIntent)
+                
+                Log.d(TAG, "Successfully opened app using query intent activities: $packageName")
+                showToast("App geöffnet: $appName", false)
+                return true
+            }
+            
+            Log.d(TAG, "No activities found for package: $packageName")
+            return false
+        } catch (e: Exception) {
+            Log.e(TAG, "Error opening app using query intent activities: ${e.message}", e)
+            return false
         }
     }
     
@@ -799,22 +816,328 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
      * Capture information about all interactive elements on the screen
      */
     private fun captureScreenInformation(): String {
-        // Implementation details omitted for brevity
-        return "Screen information"
+        Log.d(TAG, "Capturing screen information")
+        
+        // Refresh the root node to ensure we have the latest information
+        refreshRootNode()
+        
+        // Check if root node is available
+        if (rootNode == null) {
+            Log.e(TAG, "Root node is null, cannot capture screen information")
+            return "Keine Bildschirminformationen verfügbar (Root-Knoten ist null)"
+        }
+        
+        // Build a string with information about all interactive elements
+        val screenInfo = StringBuilder()
+        screenInfo.append("Bildschirmelemente:\n")
+        
+        // Capture information about all interactive elements
+        val interactiveElements = findAllInteractiveElements(rootNode!!)
+        
+        if (interactiveElements.isEmpty()) {
+            screenInfo.append("Keine interaktiven Elemente gefunden.")
+        } else {
+            screenInfo.append("Gefundene interaktive Elemente (${interactiveElements.size}):\n\n")
+            
+            interactiveElements.forEachIndexed { index, element ->
+                screenInfo.append("${index + 1}. ")
+                
+                // Get element ID if available
+                val elementId = getNodeId(element)
+                if (elementId.isNotEmpty()) {
+                    screenInfo.append("ID: \"$elementId\" ")
+                }
+                
+                // Add element text if available
+                if (!element.text.isNullOrEmpty()) {
+                    screenInfo.append("Text: \"${element.text}\" ")
+                }
+                
+                // Add element content description if available
+                if (!element.contentDescription.isNullOrEmpty()) {
+                    screenInfo.append("Beschreibung: \"${element.contentDescription}\" ")
+                }
+                
+                // Try to get the button name from the view hierarchy
+                val buttonName = getButtonName(element)
+                if (buttonName.isNotEmpty()) {
+                    screenInfo.append("Name: \"$buttonName\" ")
+                }
+                
+                // Add element class name
+                screenInfo.append("Klasse: ${element.className} ")
+                
+                // Add element bounds
+                val rect = Rect()
+                element.getBoundsInScreen(rect)
+                screenInfo.append("Position: (${rect.centerX()}, ${rect.centerY()}) ")
+                
+                // Add element clickable status
+                screenInfo.append("Klickbar: ${if (element.isClickable) "Ja" else "Nein"}")
+                
+                screenInfo.append("\n")
+                
+                // Recycle the element to avoid memory leaks
+                element.recycle()
+            }
+        }
+        
+        Log.d(TAG, "Screen information captured: ${screenInfo.length} characters")
+        return screenInfo.toString()
+    }
+    
+    /**
+     * Find all interactive elements on the screen
+     */
+    private fun findAllInteractiveElements(rootNode: AccessibilityNodeInfo): List<AccessibilityNodeInfo> {
+        val interactiveElements = mutableListOf<AccessibilityNodeInfo>()
+        
+        try {
+            // Queue for breadth-first search
+            val queue = mutableListOf<AccessibilityNodeInfo>()
+            queue.add(rootNode)
+            
+            while (queue.isNotEmpty()) {
+                val node = queue.removeAt(0)
+                
+                // Check if this node is interactive
+                if (isInteractiveElement(node)) {
+                    interactiveElements.add(AccessibilityNodeInfo.obtain(node))
+                }
+                
+                // Add all children to the queue
+                for (i in 0 until node.childCount) {
+                    val child = node.getChild(i) ?: continue
+                    queue.add(child)
+                }
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error finding interactive elements: ${e.message}")
+        }
+        
+        return interactiveElements
+    }
+    
+    /**
+     * Check if a node is an interactive element
+     */
+    private fun isInteractiveElement(node: AccessibilityNodeInfo): Boolean {
+        // Check if the node is clickable, long-clickable, or focusable
+        if (node.isClickable || node.isLongClickable || node.isFocusable) {
+            return true
+        }
+        
+        // Check if the node has text or content description
+        if (!node.text.isNullOrEmpty() || !node.contentDescription.isNullOrEmpty()) {
+            // Check if it's a common interactive element class
+            val className = node.className?.toString() ?: ""
+            val interactiveClasses = listOf(
+                "Button", "ImageButton", "EditText", "CheckBox", "RadioButton",
+                "Switch", "ToggleButton", "Spinner", "SeekBar", "RatingBar"
+            )
+            
+            for (interactiveClass in interactiveClasses) {
+                if (className.contains(interactiveClass, ignoreCase = true)) {
+                    return true
+                }
+            }
+        }
+        
+        return false
+    }
+    
+    /**
+     * Get the ID of a node if available
+     */
+    private fun getNodeId(node: AccessibilityNodeInfo): String {
+        try {
+            val viewIdResourceName = node.viewIdResourceName
+            if (!viewIdResourceName.isNullOrEmpty()) {
+                // Extract the ID name from the resource name (package:id/name)
+                val parts = viewIdResourceName.split("/")
+                if (parts.size > 1) {
+                    return parts[1]
+                }
+                return viewIdResourceName
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error getting node ID: ${e.message}")
+        }
+        return ""
+    }
+    
+    /**
+     * Try to get the button name from various properties
+     */
+    private fun getButtonName(node: AccessibilityNodeInfo): String {
+        try {
+            // First check if the node has text
+            if (!node.text.isNullOrEmpty()) {
+                return node.text.toString()
+            }
+            
+            // Then check content description
+            if (!node.contentDescription.isNullOrEmpty()) {
+                return node.contentDescription.toString()
+            }
+            
+            // Get the node ID which might contain a name
+            val nodeId = getNodeId(node)
+            if (nodeId.isNotEmpty() && !nodeId.startsWith("android:")) {
+                // Convert camelCase or snake_case to readable format
+                val readableName = nodeId
+                    .replace("_", " ")
+                    .replace(Regex("([a-z])([A-Z])"), "$1 $2")
+                    .lowercase(Locale.getDefault())
+                    .capitalize(Locale.getDefault())
+                
+                // If it contains common button names like "new", "add", etc., return it
+                val commonButtonNames = listOf("new", "add", "edit", "delete", "save", "cancel", "ok", "send")
+                for (buttonName in commonButtonNames) {
+                    if (readableName.contains(buttonName, ignoreCase = true)) {
+                        return readableName
+                    }
+                }
+                
+                // Return the readable ID name
+                return readableName
+            }
+            
+            // Check if it's a known button type by class name
+            val className = node.className?.toString() ?: ""
+            if (className.contains("Button", ignoreCase = true) || 
+                className.contains("ImageButton", ignoreCase = true) ||
+                className.contains("FloatingActionButton", ignoreCase = true)) {
+                
+                // For buttons without text, try to infer name from siblings or parent
+                val parent = node.parent
+                if (parent != null) {
+                    // Check if parent has text that might describe this button
+                    if (!parent.text.isNullOrEmpty()) {
+                        val parentText = parent.text.toString()
+                        parent.recycle()
+                        return parentText
+                    }
+                    
+                    // Check siblings for text that might be related
+                    for (i in 0 until parent.childCount) {
+                        val sibling = parent.getChild(i) ?: continue
+                        if (sibling != node && !sibling.text.isNullOrEmpty()) {
+                            val siblingText = sibling.text.toString()
+                            sibling.recycle()
+                            parent.recycle()
+                            return siblingText
+                        }
+                        sibling.recycle()
+                    }
+                    
+                    // Check if this is a FAB (Floating Action Button) which is often used as "New" or "Add"
+                    if (className.contains("FloatingActionButton", ignoreCase = true)) {
+                        parent.recycle()
+                        return "New"
+                    }
+                    
+                    parent.recycle()
+                }
+                
+                // Special case for circular buttons at the bottom of the screen (likely navigation or action buttons)
+                val rect = Rect()
+                node.getBoundsInScreen(rect)
+                val displayMetrics = resources.displayMetrics
+                val screenHeight = displayMetrics.heightPixels
+                
+                // If it's a circular button near the bottom of the screen
+                if (rect.height() == rect.width() && rect.height() < displayMetrics.densityDpi / 4 && 
+                    rect.bottom > screenHeight * 0.8) {
+                    
+                    // Check if it's in the bottom left corner (often "New" or "Add")
+                    if (rect.centerX() < displayMetrics.widthPixels * 0.3) {
+                        return "New"
+                    }
+                }
+                
+                // If it's a button but we couldn't find a name, use a generic name
+                return "Button"
+            }
+            
+            // For EditText fields, try to get hint text
+            if (className.contains("EditText", ignoreCase = true)) {
+                // Try to get hint text using reflection (not always available)
+                try {
+                    val hintTextMethod = node.javaClass.getMethod("getHintText")
+                    val hintText = hintTextMethod.invoke(node)?.toString()
+                    if (!hintText.isNullOrEmpty()) {
+                        return "Textfeld: $hintText"
+                    }
+                } catch (e: Exception) {
+                    // Reflection failed, ignore
+                }
+                
+                return "Textfeld"
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error getting button name: ${e.message}")
+        }
+        
+        return ""
     }
     
     /**
      * Simulate pressing the Power + Volume Down buttons to take a screenshot
      */
     private fun simulateScreenshotButtonCombination() {
-        // Implementation details omitted for brevity
+        Log.d(TAG, "Simulating Power + Volume Down button combination")
+        
+        try {
+            // On some devices, we can use the GLOBAL_ACTION_TAKE_SCREENSHOT global action
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                val result = performGlobalAction(GLOBAL_ACTION_TAKE_SCREENSHOT)
+                if (result) {
+                    Log.d(TAG, "Successfully took screenshot using GLOBAL_ACTION_TAKE_SCREENSHOT")
+                    return
+                } else {
+                    Log.d(TAG, "Failed to take screenshot using GLOBAL_ACTION_TAKE_SCREENSHOT, trying alternative methods")
+                }
+            }
+            
+            // On devices where the global action doesn't work, try to simulate key presses
+            // This requires the INJECT_EVENTS permission which is only granted to system apps
+            // So this might not work on all devices
+            val result = simulateKeyPress(KeyEvent.KEYCODE_VOLUME_DOWN) && 
+                         simulateKeyPress(KeyEvent.KEYCODE_POWER)
+            
+            if (result) {
+                Log.d(TAG, "Successfully simulated Power + Volume Down button combination")
+            } else {
+                Log.e(TAG, "Failed to simulate Power + Volume Down button combination")
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error simulating screenshot button combination: ${e.message}")
+        }
     }
     
     /**
-     * Retrieve the latest screenshot from the device
+     * Simulate pressing a key
      */
-    private fun retrieveLatestScreenshot(screenInfo: String) {
-        // Implementation details omitted for brevity
+    private fun simulateKeyPress(keyCode: Int): Boolean {
+        Log.d(TAG, "Simulating key press: $keyCode")
+        
+        try {
+            // Create down and up key events
+            val downTime = System.currentTimeMillis()
+            val downEvent = KeyEvent(downTime, downTime, KeyEvent.ACTION_DOWN, keyCode, 0)
+            val upEvent = KeyEvent(downTime, System.currentTimeMillis(), KeyEvent.ACTION_UP, keyCode, 0)
+            
+            // Dispatch the events
+            val downResult = dispatchKeyEvent(downEvent)
+            val upResult = dispatchKeyEvent(upEvent)
+            
+            Log.d(TAG, "Key press simulation result: down=$downResult, up=$upResult")
+            return downResult && upResult
+        } catch (e: Exception) {
+            Log.e(TAG, "Error performing key press: ${e.message}")
+            return false
+        }
     }
     
     /**
@@ -893,56 +1216,616 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
      * Scroll down on the screen using gesture
      */
     fun scrollDown() {
-        // Implementation details omitted for brevity
+        Log.d(TAG, "Scrolling down")
+        showToast("Scrolle nach unten...", false)
+        
+        try {
+            // Get display metrics to calculate swipe coordinates
+            val displayMetrics = resources.displayMetrics
+            val screenHeight = displayMetrics.heightPixels
+            val screenWidth = displayMetrics.widthPixels
+            
+            // Create a path for the gesture (swipe from middle-bottom to middle-top)
+            val swipePath = Path()
+            swipePath.moveTo(screenWidth / 2f, screenHeight * 0.7f) // Start from 70% down the screen
+            swipePath.lineTo(screenWidth / 2f, screenHeight * 0.3f) // Move to 30% down the screen
+            
+            // Create a gesture builder and add the swipe
+            val gestureBuilder = GestureDescription.Builder()
+            val gesture = GestureDescription.StrokeDescription(
+                swipePath, 
+                0, // start time
+                300 // duration in milliseconds
+            )
+            gestureBuilder.addStroke(gesture)
+            
+            // Dispatch the gesture
+            val result = dispatchGesture(
+                gestureBuilder.build(),
+                object : GestureResultCallback() {
+                    override fun onCompleted(gestureDescription: GestureDescription) {
+                        Log.d(TAG, "Scroll down gesture completed")
+                        showToast("Erfolgreich nach unten gescrollt", false)
+                    }
+                    
+                    override fun onCancelled(gestureDescription: GestureDescription) {
+                        Log.e(TAG, "Scroll down gesture cancelled")
+                        showToast("Scrollen nach unten abgebrochen", true)
+                    }
+                },
+                null // handler
+            )
+            
+            if (!result) {
+                Log.e(TAG, "Failed to dispatch scroll down gesture")
+                showToast("Fehler beim Scrollen nach unten", true)
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error scrolling down: ${e.message}")
+            showToast("Fehler beim Scrollen nach unten: ${e.message}", true)
+        }
     }
     
     /**
      * Scroll down from specific coordinates with custom distance and duration
+     * 
+     * @param x Starting X coordinate
+     * @param y Starting Y coordinate
+     * @param distance Distance in pixels to scroll
+     * @param duration Duration of the scroll gesture in milliseconds
      */
     fun scrollDown(x: Float, y: Float, distance: Float, duration: Long) {
-        // Implementation details omitted for brevity
+        Log.d(TAG, "Scrolling down from ($x, $y) with distance $distance and duration $duration ms")
+        showToast("Scrolle nach unten von bestimmter Position...", false)
+        
+        try {
+            // Create a path for the gesture (swipe from specified position upward by the specified distance)
+            val swipePath = Path()
+            swipePath.moveTo(x, y) // Start from specified position
+            swipePath.lineTo(x, y - distance) // Move upward by the specified distance
+            
+            // Create a gesture builder and add the swipe
+            val gestureBuilder = GestureDescription.Builder()
+            val gesture = GestureDescription.StrokeDescription(
+                swipePath, 
+                0, // start time
+                duration // custom duration in milliseconds
+            )
+            gestureBuilder.addStroke(gesture)
+            
+            // Dispatch the gesture
+            val result = dispatchGesture(
+                gestureBuilder.build(),
+                object : GestureResultCallback() {
+                    override fun onCompleted(gestureDescription: GestureDescription) {
+                        Log.d(TAG, "Coordinate-based scroll down gesture completed")
+                        showToast("Erfolgreich nach unten gescrollt von Position ($x, $y)", false)
+                    }
+                    
+                    override fun onCancelled(gestureDescription: GestureDescription) {
+                        Log.e(TAG, "Coordinate-based scroll down gesture cancelled")
+                        showToast("Scrollen nach unten von Position ($x, $y) abgebrochen", true)
+                    }
+                },
+                null // handler
+            )
+            
+            if (!result) {
+                Log.e(TAG, "Failed to dispatch coordinate-based scroll down gesture")
+                showToast("Fehler beim Scrollen nach unten von Position ($x, $y)", true)
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error scrolling down from coordinates: ${e.message}")
+            showToast("Fehler beim Scrollen nach unten von Position ($x, $y): ${e.message}", true)
+        }
     }
     
     /**
      * Scroll up on the screen using gesture
      */
     fun scrollUp() {
-        // Implementation details omitted for brevity
+        Log.d(TAG, "Scrolling up")
+        showToast("Scrolle nach oben...", false)
+        
+        try {
+            // Get display metrics to calculate swipe coordinates
+            val displayMetrics = resources.displayMetrics
+            val screenHeight = displayMetrics.heightPixels
+            val screenWidth = displayMetrics.widthPixels
+            
+            // Create a path for the gesture (swipe from middle-top to middle-bottom)
+            val swipePath = Path()
+            swipePath.moveTo(screenWidth / 2f, screenHeight * 0.3f) // Start from 30% down the screen
+            swipePath.lineTo(screenWidth / 2f, screenHeight * 0.7f) // Move to 70% down the screen
+            
+            // Create a gesture builder and add the swipe
+            val gestureBuilder = GestureDescription.Builder()
+            val gesture = GestureDescription.StrokeDescription(
+                swipePath, 
+                0, // start time
+                300 // duration in milliseconds
+            )
+            gestureBuilder.addStroke(gesture)
+            
+            // Dispatch the gesture
+            val result = dispatchGesture(
+                gestureBuilder.build(),
+                object : GestureResultCallback() {
+                    override fun onCompleted(gestureDescription: GestureDescription) {
+                        Log.d(TAG, "Scroll up gesture completed")
+                        showToast("Erfolgreich nach oben gescrollt", false)
+                    }
+                    
+                    override fun onCancelled(gestureDescription: GestureDescription) {
+                        Log.e(TAG, "Scroll up gesture cancelled")
+                        showToast("Scrollen nach oben abgebrochen", true)
+                    }
+                },
+                null // handler
+            )
+            
+            if (!result) {
+                Log.e(TAG, "Failed to dispatch scroll up gesture")
+                showToast("Fehler beim Scrollen nach oben", true)
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error scrolling up: ${e.message}")
+            showToast("Fehler beim Scrollen nach oben: ${e.message}", true)
+        }
     }
     
     /**
      * Scroll up from specific coordinates with custom distance and duration
+     * 
+     * @param x Starting X coordinate
+     * @param y Starting Y coordinate
+     * @param distance Distance in pixels to scroll
+     * @param duration Duration of the scroll gesture in milliseconds
      */
     fun scrollUp(x: Float, y: Float, distance: Float, duration: Long) {
-        // Implementation details omitted for brevity
+        Log.d(TAG, "Scrolling up from ($x, $y) with distance $distance and duration $duration ms")
+        showToast("Scrolle nach oben von bestimmter Position...", false)
+        
+        try {
+            // Create a path for the gesture (swipe from specified position downward by the specified distance)
+            val swipePath = Path()
+            swipePath.moveTo(x, y) // Start from specified position
+            swipePath.lineTo(x, y + distance) // Move downward by the specified distance
+            
+            // Create a gesture builder and add the swipe
+            val gestureBuilder = GestureDescription.Builder()
+            val gesture = GestureDescription.StrokeDescription(
+                swipePath, 
+                0, // start time
+                duration // custom duration in milliseconds
+            )
+            gestureBuilder.addStroke(gesture)
+            
+            // Dispatch the gesture
+            val result = dispatchGesture(
+                gestureBuilder.build(),
+                object : GestureResultCallback() {
+                    override fun onCompleted(gestureDescription: GestureDescription) {
+                        Log.d(TAG, "Coordinate-based scroll up gesture completed")
+                        showToast("Erfolgreich nach oben gescrollt von Position ($x, $y)", false)
+                    }
+                    
+                    override fun onCancelled(gestureDescription: GestureDescription) {
+                        Log.e(TAG, "Coordinate-based scroll up gesture cancelled")
+                        showToast("Scrollen nach oben von Position ($x, $y) abgebrochen", true)
+                    }
+                },
+                null // handler
+            )
+            
+            if (!result) {
+                Log.e(TAG, "Failed to dispatch coordinate-based scroll up gesture")
+                showToast("Fehler beim Scrollen nach oben von Position ($x, $y)", true)
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error scrolling up from coordinates: ${e.message}")
+            showToast("Fehler beim Scrollen nach oben von Position ($x, $y): ${e.message}", true)
+        }
     }
     
     /**
      * Scroll left on the screen using gesture
      */
     fun scrollLeft() {
-        // Implementation details omitted for brevity
+        Log.d(TAG, "Scrolling left")
+        showToast("Scrolle nach links...", false)
+        
+        try {
+            // Get display metrics to calculate swipe coordinates
+            val displayMetrics = resources.displayMetrics
+            val screenHeight = displayMetrics.heightPixels
+            val screenWidth = displayMetrics.widthPixels
+            
+            // Create a path for the gesture (swipe from middle-right to middle-left)
+            val swipePath = Path()
+            swipePath.moveTo(screenWidth * 0.7f, screenHeight / 2f) // Start from 70% across the screen
+            swipePath.lineTo(screenWidth * 0.3f, screenHeight / 2f) // Move to 30% across the screen
+            
+            // Create a gesture builder and add the swipe
+            val gestureBuilder = GestureDescription.Builder()
+            val gesture = GestureDescription.StrokeDescription(
+                swipePath, 
+                0, // start time
+                300 // duration in milliseconds
+            )
+            gestureBuilder.addStroke(gesture)
+            
+            // Dispatch the gesture
+            val result = dispatchGesture(
+                gestureBuilder.build(),
+                object : GestureResultCallback() {
+                    override fun onCompleted(gestureDescription: GestureDescription) {
+                        Log.d(TAG, "Scroll left gesture completed")
+                        showToast("Erfolgreich nach links gescrollt", false)
+                    }
+                    
+                    override fun onCancelled(gestureDescription: GestureDescription) {
+                        Log.e(TAG, "Scroll left gesture cancelled")
+                        showToast("Scrollen nach links abgebrochen", true)
+                    }
+                },
+                null // handler
+            )
+            
+            if (!result) {
+                Log.e(TAG, "Failed to dispatch scroll left gesture")
+                showToast("Fehler beim Scrollen nach links", true)
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error scrolling left: ${e.message}")
+            showToast("Fehler beim Scrollen nach links: ${e.message}", true)
+        }
     }
     
     /**
      * Scroll left from specific coordinates with custom distance and duration
+     * 
+     * @param x Starting X coordinate
+     * @param y Starting Y coordinate
+     * @param distance Distance in pixels to scroll
+     * @param duration Duration of the scroll gesture in milliseconds
      */
     fun scrollLeft(x: Float, y: Float, distance: Float, duration: Long) {
-        // Implementation details omitted for brevity
+        Log.d(TAG, "Scrolling left from ($x, $y) with distance $distance and duration $duration ms")
+        showToast("Scrolle nach links von bestimmter Position...", false)
+        
+        try {
+            // Create a path for the gesture (swipe from specified position leftward by the specified distance)
+            val swipePath = Path()
+            swipePath.moveTo(x, y) // Start from specified position
+            swipePath.lineTo(x - distance, y) // Move leftward by the specified distance
+            
+            // Create a gesture builder and add the swipe
+            val gestureBuilder = GestureDescription.Builder()
+            val gesture = GestureDescription.StrokeDescription(
+                swipePath, 
+                0, // start time
+                duration // custom duration in milliseconds
+            )
+            gestureBuilder.addStroke(gesture)
+            
+            // Dispatch the gesture
+            val result = dispatchGesture(
+                gestureBuilder.build(),
+                object : GestureResultCallback() {
+                    override fun onCompleted(gestureDescription: GestureDescription) {
+                        Log.d(TAG, "Coordinate-based scroll left gesture completed")
+                        showToast("Erfolgreich nach links gescrollt von Position ($x, $y)", false)
+                    }
+                    
+                    override fun onCancelled(gestureDescription: GestureDescription) {
+                        Log.e(TAG, "Coordinate-based scroll left gesture cancelled")
+                        showToast("Scrollen nach links von Position ($x, $y) abgebrochen", true)
+                    }
+                },
+                null // handler
+            )
+            
+            if (!result) {
+                Log.e(TAG, "Failed to dispatch coordinate-based scroll left gesture")
+                showToast("Fehler beim Scrollen nach links von Position ($x, $y)", true)
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error scrolling left from coordinates: ${e.message}")
+            showToast("Fehler beim Scrollen nach links von Position ($x, $y): ${e.message}", true)
+        }
     }
     
     /**
      * Scroll right on the screen using gesture
      */
     fun scrollRight() {
-        // Implementation details omitted for brevity
+        Log.d(TAG, "Scrolling right")
+        showToast("Scrolle nach rechts...", false)
+        
+        try {
+            // Get display metrics to calculate swipe coordinates
+            val displayMetrics = resources.displayMetrics
+            val screenHeight = displayMetrics.heightPixels
+            val screenWidth = displayMetrics.widthPixels
+            
+            // Create a path for the gesture (swipe from middle-left to middle-right)
+            val swipePath = Path()
+            swipePath.moveTo(screenWidth * 0.3f, screenHeight / 2f) // Start from 30% across the screen
+            swipePath.lineTo(screenWidth * 0.7f, screenHeight / 2f) // Move to 70% across the screen
+            
+            // Create a gesture builder and add the swipe
+            val gestureBuilder = GestureDescription.Builder()
+            val gesture = GestureDescription.StrokeDescription(
+                swipePath, 
+                0, // start time
+                300 // duration in milliseconds
+            )
+            gestureBuilder.addStroke(gesture)
+            
+            // Dispatch the gesture
+            val result = dispatchGesture(
+                gestureBuilder.build(),
+                object : GestureResultCallback() {
+                    override fun onCompleted(gestureDescription: GestureDescription) {
+                        Log.d(TAG, "Scroll right gesture completed")
+                        showToast("Erfolgreich nach rechts gescrollt", false)
+                    }
+                    
+                    override fun onCancelled(gestureDescription: GestureDescription) {
+                        Log.e(TAG, "Scroll right gesture cancelled")
+                        showToast("Scrollen nach rechts abgebrochen", true)
+                    }
+                },
+                null // handler
+            )
+            
+            if (!result) {
+                Log.e(TAG, "Failed to dispatch scroll right gesture")
+                showToast("Fehler beim Scrollen nach rechts", true)
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error scrolling right: ${e.message}")
+            showToast("Fehler beim Scrollen nach rechts: ${e.message}", true)
+        }
     }
     
     /**
      * Scroll right from specific coordinates with custom distance and duration
+     * 
+     * @param x Starting X coordinate
+     * @param y Starting Y coordinate
+     * @param distance Distance in pixels to scroll
+     * @param duration Duration of the scroll gesture in milliseconds
      */
     fun scrollRight(x: Float, y: Float, distance: Float, duration: Long) {
-        // Implementation details omitted for brevity
+        Log.d(TAG, "Scrolling right from ($x, $y) with distance $distance and duration $duration ms")
+        showToast("Scrolle nach rechts von bestimmter Position...", false)
+        
+        try {
+            // Create a path for the gesture (swipe from specified position rightward by the specified distance)
+            val swipePath = Path()
+            swipePath.moveTo(x, y) // Start from specified position
+            swipePath.lineTo(x + distance, y) // Move rightward by the specified distance
+            
+            // Create a gesture builder and add the swipe
+            val gestureBuilder = GestureDescription.Builder()
+            val gesture = GestureDescription.StrokeDescription(
+                swipePath, 
+                0, // start time
+                duration // custom duration in milliseconds
+            )
+            gestureBuilder.addStroke(gesture)
+            
+            // Dispatch the gesture
+            val result = dispatchGesture(
+                gestureBuilder.build(),
+                object : GestureResultCallback() {
+                    override fun onCompleted(gestureDescription: GestureDescription) {
+                        Log.d(TAG, "Coordinate-based scroll right gesture completed")
+                        showToast("Erfolgreich nach rechts gescrollt von Position ($x, $y)", false)
+                    }
+                    
+                    override fun onCancelled(gestureDescription: GestureDescription) {
+                        Log.e(TAG, "Coordinate-based scroll right gesture cancelled")
+                        showToast("Scrollen nach rechts von Position ($x, $y) abgebrochen", true)
+                    }
+                },
+                null // handler
+            )
+            
+            if (!result) {
+                Log.e(TAG, "Failed to dispatch coordinate-based scroll right gesture")
+                showToast("Fehler beim Scrollen nach rechts von Position ($x, $y)", true)
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error scrolling right from coordinates: ${e.message}")
+            showToast("Fehler beim Scrollen nach rechts von Position ($x, $y): ${e.message}", true)
+        }
+    }
+    
+    /**
+     * Retrieve the latest screenshot
+     */
+    private fun retrieveLatestScreenshot(screenInfo: String) {
+        try {
+            Log.d(TAG, "Retrieving latest screenshot")
+            showToast("Suche nach dem aufgenommenen Screenshot...", false)
+            
+            // Check standard screenshot locations
+            val screenshotFile = findLatestScreenshotFile()
+            
+            if (screenshotFile != null) {
+                Log.d(TAG, "Found screenshot file: ${screenshotFile.absolutePath}")
+                showToast("Screenshot gefunden: ${screenshotFile.name}", false)
+                
+                // Convert file to URI
+                val screenshotUri = Uri.fromFile(screenshotFile)
+                
+                // Add the screenshot to the conversation with screen information
+                addScreenshotToConversation(screenshotUri, screenInfo)
+            } else {
+                Log.e(TAG, "No screenshot file found")
+                showToast("Kein Screenshot gefunden. Bitte prüfen Sie die Berechtigungen.", true)
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error retrieving screenshot: ${e.message}")
+            showToast("Fehler beim Abrufen des Screenshots: ${e.message}", true)
+        }
+    }
+    
+    /**
+     * Find the latest screenshot file in standard locations
+     */
+    private fun findLatestScreenshotFile(): File? {
+        try {
+            // List of possible screenshot directories
+            val possibleDirs = listOf(
+                // Primary location on most devices
+                File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES), "Screenshots"),
+                // Secondary location on some devices
+                File(Environment.getExternalStorageDirectory(), "Pictures/Screenshots"),
+                // DCIM location used by some manufacturers
+                File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DCIM), "Screenshots"),
+                // App-specific location
+                File(applicationContext.getExternalFilesDir(Environment.DIRECTORY_PICTURES), "Screenshots")
+            )
+            
+            // Find the most recent screenshot file
+            var latestFile: File? = null
+            var latestModified: Long = 0
+            
+            for (dir in possibleDirs) {
+                if (dir.exists() && dir.isDirectory) {
+                    Log.d(TAG, "Checking directory: ${dir.absolutePath}")
+                    
+                    val files = dir.listFiles { file ->
+                        file.isFile && (file.name.startsWith("Screenshot") || 
+                                        file.name.startsWith("screenshot")) &&
+                        (file.name.endsWith(".png") || file.name.endsWith(".jpg") || 
+                         file.name.endsWith(".jpeg"))
+                    }
+                    
+                    files?.forEach { file ->
+                        Log.d(TAG, "Found file: ${file.name}, modified: ${file.lastModified()}")
+                        if (file.lastModified() > latestModified) {
+                            latestFile = file
+                            latestModified = file.lastModified()
+                        }
+                    }
+                }
+            }
+            
+            // Check if the file is recent (within the last 10 seconds)
+            if (latestFile != null) {
+                val currentTime = System.currentTimeMillis()
+                val fileAge = currentTime - latestModified
+                
+                if (fileAge <= 10000) { // 10 seconds
+                    Log.d(TAG, "Found recent screenshot: ${latestFile?.absolutePath}, age: ${fileAge}ms")
+                    return latestFile
+                } else {
+                    Log.d(TAG, "Found screenshot is too old: ${latestFile?.absolutePath}, age: ${fileAge}ms")
+                }
+            }
+            
+            // If no recent file found, try to query MediaStore
+            val latestMediaStoreFile = findLatestScreenshotViaMediaStore()
+            if (latestMediaStoreFile != null) {
+                return latestMediaStoreFile
+            }
+            
+            return null
+        } catch (e: Exception) {
+            Log.e(TAG, "Error finding latest screenshot file: ${e.message}")
+            return null
+        }
+    }
+    
+    /**
+     * Find the latest screenshot using MediaStore
+     */
+    private fun findLatestScreenshotViaMediaStore(): File? {
+        try {
+            val contentResolver = applicationContext.contentResolver
+            val projection = arrayOf(
+                MediaStore.Images.Media.DATA,
+                MediaStore.Images.Media.DATE_ADDED
+            )
+            
+            // Query for recent screenshots
+            val selection = "${MediaStore.Images.Media.DISPLAY_NAME} LIKE ?"
+            val selectionArgs = arrayOf("%screenshot%")
+            val sortOrder = "${MediaStore.Images.Media.DATE_ADDED} DESC"
+            
+            contentResolver.query(
+                MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
+                projection,
+                selection,
+                selectionArgs,
+                sortOrder
+            )?.use { cursor ->
+                if (cursor.moveToFirst()) {
+                    val dataColumnIndex = cursor.getColumnIndexOrThrow(MediaStore.Images.Media.DATA)
+                    val dateColumnIndex = cursor.getColumnIndexOrThrow(MediaStore.Images.Media.DATE_ADDED)
+                    
+                    val filePath = cursor.getString(dataColumnIndex)
+                    val dateAdded = cursor.getLong(dateColumnIndex) * 1000 // Convert to milliseconds
+                    
+                    val file = File(filePath)
+                    if (file.exists()) {
+                        val currentTime = System.currentTimeMillis()
+                        val fileAge = currentTime - dateAdded
+                        
+                        if (fileAge <= 10000) { // 10 seconds
+                            Log.d(TAG, "Found recent screenshot via MediaStore: $filePath, age: ${fileAge}ms")
+                            return file
+                        } else {
+                            Log.d(TAG, "Found screenshot via MediaStore is too old: $filePath, age: ${fileAge}ms")
+                        }
+                    }
+                }
+            }
+            
+            return null
+        } catch (e: Exception) {
+            Log.e(TAG, "Error finding screenshot via MediaStore: ${e.message}")
+            return null
+        }
+    }
+    
+    /**
+     * Add the screenshot to the conversation with screen information
+     */
+    private fun addScreenshotToConversation(screenshotUri: Uri, screenInfo: String) {
+        try {
+            Log.d(TAG, "Adding screenshot to conversation with screen information: $screenshotUri")
+            
+            // Get the MainActivity instance
+            val mainActivity = MainActivity.getInstance()
+            if (mainActivity == null) {
+                Log.e(TAG, "MainActivity instance is null, cannot add screenshot to conversation")
+                showToast("Fehler: MainActivity-Instanz ist nicht verfügbar", true)
+                return
+            }
+            
+            // Get the PhotoReasoningViewModel from MainActivity
+            val photoReasoningViewModel = mainActivity.getPhotoReasoningViewModel()
+            if (photoReasoningViewModel == null) {
+                Log.e(TAG, "PhotoReasoningViewModel is null, cannot add screenshot to conversation")
+                showToast("Fehler: PhotoReasoningViewModel ist nicht verfügbar", true)
+                return
+            }
+            
+            // Add the screenshot to the conversation with screen information
+            photoReasoningViewModel.addScreenshotToConversation(screenshotUri, applicationContext, screenInfo)
+            
+            Log.d(TAG, "Screenshot added to conversation with screen information")
+            showToast("Screenshot mit Bildschirminformationen zur Konversation hinzugefügt", false)
+        } catch (e: Exception) {
+            Log.e(TAG, "Error adding screenshot to conversation: ${e.message}")
+            showToast("Fehler beim Hinzufügen des Screenshots zur Konversation: ${e.message}", true)
+        }
     }
     
     /**
