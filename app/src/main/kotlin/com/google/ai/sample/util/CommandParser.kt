@@ -10,6 +10,23 @@ object CommandParser {
     
     // Regex patterns for different command formats
     
+    // Model selection patterns - for switching between high and low reasoning models
+    private val MODEL_SELECTION_PATTERNS = listOf(
+        // High reasoning model patterns
+        Regex("(?i)\\bhighReasoningModel\\(\\)"),
+        Regex("(?i)\\buseHighReasoningModel\\(\\)"),
+        Regex("(?i)\\bswitchToHighReasoningModel\\(\\)"),
+        Regex("(?i)\\b(?:use|switch to|enable|activate|verwende|wechsle zu|aktiviere) (?:the )?(?:high|advanced|better|improved|höhere|verbesserte|bessere) (?:reasoning|thinking|intelligence|denk|intelligenz) model\\b"),
+        Regex("(?i)\\b(?:use|switch to|enable|activate|verwende|wechsle zu|aktiviere) (?:the )?gemini(?:\\-|\\s)?2\\.5(?:\\-|\\s)?pro\\b"),
+        
+        // Low reasoning model patterns
+        Regex("(?i)\\blowReasoningModel\\(\\)"),
+        Regex("(?i)\\buseLowReasoningModel\\(\\)"),
+        Regex("(?i)\\bswitchToLowReasoningModel\\(\\)"),
+        Regex("(?i)\\b(?:use|switch to|enable|activate|verwende|wechsle zu|aktiviere) (?:the )?(?:low|basic|simple|standard|niedrige|einfache|standard) (?:reasoning|thinking|intelligence|denk|intelligenz) model\\b"),
+        Regex("(?i)\\b(?:use|switch to|enable|activate|verwende|wechsle zu|aktiviere) (?:the )?gemini(?:\\-|\\s)?2\\.0(?:\\-|\\s)?flash\\b")
+    )
+    
     // Write text patterns - for writing text into focused text fields
     private val WRITE_TEXT_PATTERNS = listOf(
         // Function-like patterns
@@ -239,6 +256,9 @@ object CommandParser {
      * Process text to find commands
      */
     private fun processText(text: String, commands: MutableList<Command>) {
+        // Look for model selection commands
+        findModelSelectionCommands(text, commands)
+        
         // Look for write text commands
         findWriteTextCommands(text, commands)
         
@@ -274,6 +294,39 @@ object CommandParser {
         
         // Look for open app commands
         findOpenAppCommands(text, commands)
+    }
+    
+    /**
+     * Find model selection commands in the text
+     */
+    private fun findModelSelectionCommands(text: String, commands: MutableList<Command>) {
+        // First check for high reasoning model commands
+        for (i in 0 until 5) { // First 5 patterns are for high reasoning model
+            val pattern = MODEL_SELECTION_PATTERNS[i]
+            if (pattern.containsMatchIn(text)) {
+                // Check if this command is already in the list (avoid duplicates)
+                if (!commands.any { it is Command.UseHighReasoningModel }) {
+                    Log.d(TAG, "Found high reasoning model command with pattern ${pattern.pattern}")
+                    commands.add(Command.UseHighReasoningModel)
+                    // Only add one high reasoning model command even if multiple matches are found
+                    break
+                }
+            }
+        }
+        
+        // Then check for low reasoning model commands
+        for (i in 5 until MODEL_SELECTION_PATTERNS.size) { // Remaining patterns are for low reasoning model
+            val pattern = MODEL_SELECTION_PATTERNS[i]
+            if (pattern.containsMatchIn(text)) {
+                // Check if this command is already in the list (avoid duplicates)
+                if (!commands.any { it is Command.UseLowReasoningModel }) {
+                    Log.d(TAG, "Found low reasoning model command with pattern ${pattern.pattern}")
+                    commands.add(Command.UseLowReasoningModel)
+                    // Only add one low reasoning model command even if multiple matches are found
+                    break
+                }
+            }
+        }
     }
     
     /**
@@ -743,4 +796,14 @@ sealed class Command {
      * Command to write text into the currently focused text field
      */
     data class WriteText(val text: String) : Command()
+    
+    /**
+     * Command to switch to high reasoning model (gemini-2.5-pro-preview-03-25)
+     */
+    object UseHighReasoningModel : Command()
+    
+    /**
+     * Command to switch to low reasoning model (gemini-2.0-flash-lite)
+     */
+    object UseLowReasoningModel : Command()
 }
