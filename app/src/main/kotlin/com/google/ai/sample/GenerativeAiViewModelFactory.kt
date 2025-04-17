@@ -1,19 +1,3 @@
-/*
- * Copyright 2023 Google LLC
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
-
 package com.google.ai.sample
 
 import androidx.lifecycle.ViewModel
@@ -26,6 +10,23 @@ import com.google.ai.sample.feature.multimodal.PhotoReasoningViewModel
 import com.google.ai.sample.feature.text.SummarizeViewModel
 
 val GenerativeViewModelFactory = object : ViewModelProvider.Factory {
+    // Current selected model name
+    private var currentModelName = "gemini-2.0-flash-lite"
+    
+    /**
+     * Set the model to high reasoning capability (gemini-2.5-pro-preview-03-25)
+     */
+    fun highReasoningModel() {
+        currentModelName = "gemini-2.5-pro-preview-03-25"
+    }
+    
+    /**
+     * Set the model to low reasoning capability (gemini-2.0-flash-lite)
+     */
+    fun lowReasoningModel() {
+        currentModelName = "gemini-2.0-flash-lite"
+    }
+    
     override fun <T : ViewModel> create(
         viewModelClass: Class<T>,
         extras: CreationExtras
@@ -37,10 +38,10 @@ val GenerativeViewModelFactory = object : ViewModelProvider.Factory {
         return with(viewModelClass) {
             when {
                 isAssignableFrom(SummarizeViewModel::class.java) -> {
-                    // Initialize a GenerativeModel with the `gemini-flash` AI model
+                    // Initialize a GenerativeModel with the currently selected model
                     // for text generation
                     val generativeModel = GenerativeModel(
-                        modelName = "gemini-2.0-flash-lite",
+                        modelName = currentModelName,
                         apiKey = BuildConfig.apiKey,
                         generationConfig = config
                     )
@@ -48,10 +49,10 @@ val GenerativeViewModelFactory = object : ViewModelProvider.Factory {
                 }
 
                 isAssignableFrom(PhotoReasoningViewModel::class.java) -> {
-                    // Initialize a GenerativeModel with the `gemini-flash` AI model
+                    // Initialize a GenerativeModel with the currently selected model
                     // for multimodal text generation
                     val generativeModel = GenerativeModel(
-                        modelName = "gemini-2.0-flash-lite",
+                        modelName = currentModelName,
                         apiKey = BuildConfig.apiKey,
                         generationConfig = config
                     )
@@ -59,9 +60,9 @@ val GenerativeViewModelFactory = object : ViewModelProvider.Factory {
                 }
 
                 isAssignableFrom(ChatViewModel::class.java) -> {
-                    // Initialize a GenerativeModel with the `gemini-flash` AI model for chat
+                    // Initialize a GenerativeModel with the currently selected model for chat
                     val generativeModel = GenerativeModel(
-                        modelName = "gemini-2.0-flash-lite",
+                        modelName = currentModelName,
                         apiKey = BuildConfig.apiKey,
                         generationConfig = config
                     )
