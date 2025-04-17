@@ -238,6 +238,8 @@ object CommandParser {
                     is Command.ScrollLeft -> Log.d(TAG, "Command details: ScrollLeft")
                     is Command.ScrollRight -> Log.d(TAG, "Command details: ScrollRight")
                     is Command.ScrollDownFromCoordinates -> Log.d(TAG, "Command details: ScrollDownFromCoordinates(${command.x}, ${command.y}, ${command.distance}, ${command.duration})")
+                    is Command.UseHighReasoningModel -> Log.d(TAG, "Command details: UseHighReasoningModel")
+                    is Command.UseLowReasoningModel -> Log.d(TAG, "Command details: UseLowReasoningModel")
                     is Command.ScrollUpFromCoordinates -> Log.d(TAG, "Command details: ScrollUpFromCoordinates(${command.x}, ${command.y}, ${command.distance}, ${command.duration})")
                     is Command.ScrollLeftFromCoordinates -> Log.d(TAG, "Command details: ScrollLeftFromCoordinates(${command.x}, ${command.y}, ${command.distance}, ${command.duration})")
                     is Command.ScrollRightFromCoordinates -> Log.d(TAG, "Command details: ScrollRightFromCoordinates(${command.x}, ${command.y}, ${command.distance}, ${command.duration})")
