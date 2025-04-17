@@ -259,6 +259,8 @@ class PhotoReasoningViewModel(
                             is Command.ScrollRightFromCoordinates -> "Nach rechts scrollen von Position (${it.x}, ${it.y}) mit Distanz ${it.distance}px und Dauer ${it.duration}ms"
                             is Command.OpenApp -> "App öffnen: \"${it.packageName}\""
                             is Command.WriteText -> "Text schreiben: \"${it.text}\""
+                            is Command.UseHighReasoningModel -> "Wechsle zu leistungsfähigerem Modell (gemini-2.5-pro-preview-03-25)"
+                            is Command.UseLowReasoningModel -> "Wechsle zu schnellerem Modell (gemini-2.0-flash-lite)"
                         }
                     }
                     
@@ -321,6 +323,8 @@ class PhotoReasoningViewModel(
                             is Command.ScrollRightFromCoordinates -> "Nach rechts scrollen von Position (${command.x}, ${command.y}) mit Distanz ${command.distance}px und Dauer ${command.duration}ms"
                             is Command.OpenApp -> "App öffnen: \"${command.packageName}\""
                             is Command.WriteText -> "Text schreiben: \"${command.text}\""
+                            is Command.UseHighReasoningModel -> "Wechsle zu leistungsfähigerem Modell (gemini-2.5-pro-preview-03-25)"
+                            is Command.UseLowReasoningModel -> "Wechsle zu schnellerem Modell (gemini-2.0-flash-lite)"
                         }
                         
                         _commandExecutionStatus.value = "Führe aus: $commandDescription (${index + 1}/${commands.size})"
