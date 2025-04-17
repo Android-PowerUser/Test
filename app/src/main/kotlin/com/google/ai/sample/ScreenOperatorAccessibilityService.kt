@@ -183,12 +183,12 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
                 is Command.UseHighReasoningModel -> {
                     Log.d(TAG, "Switching to high reasoning model (gemini-2.5-pro-preview-03-25)")
                     showToast("Wechsle zu leistungsfähigerem Modell (gemini-2.5-pro-preview-03-25)", false)
-                    GenerativeViewModelFactory.highReasoningModel()
+                    GenerativeAiViewModelFactory.highReasoningModel()
                 }
                 is Command.UseLowReasoningModel -> {
                     Log.d(TAG, "Switching to low reasoning model (gemini-2.0-flash-lite)")
                     showToast("Wechsle zu schnellerem Modell (gemini-2.0-flash-lite)", false)
-                    GenerativeViewModelFactory.lowReasoningModel()
+                    GenerativeAiViewModelFactory.lowReasoningModel()
                 }
             }
         }
