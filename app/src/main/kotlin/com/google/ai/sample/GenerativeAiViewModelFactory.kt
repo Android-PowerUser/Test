@@ -75,3 +75,14 @@ val GenerativeViewModelFactory = object : ViewModelProvider.Factory {
         } as T
     }
 }
+
+// Add companion object with static methods for easier access
+object GenerativeAiViewModelFactory {
+    fun highReasoningModel() {
+        GenerativeViewModelFactory.highReasoningModel()
+    }
+    
+    fun lowReasoningModel() {
+        GenerativeViewModelFactory.lowReasoningModel()
+    }
+}
