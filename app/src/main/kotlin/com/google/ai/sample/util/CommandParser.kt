@@ -808,4 +808,14 @@ sealed class Command {
      * Command to switch to low reasoning model (gemini-2.0-flash-lite)
      */
     object UseLowReasoningModel : Command()
+    
+    /**
+     * Command to switch to high reasoning model (gemini-2.5-pro-preview-03-25)
+     */
+    object UseHighReasoningModel : Command()
+    
+    /**
+     * Command to switch to low reasoning model (gemini-2.0-flash-lite)
+     */
+    object UseLowReasoningModel : Command()
 }
