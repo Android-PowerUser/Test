@@ -78,11 +78,44 @@ val GenerativeViewModelFactory = object : ViewModelProvider.Factory {
 
 // Add companion object with static methods for easier access
 object GenerativeAiViewModelFactory {
+    // Current selected model name - duplicated from GenerativeViewModelFactory
+    private var currentModelName = "gemini-2.0-flash-lite"
+    
+    /**
+     * Set the model to high reasoning capability (gemini-2.5-pro-preview-03-25)
+     */
     fun highReasoningModel() {
-        GenerativeViewModelFactory.highReasoningModel()
+        currentModelName = "gemini-2.5-pro-preview-03-25"
+        // Also update the original factory to keep them in sync
+        (GenerativeViewModelFactory as ViewModelProvider.Factory).apply {
+            if (this is ViewModelProvider.Factory) {
+                try {
+                    val field = this.javaClass.getDeclaredField("currentModelName")
+                    field.isAccessible = true
+                    field.set(this, currentModelName)
+                } catch (e: Exception) {
+                    // Fallback if reflection fails
+                }
+            }
+        }
     }
     
+    /**
+     * Set the model to low reasoning capability (gemini-2.0-flash-lite)
+     */
     fun lowReasoningModel() {
-        GenerativeViewModelFactory.lowReasoningModel()
+        currentModelName = "gemini-2.0-flash-lite"
+        // Also update the original factory to keep them in sync
+        (GenerativeViewModelFactory as ViewModelProvider.Factory).apply {
+            if (this is ViewModelProvider.Factory) {
+                try {
+                    val field = this.javaClass.getDeclaredField("currentModelName")
+                    field.isAccessible = true
+                    field.set(this, currentModelName)
+                } catch (e: Exception) {
+                    // Fallback if reflection fails
+                }
+            }
+        }
     }
 }
