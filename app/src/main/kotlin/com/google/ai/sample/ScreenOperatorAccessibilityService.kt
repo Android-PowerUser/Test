@@ -28,6 +28,7 @@ import com.google.ai.sample.util.AppNamePackageMapper
 import com.google.ai.sample.util.Command
 import java.io.File
 import java.text.SimpleDateFormat
+import com.google.ai.sample.GenerativeViewModelFactory
 import java.util.Date
 import java.util.Locale
 import java.util.concurrent.atomic.AtomicBoolean
