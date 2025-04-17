@@ -10,6 +10,22 @@ object CommandParser {
     
     // Regex patterns for different command formats
     
+    // Write text patterns - for writing text into focused text fields
+    private val WRITE_TEXT_PATTERNS = listOf(
+        // Function-like patterns
+        Regex("(?i)\\bwriteText\\([\"']([^\"']+)[\"']\\)"),
+        Regex("(?i)\\benterText\\([\"']([^\"']+)[\"']\\)"),
+        Regex("(?i)\\btypeText\\([\"']([^\"']+)[\"']\\)"),
+        
+        // Natural language patterns with quotes
+        Regex("(?i)\\b(?:write|enter|type|input|schreibe|gib ein|tippe) (?:the )?(?:text|text string|string|text value|value|text content|content|text input|input)? [\"']([^\"']+)[\"']"),
+        Regex("(?i)\\b(?:write|enter|type|input|schreibe|gib ein|tippe) [\"']([^\"']+)[\"'] (?:into|in|to|auf|in das|ins) (?:the )?(?:text field|input field|field|text box|input box|box|text input|input|textfeld|eingabefeld|feld|textbox|eingabebox|box|texteingabe|eingabe)"),
+        
+        // Natural language patterns without quotes
+        Regex("(?i)\\b(?:write|enter|type|input|schreibe|gib ein|tippe) (?:the )?(?:text|text string|string|text value|value|text content|content|text input|input)? \"([^\"]+)\""),
+        Regex("(?i)\\b(?:write|enter|type|input|schreibe|gib ein|tippe) \"([^\"]+)\" (?:into|in|to|auf|in das|ins) (?:the )?(?:text field|input field|field|text box|input box|box|text input|input|textfeld|eingabefeld|feld|textbox|eingabebox|box|texteingabe|eingabe)")
+    )
+    
     // Click button patterns - significantly expanded to catch more variations
     private val CLICK_BUTTON_PATTERNS = listOf(
         // Standard patterns with quotes
@@ -209,6 +225,7 @@ object CommandParser {
                     is Command.ScrollLeftFromCoordinates -> Log.d(TAG, "Command details: ScrollLeftFromCoordinates(${command.x}, ${command.y}, ${command.distance}, ${command.duration})")
                     is Command.ScrollRightFromCoordinates -> Log.d(TAG, "Command details: ScrollRightFromCoordinates(${command.x}, ${command.y}, ${command.distance}, ${command.duration})")
                     is Command.OpenApp -> Log.d(TAG, "Command details: OpenApp(\"${command.packageName}\")")
+                    is Command.WriteText -> Log.d(TAG, "Command details: WriteText(\"${command.text}\")")
                 }
             }
         } catch (e: Exception) {
@@ -222,6 +239,9 @@ object CommandParser {
      * Process text to find commands
      */
     private fun processText(text: String, commands: MutableList<Command>) {
+        // Look for write text commands
+        findWriteTextCommands(text, commands)
+        
         // Look for click button commands
         findClickButtonCommands(text, commands)
         
@@ -254,6 +274,32 @@ object CommandParser {
         
         // Look for open app commands
         findOpenAppCommands(text, commands)
+    }
+    
+    /**
+     * Find write text commands in the text
+     */
+    private fun findWriteTextCommands(text: String, commands: MutableList<Command>) {
+        // Try each pattern
+        for (pattern in WRITE_TEXT_PATTERNS) {
+            val matches = pattern.findAll(text)
+            for (match in matches) {
+                try {
+                    if (match.groupValues.size > 1) {
+                        val textToWrite = match.groupValues[1].trim()
+                        if (textToWrite.isNotEmpty()) {
+                            // Check if this command is already in the list (avoid duplicates)
+                            if (!commands.any { it is Command.WriteText && it.text == textToWrite }) {
+                                Log.d(TAG, "Found write text command with pattern ${pattern.pattern}: \"$textToWrite\"")
+                                commands.add(Command.WriteText(textToWrite))
+                            }
+                        }
+                    }
+                } catch (e: Exception) {
+                    Log.e(TAG, "Error processing write text match: ${e.message}", e)
+                }
+            }
+        }
     }
     
     /**
@@ -692,4 +738,9 @@ sealed class Command {
      * Command to open an app by package name
      */
     data class OpenApp(val packageName: String) : Command()
+    
+    /**
+     * Command to write text into the currently focused text field
+     */
+    data class WriteText(val text: String) : Command()
 }

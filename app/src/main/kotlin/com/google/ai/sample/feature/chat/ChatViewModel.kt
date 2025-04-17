@@ -130,6 +130,7 @@ class ChatViewModel(
                             is Command.ScrollLeftFromCoordinates -> "Nach links scrollen von Position (${it.x}, ${it.y}) mit Distanz ${it.distance}px und Dauer ${it.distance}ms"
                             is Command.ScrollRightFromCoordinates -> "Nach rechts scrollen von Position (${it.x}, ${it.y}) mit Distanz ${it.distance}px und Dauer ${it.duration}ms"
                             is Command.OpenApp -> "App öffnen: \"${it.packageName}\""
+                            is Command.WriteText -> "Text schreiben: \"${it.text}\""
                         }
                     }
                     
@@ -191,6 +192,7 @@ class ChatViewModel(
                             is Command.ScrollLeftFromCoordinates -> "Nach links scrollen von Position (${command.x}, ${command.y}) mit Distanz ${command.distance}px und Dauer ${command.duration}ms"
                             is Command.ScrollRightFromCoordinates -> "Nach rechts scrollen von Position (${command.x}, ${command.y}) mit Distanz ${command.distance}px und Dauer ${command.duration}ms"
                             is Command.OpenApp -> "App öffnen: \"${command.packageName}\""
+                            is Command.WriteText -> "Text schreiben: \"${command.text}\""
                         }
                         
                         _commandExecutionStatus.value = "Führe aus: $commandDescription (${index + 1}/${commands.size})"

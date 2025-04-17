@@ -174,6 +174,11 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
                     showToast("Versuche App zu öffnen: ${command.packageName}", false)
                     serviceInstance?.openApp(command.packageName)
                 }
+                is Command.WriteText -> {
+                    Log.d(TAG, "Writing text: ${command.text}")
+                    showToast("Versuche Text zu schreiben: \"${command.text}\"", false)
+                    serviceInstance?.writeText(command.text)
+                }
             }
         }
         
@@ -301,6 +306,207 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
     }
     
     /**
+     * Write text into the currently focused text field
+     * 
+     * @param text The text to write
+     */
+    fun writeText(text: String) {
+        Log.d(TAG, "Writing text: $text")
+        showToast("Schreibe Text: \"$text\"", false)
+        
+        try {
+            // Refresh the root node
+            refreshRootNode()
+            
+            // Check if root node is available
+            if (rootNode == null) {
+                Log.e(TAG, "Root node is null, cannot write text")
+                showToast("Fehler: Root-Knoten ist nicht verfügbar", true)
+                return
+            }
+            
+            // Find the focused node (which should be an editable text field)
+            val focusedNode = findFocusedEditableNode(rootNode!!)
+            
+            if (focusedNode != null) {
+                Log.d(TAG, "Found focused editable node")
+                showToast("Textfeld gefunden, schreibe Text: \"$text\"", false)
+                
+                // Set the text in the editable field
+                val bundle = android.os.Bundle()
+                bundle.putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, text)
+                
+                val result = focusedNode.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, bundle)
+                
+                if (result) {
+                    Log.d(TAG, "Successfully wrote text: $text")
+                    showToast("Text erfolgreich geschrieben: \"$text\"", false)
+                } else {
+                    Log.e(TAG, "Failed to write text")
+                    showToast("Fehler beim Schreiben des Textes, versuche alternative Methode", true)
+                    
+                    // Try alternative method: paste text
+                    tryPasteText(focusedNode, text)
+                }
+                
+                // Recycle the node
+                focusedNode.recycle()
+            } else {
+                Log.e(TAG, "No focused editable node found")
+                showToast("Kein fokussiertes Textfeld gefunden", true)
+                
+                // Try to find any editable node
+                val editableNode = findAnyEditableNode(rootNode!!)
+                
+                if (editableNode != null) {
+                    Log.d(TAG, "Found editable node, trying to focus and write text")
+                    showToast("Textfeld gefunden, versuche zu fokussieren und Text zu schreiben", false)
+                    
+                    // Focus the node first
+                    val focusResult = editableNode.performAction(AccessibilityNodeInfo.ACTION_FOCUS)
+                    
+                    if (focusResult) {
+                        // Set the text in the editable field
+                        val bundle = android.os.Bundle()
+                        bundle.putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, text)
+                        
+                        val result = editableNode.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, bundle)
+                        
+                        if (result) {
+                            Log.d(TAG, "Successfully wrote text: $text")
+                            showToast("Text erfolgreich geschrieben: \"$text\"", false)
+                        } else {
+                            Log.e(TAG, "Failed to write text")
+                            showToast("Fehler beim Schreiben des Textes, versuche alternative Methode", true)
+                            
+                            // Try alternative method: paste text
+                            tryPasteText(editableNode, text)
+                        }
+                    } else {
+                        Log.e(TAG, "Failed to focus editable node")
+                        showToast("Fehler beim Fokussieren des Textfeldes", true)
+                    }
+                    
+                    // Recycle the node
+                    editableNode.recycle()
+                } else {
+                    Log.e(TAG, "No editable node found")
+                    showToast("Kein Textfeld gefunden", true)
+                }
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error writing text: ${e.message}")
+            showToast("Fehler beim Schreiben des Textes: ${e.message}", true)
+        }
+    }
+    
+    /**
+     * Find the focused editable node in the accessibility tree
+     */
+    private fun findFocusedEditableNode(node: AccessibilityNodeInfo): AccessibilityNodeInfo? {
+        try {
+            // Check if this node is focused and editable
+            if (node.isFocused && isNodeEditable(node)) {
+                return AccessibilityNodeInfo.obtain(node)
+            }
+            
+            // Check children recursively
+            for (i in 0 until node.childCount) {
+                val child = node.getChild(i) ?: continue
+                val result = findFocusedEditableNode(child)
+                child.recycle()
+                
+                if (result != null) {
+                    return result
+                }
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error finding focused editable node: ${e.message}")
+        }
+        
+        return null
+    }
+    
+    /**
+     * Find any editable node in the accessibility tree
+     */
+    private fun findAnyEditableNode(node: AccessibilityNodeInfo): AccessibilityNodeInfo? {
+        try {
+            // Check if this node is editable
+            if (isNodeEditable(node)) {
+                return AccessibilityNodeInfo.obtain(node)
+            }
+            
+            // Check children recursively
+            for (i in 0 until node.childCount) {
+                val child = node.getChild(i) ?: continue
+                val result = findAnyEditableNode(child)
+                child.recycle()
+                
+                if (result != null) {
+                    return result
+                }
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error finding any editable node: ${e.message}")
+        }
+        
+        return null
+    }
+    
+    /**
+     * Check if a node is editable
+     */
+    private fun isNodeEditable(node: AccessibilityNodeInfo): Boolean {
+        return node.isEditable || 
+               (node.className?.contains("EditText", ignoreCase = true) == true) ||
+               (node.className?.contains("TextInputLayout", ignoreCase = true) == true)
+    }
+    
+    /**
+     * Try to paste text as an alternative method
+     */
+    private fun tryPasteText(node: AccessibilityNodeInfo, text: String) {
+        try {
+            Log.d(TAG, "Trying to paste text: $text")
+            
+            // First, try to select all existing text
+            val selectAllResult = node.performAction(AccessibilityNodeInfo.ACTION_FOCUS)
+            // Use a constant value for ACTION_SELECT_ALL (16 is the value defined in AccessibilityNodeInfo)
+            val selectAllAction = node.performAction(16)
+            
+            if (selectAllAction) {
+                Log.d(TAG, "Successfully selected all text")
+                
+                // Set clipboard text
+                val clipboardManager = applicationContext.getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+                val clip = android.content.ClipData.newPlainText("Text", text)
+                clipboardManager.setPrimaryClip(clip)
+                
+                // Wait a moment for clipboard to update
+                Handler(Looper.getMainLooper()).postDelayed({
+                    // Paste the text
+                    val pasteResult = node.performAction(AccessibilityNodeInfo.ACTION_PASTE)
+                    
+                    if (pasteResult) {
+                        Log.d(TAG, "Successfully pasted text")
+                        showToast("Text erfolgreich eingefügt: \"$text\"", false)
+                    } else {
+                        Log.e(TAG, "Failed to paste text")
+                        showToast("Fehler beim Einfügen des Textes", true)
+                    }
+                }, 200) // 200ms delay
+            } else {
+                Log.e(TAG, "Failed to select all text")
+                showToast("Fehler beim Auswählen des vorhandenen Textes", true)
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error pasting text: ${e.message}")
+            showToast("Fehler beim Einfügen des Textes: ${e.message}", true)
+        }
+    }
+    
+    /**
      * Find and click a button with the specified text
      */
     fun findAndClickButtonByText(buttonText: String) {
@@ -368,26 +574,20 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
             showToast("Versuche Tippen auf Koordinaten: ($centerX, $centerY)", false)
             
             // Tap at the center of the button
-            tapAtCoordinatesWithLongerDuration(centerX.toFloat(), centerY.toFloat())
-        } else {
-            Log.e(TAG, "Button bounds are invalid: $rect")
-            showToast("Button-Grenzen sind ungültig", true)
+            tapAtCoordinates(centerX.toFloat(), centerY.toFloat())
         }
     }
     
     /**
-     * Find and click a button with the specified content description
+     * Find and click a button by content description
      */
     private fun findAndClickButtonByContentDescription(description: String) {
         Log.d(TAG, "Finding and clicking button with content description: $description")
         showToast("Suche Button mit Beschreibung: \"$description\"", false)
         
-        // Refresh the root node
-        refreshRootNode()
-        
         // Check if root node is available
         if (rootNode == null) {
-            Log.e(TAG, "Root node is null, cannot find button")
+            Log.e(TAG, "Root node is null, cannot find button by content description")
             showToast("Fehler: Root-Knoten ist nicht verfügbar", true)
             return
         }
@@ -420,81 +620,201 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
             }, 200) // 200ms delay
         } else {
             Log.e(TAG, "Could not find node with content description: $description")
-            showToast("Button mit Beschreibung \"$description\" nicht gefunden", true)
+            showToast("Button mit Beschreibung \"$description\" nicht gefunden, versuche Suche nach ID", true)
+            
+            // Try to find by ID
+            findAndClickButtonById(description)
         }
     }
     
     /**
-     * Find a node by text recursively
+     * Find and click a button by ID
+     */
+    private fun findAndClickButtonById(id: String) {
+        Log.d(TAG, "Finding and clicking button with ID: $id")
+        showToast("Suche Button mit ID: \"$id\"", false)
+        
+        // Check if root node is available
+        if (rootNode == null) {
+            Log.e(TAG, "Root node is null, cannot find button by ID")
+            showToast("Fehler: Root-Knoten ist nicht verfügbar", true)
+            return
+        }
+        
+        // Try to find the node with the specified ID
+        val node = findNodeById(rootNode!!, id)
+        
+        if (node != null) {
+            Log.d(TAG, "Found node with ID: $id")
+            showToast("Button gefunden mit ID: \"$id\"", false)
+            
+            // Add a small delay before clicking
+            Handler(Looper.getMainLooper()).postDelayed({
+                // Perform the click
+                val clickResult = performClickOnNode(node)
+                
+                if (clickResult) {
+                    Log.d(TAG, "Successfully clicked on button with ID: $id")
+                    showToast("Klick auf Button mit ID \"$id\" erfolgreich", false)
+                } else {
+                    Log.e(TAG, "Failed to click on button with ID: $id")
+                    showToast("Klick auf Button mit ID \"$id\" fehlgeschlagen, versuche alternative Methoden", true)
+                    
+                    // Try alternative methods
+                    tryAlternativeClickMethods(node, id)
+                }
+                
+                // Recycle the node
+                node.recycle()
+            }, 200) // 200ms delay
+        } else {
+            Log.e(TAG, "Could not find node with ID: $id")
+            showToast("Button mit ID \"$id\" nicht gefunden", true)
+        }
+    }
+    
+    /**
+     * Find a node by text
      */
     private fun findNodeByText(node: AccessibilityNodeInfo, text: String): AccessibilityNodeInfo? {
-        // Check if this node has the text we're looking for
-        if (node.text != null && node.text.toString().equals(text, ignoreCase = true)) {
-            return AccessibilityNodeInfo.obtain(node)
-        }
-        
-        // Check all child nodes
-        for (i in 0 until node.childCount) {
-            val child = node.getChild(i) ?: continue
-            val result = findNodeByText(child, text)
-            child.recycle()
-            
-            if (result != null) {
-                return result
+        try {
+            // Check if this node has the specified text
+            if (!node.text.isNullOrEmpty() && node.text.toString().contains(text, ignoreCase = true)) {
+                return AccessibilityNodeInfo.obtain(node)
             }
+            
+            // Check children recursively
+            for (i in 0 until node.childCount) {
+                val child = node.getChild(i) ?: continue
+                val result = findNodeByText(child, text)
+                child.recycle()
+                
+                if (result != null) {
+                    return result
+                }
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error finding node by text: ${e.message}")
         }
         
         return null
     }
     
     /**
-     * Find a node by content description recursively
+     * Find a node by content description
      */
     private fun findNodeByContentDescription(node: AccessibilityNodeInfo, description: String): AccessibilityNodeInfo? {
-        // Check if this node has the content description we're looking for
-        if (node.contentDescription != null && node.contentDescription.toString().equals(description, ignoreCase = true)) {
-            return AccessibilityNodeInfo.obtain(node)
-        }
-        
-        // Check all child nodes
-        for (i in 0 until node.childCount) {
-            val child = node.getChild(i) ?: continue
-            val result = findNodeByContentDescription(child, description)
-            child.recycle()
-            
-            if (result != null) {
-                return result
+        try {
+            // Check if this node has the specified content description
+            if (!node.contentDescription.isNullOrEmpty() && 
+                node.contentDescription.toString().contains(description, ignoreCase = true)) {
+                return AccessibilityNodeInfo.obtain(node)
             }
+            
+            // Check children recursively
+            for (i in 0 until node.childCount) {
+                val child = node.getChild(i) ?: continue
+                val result = findNodeByContentDescription(child, description)
+                child.recycle()
+                
+                if (result != null) {
+                    return result
+                }
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error finding node by content description: ${e.message}")
         }
         
         return null
     }
     
     /**
-     * Find a node by class name recursively
+     * Find a node by ID
      */
-    private fun findNodeByClassName(node: AccessibilityNodeInfo, className: String): AccessibilityNodeInfo? {
-        // Check if this node has the class name we're looking for
-        if (node.className != null && node.className.toString() == className) {
-            return AccessibilityNodeInfo.obtain(node)
-        }
-        
-        // Check all child nodes
-        for (i in 0 until node.childCount) {
-            val child = node.getChild(i) ?: continue
-            val result = findNodeByClassName(child, className)
-            child.recycle()
-            
-            if (result != null) {
-                return result
+    private fun findNodeById(node: AccessibilityNodeInfo, id: String): AccessibilityNodeInfo? {
+        try {
+            // Check if this node has the specified ID
+            val nodeId = getNodeId(node)
+            if (nodeId.isNotEmpty() && nodeId.contains(id, ignoreCase = true)) {
+                return AccessibilityNodeInfo.obtain(node)
             }
+            
+            // Check children recursively
+            for (i in 0 until node.childCount) {
+                val child = node.getChild(i) ?: continue
+                val result = findNodeById(child, id)
+                child.recycle()
+                
+                if (result != null) {
+                    return result
+                }
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error finding node by ID: ${e.message}")
         }
         
         return null
     }
     
     /**
-     * Perform a click on the specified node
+     * Get the ID of a node
+     */
+    private fun getNodeId(node: AccessibilityNodeInfo): String {
+        try {
+            // Get the view ID resource name
+            val viewIdResourceName = node.viewIdResourceName ?: ""
+            
+            // Extract the ID part (after the slash)
+            val parts = viewIdResourceName.split("/")
+            if (parts.size > 1) {
+                return parts[1]
+            }
+            
+            return viewIdResourceName
+        } catch (e: Exception) {
+            Log.e(TAG, "Error getting node ID: ${e.message}")
+            return ""
+        }
+    }
+    
+    /**
+     * Find all interactive elements on the screen
+     */
+    private fun findAllInteractiveElements(node: AccessibilityNodeInfo): List<AccessibilityNodeInfo> {
+        val elements = mutableListOf<AccessibilityNodeInfo>()
+        
+        try {
+            // Check if this node is interactive
+            if (isNodeInteractive(node)) {
+                elements.add(AccessibilityNodeInfo.obtain(node))
+            }
+            
+            // Check children recursively
+            for (i in 0 until node.childCount) {
+                val child = node.getChild(i) ?: continue
+                elements.addAll(findAllInteractiveElements(child))
+                child.recycle()
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error finding interactive elements: ${e.message}")
+        }
+        
+        return elements
+    }
+    
+    /**
+     * Check if a node is interactive
+     */
+    private fun isNodeInteractive(node: AccessibilityNodeInfo): Boolean {
+        return node.isClickable || 
+               node.isLongClickable || 
+               node.isCheckable || 
+               node.isEditable || 
+               node.isFocusable
+    }
+    
+    /**
+     * Perform a click on a node
      */
     private fun performClickOnNode(node: AccessibilityNodeInfo): Boolean {
         try {
@@ -867,137 +1187,71 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
                     screenInfo.append("Text: \"${element.text}\" ")
                 }
                 
-                // Add element content description if available
+                // Add content description if available
                 if (!element.contentDescription.isNullOrEmpty()) {
                     screenInfo.append("Beschreibung: \"${element.contentDescription}\" ")
                 }
                 
-                // Try to get the button name from the view hierarchy
-                val buttonName = getButtonName(element)
-                if (buttonName.isNotEmpty()) {
-                    screenInfo.append("Name: \"$buttonName\" ")
+                // Add element class name if available
+                if (element.className != null) {
+                    screenInfo.append("Klasse: ${element.className} ")
                 }
                 
-                // Add element class name
-                screenInfo.append("Klasse: ${element.className} ")
+                // Add element properties
+                val properties = mutableListOf<String>()
+                if (element.isClickable) properties.add("klickbar")
+                if (element.isLongClickable) properties.add("lang-klickbar")
+                if (element.isCheckable) properties.add("auswählbar")
+                if (element.isChecked) properties.add("ausgewählt")
+                if (element.isEditable) properties.add("editierbar")
+                if (element.isFocusable) properties.add("fokussierbar")
+                if (element.isFocused) properties.add("fokussiert")
+                if (element.isPassword) properties.add("passwort")
+                if (element.isScrollable) properties.add("scrollbar")
+                
+                if (properties.isNotEmpty()) {
+                    screenInfo.append("Eigenschaften: ${properties.joinToString(", ")} ")
+                }
                 
                 // Add element bounds
                 val rect = Rect()
                 element.getBoundsInScreen(rect)
-                screenInfo.append("Position: (${rect.centerX()}, ${rect.centerY()}) ")
+                screenInfo.append("Position: (${rect.left}, ${rect.top}, ${rect.right}, ${rect.bottom})")
                 
-                // Add element clickable status
-                screenInfo.append("Klickbar: ${if (element.isClickable) "Ja" else "Nein"}")
+                // Add a button name if we can infer one
+                val buttonName = getButtonName(element)
+                if (buttonName.isNotEmpty()) {
+                    screenInfo.append(" Vermuteter Name: \"$buttonName\"")
+                }
                 
                 screenInfo.append("\n")
                 
-                // Recycle the element to avoid memory leaks
+                // Recycle the element
                 element.recycle()
             }
         }
         
-        Log.d(TAG, "Screen information captured: ${screenInfo.length} characters")
         return screenInfo.toString()
     }
     
     /**
-     * Find all interactive elements on the screen
-     */
-    private fun findAllInteractiveElements(rootNode: AccessibilityNodeInfo): List<AccessibilityNodeInfo> {
-        val interactiveElements = mutableListOf<AccessibilityNodeInfo>()
-        
-        try {
-            // Queue for breadth-first search
-            val queue = mutableListOf<AccessibilityNodeInfo>()
-            queue.add(rootNode)
-            
-            while (queue.isNotEmpty()) {
-                val node = queue.removeAt(0)
-                
-                // Check if this node is interactive
-                if (isInteractiveElement(node)) {
-                    interactiveElements.add(AccessibilityNodeInfo.obtain(node))
-                }
-                
-                // Add all children to the queue
-                for (i in 0 until node.childCount) {
-                    val child = node.getChild(i) ?: continue
-                    queue.add(child)
-                }
-            }
-        } catch (e: Exception) {
-            Log.e(TAG, "Error finding interactive elements: ${e.message}")
-        }
-        
-        return interactiveElements
-    }
-    
-    /**
-     * Check if a node is an interactive element
-     */
-    private fun isInteractiveElement(node: AccessibilityNodeInfo): Boolean {
-        // Check if the node is clickable, long-clickable, or focusable
-        if (node.isClickable || node.isLongClickable || node.isFocusable) {
-            return true
-        }
-        
-        // Check if the node has text or content description
-        if (!node.text.isNullOrEmpty() || !node.contentDescription.isNullOrEmpty()) {
-            // Check if it's a common interactive element class
-            val className = node.className?.toString() ?: ""
-            val interactiveClasses = listOf(
-                "Button", "ImageButton", "EditText", "CheckBox", "RadioButton",
-                "Switch", "ToggleButton", "Spinner", "SeekBar", "RatingBar"
-            )
-            
-            for (interactiveClass in interactiveClasses) {
-                if (className.contains(interactiveClass, ignoreCase = true)) {
-                    return true
-                }
-            }
-        }
-        
-        return false
-    }
-    
-    /**
-     * Get the ID of a node if available
-     */
-    private fun getNodeId(node: AccessibilityNodeInfo): String {
-        try {
-            val viewIdResourceName = node.viewIdResourceName
-            if (!viewIdResourceName.isNullOrEmpty()) {
-                // Extract the ID name from the resource name (package:id/name)
-                val parts = viewIdResourceName.split("/")
-                if (parts.size > 1) {
-                    return parts[1]
-                }
-                return viewIdResourceName
-            }
-        } catch (e: Exception) {
-            Log.e(TAG, "Error getting node ID: ${e.message}")
-        }
-        return ""
-    }
-    
-    /**
-     * Try to get the button name from various properties
+     * Try to infer a button name from a node
      */
     private fun getButtonName(node: AccessibilityNodeInfo): String {
         try {
-            // First check if the node has text
+            // First, check if the node has text
             if (!node.text.isNullOrEmpty()) {
                 return node.text.toString()
             }
             
-            // Then check content description
+            // Next, check if the node has a content description
             if (!node.contentDescription.isNullOrEmpty()) {
                 return node.contentDescription.toString()
             }
             
-            // Get the node ID which might contain a name
+            // Next, check if the node has an ID
             val nodeId = getNodeId(node)
-            if (nodeId.isNotEmpty() && !nodeId.startsWith("android:")) {
+            if (nodeId.isNotEmpty()) {
                 // Convert camelCase or snake_case to readable format
                 val readableName = nodeId
                     .replace("_", " ")
@@ -1384,11 +1638,13 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
                 gestureBuilder.build(),
                 object : GestureResultCallback() {
                     override fun onCompleted(gestureDescription: GestureDescription) {
+                        super.onCompleted(gestureDescription)
                         Log.d(TAG, "Scroll down gesture completed")
                         showToast("Erfolgreich nach unten gescrollt", false)
                     }
                     
                     override fun onCancelled(gestureDescription: GestureDescription) {
+                        super.onCancelled(gestureDescription)
                         Log.e(TAG, "Scroll down gesture cancelled")
                         showToast("Scrollen nach unten abgebrochen", true)
                     }
@@ -1492,11 +1748,13 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
                 gestureBuilder.build(),
                 object : GestureResultCallback() {
                     override fun onCompleted(gestureDescription: GestureDescription) {
+                        super.onCompleted(gestureDescription)
                         Log.d(TAG, "Scroll up gesture completed")
                         showToast("Erfolgreich nach oben gescrollt", false)
                     }
                     
                     override fun onCancelled(gestureDescription: GestureDescription) {
+                        super.onCancelled(gestureDescription)
                         Log.e(TAG, "Scroll up gesture cancelled")
                         showToast("Scrollen nach oben abgebrochen", true)
                     }
