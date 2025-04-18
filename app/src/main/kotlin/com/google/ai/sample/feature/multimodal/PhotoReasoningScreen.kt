@@ -149,12 +149,12 @@ internal fun PhotoReasoningRoute(
         onEnableAccessibilityService = {
             mainActivity?.checkAccessibilityServiceEnabled()
         },
-        onClearChatHistory = {
-            mainActivity?.let {
-                val viewModel = it.getPhotoReasoningViewModel()
-                viewModel?.clearChatHistory(context)
-            }
+            onClearChatHistory = {
+        mainActivity?.let {
+            val viewModel = it.retrievePhotoReasoningViewModel() // <<< KORRIGIERT
+            viewModel?.clearChatHistory(context)
         }
+    }
     )
 }
 
