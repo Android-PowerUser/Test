@@ -45,9 +45,17 @@ class MainActivity : ComponentActivity() {
     fun getPhotoReasoningViewModel(): PhotoReasoningViewModel? {
         // Log.d(TAG, "getPhotoReasoningViewModel called, returning: ${photoReasoningViewModel != null}") // Log kann bleiben
         // Gibt die Instanz zurück, die über 'by viewModels' verwaltet wird
-        return if (::photoReasoningViewModel.isInitialized) photoReasoningViewModel else {
-            Log.w(TAG, "getPhotoReasoningViewModel called but ViewModel is not initialized yet.")
+        // Entferne die isInitialized-Prüfung
+        return try {
+            photoReasoningViewModel // Direkter Zugriff
+        } catch (e: UninitializedPropertyAccessException) {
+            // Sollte bei by viewModels selten passieren, aber sicher ist sicher
+            Log.e(TAG, "getPhotoReasoningViewModel called before ViewModel was initialized", e)
             null
+        } catch (e: Exception) {
+            // Andere mögliche Fehler beim Zugriff
+             Log.e(TAG, "Error accessing photoReasoningViewModel", e)
+             null
         }
     }
 
@@ -70,9 +78,17 @@ class MainActivity : ComponentActivity() {
      * Kann null sein, wenn die Activity nicht bereit ist oder das ViewModel noch nicht initialisiert wurde.
      */
     fun getChatViewModel(): ChatViewModel? {
-        return if (::chatViewModel.isInitialized) chatViewModel else {
-            Log.w(TAG, "getChatViewModel called but ViewModel is not initialized yet.")
+        // Entferne die isInitialized-Prüfung
+        return try {
+            chatViewModel // Direkter Zugriff
+        } catch (e: UninitializedPropertyAccessException) {
+            // Sollte bei by viewModels selten passieren, aber sicher ist sicher
+            Log.e(TAG, "getChatViewModel called before ViewModel was initialized", e)
             null
+        } catch (e: Exception) {
+            // Andere mögliche Fehler beim Zugriff
+             Log.e(TAG, "Error accessing chatViewModel", e)
+             null
         }
     }
 
