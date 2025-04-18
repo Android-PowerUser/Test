@@ -39,10 +39,10 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-// import androidx.compose.runtime.key // Nicht mehr direkt um den Screen benötigt
+import androidx.compose.runtime.key // Import für key Composable
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember // Import für remember hinzugefügt
+import androidx.compose.runtime.remember // Import für remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
@@ -77,92 +77,76 @@ import android.util.Log
 
 @Composable
 internal fun PhotoReasoningRoute(
-    // Factory übergeben, damit wir sie im Key verwenden können
-    viewModelFactory: ViewModelProvider.Factory = GenerativeViewModelFactory
+    viewModel: PhotoReasoningViewModel = viewModel(factory = GenerativeViewModelFactory) // ViewModel normal holen
 ) {
-    val context = LocalContext.current
-
-    // Lade den initialen Modellnamen für den ersten Key
-    // Dieser Wert ändert sich nicht durch collectAsState hier oben
-    val initialModelName = remember { ModelPreferences.loadModelName(context) }
-
-    // Beobachte den StateFlow, um auf Änderungen zu reagieren und den Key zu aktualisieren
-    // Wir brauchen eine Instanz, um den Flow zu beobachten
-    val tempViewModel: PhotoReasoningViewModel = viewModel(key = "temp_vm_observer", factory = viewModelFactory)
-    val currentModelNameState by tempViewModel.currentModelName.collectAsState()
-
-    // --- NEU: Verwende einen sich ändernden Key für das ViewModel selbst ---
-    // Wenn sich currentModelNameState ändert, wird das ViewModel neu geholt/erstellt
-    val viewModel: PhotoReasoningViewModel = viewModel(key = "vm_$currentModelNameState", factory = viewModelFactory)
-    Log.d("PhotoReasoningRoute", "Obtaining ViewModel instance with key: vm_$currentModelNameState")
-
-
-    // Beobachte die anderen States vom *aktuellen* ViewModel
     val photoReasoningUiState by viewModel.uiState.collectAsState()
     val commandExecutionStatus by viewModel.commandExecutionStatus.collectAsState()
     val detectedCommands by viewModel.detectedCommands.collectAsState()
     val systemMessage by viewModel.systemMessage.collectAsState()
     val chatMessages by viewModel.chatMessagesFlow.collectAsState()
-
+    val currentModelName by viewModel.currentModelName.collectAsState() // Modellnamen beobachten
 
     val coroutineScope = rememberCoroutineScope()
-    val imageRequestBuilder = ImageRequest.Builder(context)
-    val imageLoader = ImageLoader.Builder(context).build()
+    val imageRequestBuilder = ImageRequest.Builder(LocalContext.current)
+    val imageLoader = ImageLoader.Builder(LocalContext.current).build()
+    val context = LocalContext.current
     val mainActivity = context as? MainActivity
 
-    DisposableEffect(viewModel) { // Effekt hängt jetzt am potenziell neuen ViewModel
-        Log.d("PhotoReasoningRoute", "DisposableEffect RUNNING for ViewModel with actual model: ${viewModel.currentModelName.value}")
+    // Effekt für einmalige Aktionen beim Start der Route
+    LaunchedEffect(Unit) {
+        Log.d("PhotoReasoningRoute", "LaunchedEffect(Unit) running.")
         mainActivity?.checkAccessibilityServiceEnabled()
-        // LoadSystemMessage sollte nur einmal passieren, nicht bei jedem Modellwechsel?
-        // Wird jetzt im LaunchedEffect unten gemacht.
-        onDispose {
-             Log.d("PhotoReasoningRoute", "DisposableEffect DISPOSED for ViewModel with model: ${viewModel.currentModelName.value}")
-        }
+        viewModel.loadSystemMessage(context) // Lade Systemnachricht und History
     }
 
-     // Lade System Message und History nur einmal initial pro ViewModel-Instanz
-     // Der Key des LaunchedEffect sorgt dafür, dass es bei ViewModel-Wechsel neu läuft
-     LaunchedEffect(viewModel) {
-         Log.d("PhotoReasoningRoute", "LaunchedEffect loading system message for ViewModel with model: ${viewModel.currentModelName.value}")
-         viewModel.loadSystemMessage(context)
-     }
-
-
-    // Das Screen-Composable selbst braucht keinen Key mehr
-    PhotoReasoningScreen(
-         uiState = photoReasoningUiState,
-         commandExecutionStatus = commandExecutionStatus,
-         detectedCommands = detectedCommands,
-         systemMessage = systemMessage,
-         chatMessages = chatMessages,
-         onSystemMessageChanged = { message ->
-             viewModel.updateSystemMessage(message, context)
-         },
-         onReasonClicked = { inputText, selectedItems ->
-             coroutineScope.launch {
-                 Log.d("PhotoReasoningScreen", "Go button clicked, processing images")
-                 val bitmaps = selectedItems.mapNotNull {
-                     // ... (Bildverarbeitung wie gehabt) ...
-                     try {
-                         val result = imageLoader.execute(imageRequestBuilder.data(it).precision(Precision.EXACT).build())
-                         if (result is SuccessResult) (result.drawable as BitmapDrawable).bitmap else null
-                     } catch (e: Exception) { null }
-                 }
-                 Log.d("PhotoReasoningScreen", "Processed ${bitmaps.size} images")
-                 viewModel.reason(inputText, bitmaps) // Verwende das aktuelle ViewModel
-             }
-         },
-         isAccessibilityServiceEnabled = mainActivity?.let {
-             ScreenOperatorAccessibilityService.isAccessibilityServiceEnabled(it)
-         } ?: false,
-         onEnableAccessibilityService = {
-             mainActivity?.checkAccessibilityServiceEnabled()
-         },
-         onClearChatHistory = {
-             viewModel.clearChatHistory(context)
-             // Der Reset des LazyListState passiert jetzt im onClick des Buttons
-         }
-     )
+    // --- NEU: Key um den Screen legen ---
+    key(currentModelName) { // Erzwingt Neukomposition des Screens bei Modellwechsel
+        Log.d("PhotoReasoningRoute", "Recomposing content within key: $currentModelName")
+        PhotoReasoningScreen(
+            uiState = photoReasoningUiState,
+            commandExecutionStatus = commandExecutionStatus,
+            detectedCommands = detectedCommands,
+            systemMessage = systemMessage,
+            chatMessages = chatMessages, // Wird vom StateFlow beobachtet
+            onSystemMessageChanged = { message ->
+                viewModel.updateSystemMessage(message, context)
+            },
+            onReasonClicked = { inputText, selectedItems ->
+                coroutineScope.launch {
+                    Log.d("PhotoReasoningScreen", "Go button clicked, processing images")
+                    val bitmaps = selectedItems.mapNotNull {
+                        Log.d("PhotoReasoningScreen", "Processing image: $it")
+                        val imageRequest = imageRequestBuilder.data(it).precision(Precision.EXACT).build()
+                        try {
+                            val result = imageLoader.execute(imageRequest)
+                            if (result is SuccessResult) {
+                                Log.d("PhotoReasoningScreen", "Successfully processed image")
+                                (result.drawable as BitmapDrawable).bitmap
+                            } else {
+                                Log.e("PhotoReasoningScreen", "Failed to process image: result is not SuccessResult")
+                                null
+                            }
+                        } catch (e: Exception) {
+                            Log.e("PhotoReasoningScreen", "Error processing image: ${e.message}")
+                            null
+                        }
+                    }
+                    Log.d("PhotoReasoningScreen", "Processed ${bitmaps.size} images")
+                    viewModel.reason(inputText, bitmaps)
+                }
+            },
+            isAccessibilityServiceEnabled = mainActivity?.let {
+                ScreenOperatorAccessibilityService.isAccessibilityServiceEnabled(it)
+            } ?: false,
+            onEnableAccessibilityService = {
+                mainActivity?.checkAccessibilityServiceEnabled()
+            },
+            onClearChatHistory = {
+                viewModel.clearChatHistory(context)
+                // Der Reset des LazyListState passiert jetzt im onClick des Buttons
+            }
+        )
+    }
 }
 
 @Composable
@@ -178,7 +162,6 @@ fun PhotoReasoningScreen(
     onEnableAccessibilityService: () -> Unit = {},
     onClearChatHistory: () -> Unit = {}
 ) {
-    // Log hinzufügen, um zu sehen, wann der Screen neu komponiert wird
     Log.d("PhotoReasoningScreen", "RECOMPOSING - Received chatMessages size: ${chatMessages.size}, uiState: $uiState")
 
     var userQuestion by rememberSaveable { mutableStateOf("") }
@@ -194,7 +177,6 @@ fun PhotoReasoningScreen(
         uri?.let { imageUris.add(it) }
     }
 
-    // Scroll to the bottom when new messages arrive
     LaunchedEffect(chatMessages.size) {
         if (chatMessages.isNotEmpty()) {
             Log.d("PhotoReasoningScreen", "Scrolling to bottom, index: ${chatMessages.size - 1}")
@@ -246,7 +228,7 @@ fun PhotoReasoningScreen(
             state = listState,
             modifier = Modifier.fillMaxWidth().weight(1f)
         ) {
-            items(chatMessages, key = { it.hashCode() }) { message -> // Optional: Key für Items
+            items(chatMessages, key = { "${it.participant}-${it.text}-${it.imageUris.joinToString()}-${it.isPending}".hashCode() }) { message -> // Stabilerer Key
                 when (message.participant) {
                     PhotoParticipant.USER -> UserChatBubble(text = message.text, isPending = message.isPending, imageUris = message.imageUris)
                     PhotoParticipant.MODEL -> ModelChatBubble(text = message.text, isPending = message.isPending)
