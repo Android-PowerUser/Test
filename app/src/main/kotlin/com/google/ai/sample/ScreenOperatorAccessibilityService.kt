@@ -1538,8 +1538,8 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
                 return
             }
 
-            // Get the PhotoReasoningViewModel from MainActivity
-            val photoReasoningViewModel = mainActivity.getPhotoReasoningViewModel()
+             // Get the PhotoReasoningViewModel from MainActivity
+            val photoReasoningViewModel = mainActivity.retrievePhotoReasoningViewModel() // <<< KORRIGIERT
             if (photoReasoningViewModel == null) {
                 Log.e(TAG, "PhotoReasoningViewModel is null, cannot add screenshot to conversation.")
                 showToast("Fehler: Chat-Ansicht nicht aktiv, Screenshot kann nicht verarbeitet werden.", true)
