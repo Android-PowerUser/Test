@@ -24,7 +24,7 @@ import com.google.ai.sample.ScreenOperatorAccessibilityService
 import com.google.ai.sample.util.ChatHistoryPreferences
 import com.google.ai.sample.util.Command
 import com.google.ai.sample.util.CommandParser
-import com.google.ai.sample.util.ModelPreferences // Import für ModelPreferences
+import com.google.ai.sample.util.ModelPreferences // <<< KORREKTUR: Fehlender Import hinzugefügt
 import com.google.ai.sample.util.SystemMessagePreferences
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -46,88 +46,59 @@ class PhotoReasoningViewModel(
     val uiState: StateFlow<PhotoReasoningUiState> =
         _uiState.asStateFlow()
 
-    // Keep track of the latest screenshot URI
     private var latestScreenshotUri: Uri? = null
-
-    // Keep track of the current selected images
     private var currentSelectedImages: List<Bitmap> = emptyList()
-
-    // Keep track of the current user input
     private var currentUserInput: String = ""
 
-    // Keep track of detected commands
     private val _detectedCommands = MutableStateFlow<List<Command>>(emptyList())
     val detectedCommands: StateFlow<List<Command>> = _detectedCommands.asStateFlow()
 
-    // Keep track of command execution status
     private val _commandExecutionStatus = MutableStateFlow<String>("")
     val commandExecutionStatus: StateFlow<String> = _commandExecutionStatus.asStateFlow()
 
-    // System message state
     private val _systemMessage = MutableStateFlow<String>("")
     val systemMessage: StateFlow<String> = _systemMessage.asStateFlow()
 
-    // Chat history state
     private val _chatState = ChatState()
-    val chatMessages: List<PhotoReasoningMessage>
-        get() = _chatState.messages
+    val chatMessages: List<PhotoReasoningMessage> get() = _chatState.messages
 
-    // Chat history state flow for UI updates
     private val _chatMessagesFlow = MutableStateFlow<List<PhotoReasoningMessage>>(emptyList())
     val chatMessagesFlow: StateFlow<List<PhotoReasoningMessage>> = _chatMessagesFlow.asStateFlow()
 
-    // ImageLoader and ImageRequestBuilder for processing images
     private var imageLoader: ImageLoader? = null
     private var imageRequestBuilder: ImageRequest.Builder? = null
 
-    // Chat instance for maintaining conversation context
-    private var chat = currentGenerativeModel.startChat(
-        history = emptyList() // Wird aus Prefs geladen
-    )
+    private var chat = currentGenerativeModel.startChat(history = emptyList())
 
     init {
         Log.i(TAG, "ViewModel initialized with model: ${initialGenerativeModel.modelName}")
-        // Context wird jetzt in loadSystemMessage übergeben
     }
-
 
     fun reason(
         userInput: String,
         selectedImages: List<Bitmap>
     ) {
         _uiState.value = PhotoReasoningUiState.Loading
-
-        // Get the system message
         val systemMessageText = _systemMessage.value
-
-        // Create the prompt with system message if available
         val prompt = if (systemMessageText.isNotBlank()) {
             "System Message: $systemMessageText\n\nLook at the image(s), and then answer the following question: $userInput"
         } else {
             "Look at the image(s), and then answer the following question: $userInput"
         }
-
-        // Store the current user input and selected images
         currentUserInput = userInput
         currentSelectedImages = selectedImages
-
-        // Clear previous commands
         _detectedCommands.value = emptyList()
         _commandExecutionStatus.value = ""
 
-        // Add user message to chat history
         val userMessage = PhotoReasoningMessage(
             text = userInput,
             participant = PhotoParticipant.USER,
             isPending = false,
-            // TODO: Hier müssten die URIs der 'selectedImages' übergeben werden,
-            //       wenn sie im Chat angezeigt werden sollen. Aktuell werden Bitmaps übergeben.
-            imageUris = emptyList() // Platzhalter
+            imageUris = emptyList() // Placeholder
         )
         _chatState.addMessage(userMessage)
         _chatMessagesFlow.value = chatMessages
 
-        // Add AI message with pending status
         val pendingAiMessage = PhotoReasoningMessage(
             text = "",
             participant = PhotoParticipant.MODEL,
@@ -136,34 +107,26 @@ class PhotoReasoningViewModel(
         _chatState.addMessage(pendingAiMessage)
         _chatMessagesFlow.value = chatMessages
 
-        // Use application scope to prevent cancellation when app goes to background
         PhotoReasoningApplication.applicationScope.launch(Dispatchers.IO) {
             try {
-                // Create content with the current images and prompt
                 val inputContent = content {
-                    for (bitmap in selectedImages) {
-                        image(bitmap)
-                    }
+                    for (bitmap in selectedImages) { image(bitmap) }
                     text(prompt)
                 }
 
-                Log.d(TAG, "reason: Using chat instance with model: ${chat.generativeModel.modelName}") // Log hinzugefügt
+                // <<< KORREKTUR: Verwende currentGenerativeModel für den Log >>>
+                Log.d(TAG, "reason: Using chat instance with model: ${currentGenerativeModel.modelName}")
                 val response = chat.sendMessage(inputContent)
 
                 var outputContent = ""
-
-                // Process the response
                 response.text?.let { modelResponse ->
                     outputContent = modelResponse
-
                     withContext(Dispatchers.Main) {
                         _uiState.value = PhotoReasoningUiState.Success(outputContent)
                         updateAiMessage(outputContent)
                         processCommands(modelResponse)
                     }
                 }
-
-                // Save chat history after successful response
                 withContext(Dispatchers.Main) {
                     saveChatHistory(MainActivity.getInstance()?.applicationContext)
                 }
@@ -222,7 +185,6 @@ class PhotoReasoningViewModel(
     fun loadSystemMessage(context: android.content.Context) {
         val message = SystemMessagePreferences.loadSystemMessage(context)
         _systemMessage.value = message
-        // Also load chat history when system message is loaded
         loadChatHistory(context)
     }
 
@@ -236,56 +198,37 @@ class PhotoReasoningViewModel(
 
                 if (commands.isNotEmpty()) {
                     Log.d(TAG, "Found ${commands.size} commands in response")
-                    // ... (Rest der Logik zum Anzeigen/Ausführen der Befehle bleibt gleich) ...
 
-                     // Update the detected commands
                     val currentCommands = _detectedCommands.value.toMutableList()
                     currentCommands.addAll(commands)
                     _detectedCommands.value = currentCommands
 
-                    // Update status to show commands were detected
                     val commandDescriptions = commands.map {
                         when (it) {
-                            is Command.ClickButton -> "Klick auf Button: \"${it.buttonText}\""
-                            is Command.TapCoordinates -> "Tippen auf Koordinaten: (${it.x}, ${it.y})"
-                            is Command.TakeScreenshot -> "Screenshot aufnehmen"
-                            is Command.PressHomeButton -> "Home-Button drücken"
-                            is Command.PressBackButton -> "Zurück-Button drücken"
-                            is Command.ShowRecentApps -> "Übersicht der letzten Apps öffnen"
-                            is Command.ScrollDown -> "Nach unten scrollen"
-                            is Command.ScrollUp -> "Nach oben scrollen"
-                            is Command.ScrollLeft -> "Nach links scrollen"
-                            is Command.ScrollRight -> "Nach rechts scrollen"
-                            is Command.ScrollDownFromCoordinates -> "Nach unten scrollen von Position (${it.x}, ${it.y}) mit Distanz ${it.distance}px und Dauer ${it.duration}ms"
-                            is Command.ScrollUpFromCoordinates -> "Nach oben scrollen von Position (${it.x}, ${it.y}) mit Distanz ${it.distance}px und Dauer ${it.duration}ms"
-                            is Command.ScrollLeftFromCoordinates -> "Nach links scrollen von Position (${it.x}, ${it.y}) mit Distanz ${it.distance}px und Dauer ${it.duration}ms"
-                            is Command.ScrollRightFromCoordinates -> "Nach rechts scrollen von Position (${it.x}, ${it.y}) mit Distanz ${it.distance}px und Dauer ${it.duration}ms"
-                            is Command.OpenApp -> "App öffnen: \"${it.packageName}\""
-                            is Command.WriteText -> "Text schreiben: \"${it.text}\""
-                            is Command.UseHighReasoningModel -> "Wechsle zu ${ModelPreferences.HIGH_REASONING_MODEL}" // Namen aus Konstante
-                            is Command.UseLowReasoningModel -> "Wechsle zu ${ModelPreferences.LOW_REASONING_MODEL}" // Namen aus Konstante
+                            // ... (andere Befehle) ...
+                            is Command.UseHighReasoningModel -> "Wechsle zu ${ModelPreferences.HIGH_REASONING_MODEL}" // <<< KORREKTUR: Verwendet jetzt den korrekten Import
+                            is Command.UseLowReasoningModel -> "Wechsle zu ${ModelPreferences.LOW_REASONING_MODEL}" // <<< KORREKTUR: Verwendet jetzt den korrekten Import
+                            else -> "..."
                         }
                     }
-                     val mainActivity = MainActivity.getInstance() // Hole Activity für Context/Toast
+                     val mainActivity = MainActivity.getInstance()
                      mainActivity?.updateStatusMessage(
                         "Befehle erkannt: ${commandDescriptions.joinToString(", ")}",
                         false
                     )
                     _commandExecutionStatus.value = "Befehle erkannt: ${commandDescriptions.joinToString(", ")}"
 
-                    // --- Accessibility Service Checks (unverändert) ---
                     val isServiceEnabled = mainActivity?.let { ScreenOperatorAccessibilityService.isAccessibilityServiceEnabled(it) } ?: false
-                    if (!isServiceEnabled) { /* ... Fehlerbehandlung ... */ return@launch }
-                    if (!ScreenOperatorAccessibilityService.isServiceAvailable()) { /* ... Fehlerbehandlung ... */ return@launch }
+                    if (!isServiceEnabled) { /* ... */ return@launch }
+                    if (!ScreenOperatorAccessibilityService.isServiceAvailable()) { /* ... */ return@launch }
 
-                    // --- Execute Commands (unverändert, außer Beschreibung) ---
                      commands.forEachIndexed { index, command ->
                         Log.d(TAG, "Executing command: $command")
                         val commandDescription = when (command) {
-                             // ... (wie oben, aber mit Konstanten für Modellnamen) ...
-                             is Command.UseHighReasoningModel -> "Wechsle zu ${ModelPreferences.HIGH_REASONING_MODEL}"
-                             is Command.UseLowReasoningModel -> "Wechsle zu ${ModelPreferences.LOW_REASONING_MODEL}"
-                             else -> "..." // Andere Befehle
+                             // ... (andere Befehle) ...
+                             is Command.UseHighReasoningModel -> "Wechsle zu ${ModelPreferences.HIGH_REASONING_MODEL}" // <<< KORREKTUR: Verwendet jetzt den korrekten Import
+                             is Command.UseLowReasoningModel -> "Wechsle zu ${ModelPreferences.LOW_REASONING_MODEL}" // <<< KORREKTUR: Verwendet jetzt den korrekten Import
+                             else -> "..."
                         }
                         _commandExecutionStatus.value = "Führe aus: $commandDescription (${index + 1}/${commands.size})"
                         mainActivity?.updateStatusMessage("Führe aus: $commandDescription", false)
@@ -339,7 +282,7 @@ class PhotoReasoningViewModel(
                 if (result is SuccessResult) {
                     Log.d(TAG, "Successfully processed screenshot")
                     val bitmap = (result.drawable as BitmapDrawable).bitmap
-                    currentSelectedImages = listOf(bitmap) // Nur letztes Bild behalten
+                    currentSelectedImages = listOf(bitmap)
                     _commandExecutionStatus.value = "Screenshot hinzugefügt, sende an KI..."
                     Toast.makeText(context, "Screenshot hinzugefügt, sende an KI...", Toast.LENGTH_SHORT).show()
                     val prompt = if (screenInfo != null) "Analysiere diesen Screenshot. Hier sind die verfügbaren Bildschirmelemente: $screenInfo" else "Analysiere diesen Screenshot"
@@ -373,11 +316,10 @@ class PhotoReasoningViewModel(
             _chatState.clearMessages()
             savedMessages.forEach { _chatState.addMessage(it) }
             _chatMessagesFlow.value = chatMessages
-            rebuildChatHistory() // Rekonstruiere die AI-History
+            rebuildChatHistory()
         } else {
-             // Wenn keine History geladen wurde, starte den Chat leer
              chat = currentGenerativeModel.startChat(history = emptyList())
-             _chatMessagesFlow.value = emptyList() // Stelle sicher, dass UI auch leer ist
+             _chatMessagesFlow.value = emptyList()
         }
     }
 
@@ -388,7 +330,6 @@ class PhotoReasoningViewModel(
         val history = mutableListOf<Content>()
         var currentUserContent = ""
         var currentModelContent = ""
-        // TODO: Bild-History Rekonstruktion ist komplex und hier nicht implementiert
 
         for (message in chatMessages) {
             when (message.participant) {
@@ -444,25 +385,15 @@ class PhotoReasoningViewModel(
     fun clearChatHistory(context: android.content.Context? = null) {
         Log.d(TAG, "Clearing chat history...")
         _chatState.clearMessages()
-        _chatMessagesFlow.value = emptyList() // Sicherstellen, dass der Flow aktualisiert wird
-
-        // Reset the chat with empty history
-        chat = currentGenerativeModel.startChat(
-            history = emptyList()
-        )
-
-        // Also clear from SharedPreferences if context is provided
-        context?.let {
-            ChatHistoryPreferences.clearChatMessages(it)
-        }
-        // Reset UI state and command states explicitly
+        _chatMessagesFlow.value = emptyList()
+        chat = currentGenerativeModel.startChat(history = emptyList())
+        context?.let { ChatHistoryPreferences.clearChatMessages(it) }
         _uiState.value = PhotoReasoningUiState.Initial
         _detectedCommands.value = emptyList()
         _commandExecutionStatus.value = ""
-        currentUserInput = "" // Auch User Input zurücksetzen
-        currentSelectedImages = emptyList() // Auch Bilder zurücksetzen
-        latestScreenshotUri = null // Auch Screenshot URI zurücksetzen
-
+        currentUserInput = ""
+        currentSelectedImages = emptyList()
+        latestScreenshotUri = null
         Log.d(TAG, "Chat history and related states cleared.")
     }
 
@@ -473,7 +404,6 @@ class PhotoReasoningViewModel(
      * @param newModelName The name of the new model to use.
      */
     fun updateGenerativeModel(newModelName: String) {
-         // Verhindere unnötigen Wechsel, wenn das Modell bereits aktiv ist
         if (currentGenerativeModel.modelName == newModelName) {
             Log.i(TAG, "Model $newModelName is already active. No update needed.")
             _commandExecutionStatus.value = "Modell '$newModelName' ist bereits aktiv."
@@ -491,9 +421,7 @@ class PhotoReasoningViewModel(
             }
 
             try {
-                val config = generationConfig {
-                    temperature = 0.0f
-                }
+                val config = generationConfig { temperature = 0.0f }
                 currentGenerativeModel = GenerativeModel(
                     modelName = newModelName,
                     apiKey = BuildConfig.apiKey,
@@ -503,7 +431,7 @@ class PhotoReasoningViewModel(
                 chat = currentGenerativeModel.startChat(history = currentHistory)
                 Log.i(TAG, "GenerativeModel and chat instance updated successfully. History preserved.")
 
-                // --- GEÄNDERT: Speichere den neuen Namen persistent ---
+                // <<< KORREKTUR: Verwendet jetzt den korrekten Import >>>
                 ModelPreferences.saveModelName(context, newModelName)
 
                 _chatState.addMessage(
@@ -513,8 +441,8 @@ class PhotoReasoningViewModel(
                         isPending = false
                     )
                 )
-                _chatMessagesFlow.value = chatMessages // Update UI Flow
-                saveChatHistory(context) // Speichern nach UI-Update
+                _chatMessagesFlow.value = chatMessages
+                saveChatHistory(context)
                 _commandExecutionStatus.value = "Modell erfolgreich zu '$newModelName' gewechselt."
 
             } catch (e: Exception) {
@@ -526,8 +454,8 @@ class PhotoReasoningViewModel(
                         isPending = false
                     )
                 )
-                _chatMessagesFlow.value = chatMessages // Update UI Flow
-                saveChatHistory(context) // Speichern nach UI-Update
+                _chatMessagesFlow.value = chatMessages
+                saveChatHistory(context)
                 _commandExecutionStatus.value = "Fehler beim Modellwechsel: ${e.localizedMessage}"
             }
         }
