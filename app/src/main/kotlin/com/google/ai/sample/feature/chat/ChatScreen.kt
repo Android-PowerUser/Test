@@ -58,32 +58,16 @@ import android.util.Log
 
 @Composable
 internal fun ChatRoute(
-    // Factory übergeben, damit wir sie im Key verwenden können
-    viewModelFactory: ViewModelProvider.Factory = GenerativeViewModelFactory
+    viewModel: ChatViewModel = viewModel(factory = GenerativeViewModelFactory) // ViewModel normal holen
 ) {
-    val context = LocalContext.current
-
-    // Lade den initialen Modellnamen für den ersten Key
-    val initialModelName = remember { ModelPreferences.loadModelName(context) }
-
-    // Beobachte den StateFlow, um auf Änderungen zu reagieren und den Key zu aktualisieren
-    val tempViewModel: ChatViewModel = viewModel(key = "temp_vm_observer", factory = viewModelFactory)
-    val currentModelNameState by tempViewModel.currentModelName.collectAsState()
-
-    // --- NEU: Verwende einen sich ändernden Key für das ViewModel selbst ---
-    val viewModel: ChatViewModel = viewModel(key = "vm_$currentModelNameState", factory = viewModelFactory)
-    Log.d("ChatRoute", "Obtaining ViewModel instance with key: vm_$currentModelNameState")
-
-
-    // Beobachte die anderen States vom *aktuellen* ViewModel
     val chatUiState by viewModel.uiState.collectAsState()
     val commandExecutionStatus by viewModel.commandExecutionStatus.collectAsState()
     val detectedCommands by viewModel.detectedCommands.collectAsState()
+    val currentModelName by viewModel.currentModelName.collectAsState() // Modellnamen beobachten
 
-
+    val context = LocalContext.current
     val mainActivity = context as? MainActivity
 
-    // Check if accessibility service is enabled
     val isAccessibilityServiceEnabled = remember {
         mutableStateOf(
             mainActivity?.let {
@@ -92,32 +76,32 @@ internal fun ChatRoute(
         )
     }
 
-    // Check accessibility service status when the screen is composed
-    DisposableEffect(viewModel) { // Effekt hängt jetzt am potenziell neuen ViewModel
-        Log.d("ChatRoute", "DisposableEffect RUNNING for ViewModel with actual model: ${viewModel.currentModelName.value}")
+    // Effekt für einmalige Aktionen beim Start der Route
+    LaunchedEffect(Unit) {
+        Log.d("ChatRoute", "LaunchedEffect(Unit) running.")
         mainActivity?.checkAccessibilityServiceEnabled()
-        onDispose {
-             Log.d("ChatRoute", "DisposableEffect DISPOSED for ViewModel with model: ${viewModel.currentModelName.value}")
-        }
+        // Optional: Lade hier Chat-History, falls ChatViewModel das nicht selbst tut
     }
 
-    // Das Screen-Composable selbst braucht keinen Key mehr
-    ChatScreen(
-        uiState = chatUiState,
-        commandExecutionStatus = commandExecutionStatus,
-        detectedCommands = detectedCommands,
-        onMessageSent = { messageText ->
-            viewModel.sendMessage(messageText)
-        },
-        isAccessibilityServiceEnabled = isAccessibilityServiceEnabled.value,
-        onEnableAccessibilityService = {
-            // Aktualisiere den Status und öffne Einstellungen
-            isAccessibilityServiceEnabled.value = mainActivity?.let {
-                ScreenOperatorAccessibilityService.isAccessibilityServiceEnabled(it)
-            } ?: false
-            mainActivity?.checkAccessibilityServiceEnabled()
-        }
-    )
+    // --- NEU: Key um den Screen legen ---
+    key(currentModelName) { // Erzwingt Neukomposition des Screens bei Modellwechsel
+        Log.d("ChatRoute", "Recomposing content within key: $currentModelName")
+        ChatScreen(
+            uiState = chatUiState, // Wird vom StateFlow beobachtet
+            commandExecutionStatus = commandExecutionStatus,
+            detectedCommands = detectedCommands,
+            onMessageSent = { messageText ->
+                viewModel.sendMessage(messageText)
+            },
+            isAccessibilityServiceEnabled = isAccessibilityServiceEnabled.value,
+            onEnableAccessibilityService = {
+                isAccessibilityServiceEnabled.value = mainActivity?.let {
+                     ScreenOperatorAccessibilityService.isAccessibilityServiceEnabled(it)
+                } ?: false
+                mainActivity?.checkAccessibilityServiceEnabled()
+            }
+        )
+    }
 }
 
 @Composable
@@ -129,13 +113,11 @@ fun ChatScreen(
     isAccessibilityServiceEnabled: Boolean = false,
     onEnableAccessibilityService: () -> Unit = {}
 ) {
-    // Log hinzufügen, um zu sehen, wann der Screen neu komponiert wird
     Log.d("ChatScreen", "RECOMPOSING - Received messages size: ${uiState.messages.size}")
 
     var userMessage by rememberSaveable { mutableStateOf("") }
     val listState = rememberLazyListState()
 
-    // Scroll to the bottom when new messages arrive
     LaunchedEffect(uiState.messages.size) {
         if (uiState.messages.isNotEmpty()) {
              Log.d("ChatScreen", "Scrolling to bottom, index: ${uiState.messages.size - 1}")
@@ -209,7 +191,7 @@ fun ChatScreen(
                 .fillMaxWidth()
                 .weight(1f)
         ) {
-            items(uiState.messages, key = { it.hashCode() }) { message -> // Optional: Key für Items
+            items(uiState.messages, key = { "${it.participant}-${it.text}-${it.isPending}".hashCode() }) { message -> // Stabilerer Key
                 when (message.participant) {
                     Participant.USER -> UserChatBubble(text = message.text, isPending = message.isPending)
                     Participant.MODEL -> ModelChatBubble(text = message.text, isPending = message.isPending)
