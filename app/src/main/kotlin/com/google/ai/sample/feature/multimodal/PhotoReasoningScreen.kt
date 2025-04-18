@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize // <<< IMPORT HINZUGEFÜGT
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -62,6 +63,7 @@ import coil.size.Precision
 import com.google.ai.sample.R
 import com.google.ai.sample.ScreenOperatorAccessibilityService
 import com.google.ai.sample.util.Command
+import com.google.ai.sample.util.ModelPreferences // <<< IMPORT HINZUGEFÜGT
 import com.google.ai.sample.util.UriSaver
 import kotlinx.coroutines.launch
 import android.util.Log
@@ -75,7 +77,7 @@ internal fun PhotoReasoningRoute(
     val detectedCommands by viewModel.detectedCommands.collectAsState()
     val systemMessage by viewModel.systemMessage.collectAsState()
     val chatMessages by viewModel.chatMessagesFlow.collectAsState()
-    val modelUpdateTrigger by viewModel.modelUpdateTrigger.collectAsState() // <<< NEU: Trigger beobachten
+    val modelUpdateTrigger by viewModel.modelUpdateTrigger.collectAsState() // Trigger beobachten
 
     val coroutineScope = rememberCoroutineScope()
     val imageRequestBuilder = ImageRequest.Builder(LocalContext.current)
@@ -84,27 +86,14 @@ internal fun PhotoReasoningRoute(
     val mainActivity = context as? MainActivity
 
     DisposableEffect(viewModel) {
-        // Entferne den Aufruf von setPhotoReasoningViewModel
-        // mainActivity?.setPhotoReasoningViewModel(viewModel) // Nicht mehr benötigt
-
         Log.d("PhotoReasoningRoute", "PhotoReasoningRoute is active. ViewModel instance should be available via MainActivity.getInstance().retrievePhotoReasoningViewModel()")
-
-        // Check if accessibility service is enabled
         mainActivity?.checkAccessibilityServiceEnabled()
-
-        // Load the saved system message and chat history
         viewModel.loadSystemMessage(context)
-
-        onDispose {
-            // Optional: clear the reference when navigating away
-        }
+        onDispose { }
     }
 
-    // <<< NEU: LaunchedEffect für den Trigger >>>
     LaunchedEffect(modelUpdateTrigger) {
          Log.d("PhotoReasoningRoute", "Model update trigger changed: $modelUpdateTrigger. Recomposition might occur.")
-         // Hier könnten explizite Aktionen stehen, aber oft reicht das Beobachten
-         // für die Neuzeichnung durch Compose.
     }
 
     PhotoReasoningScreen(
@@ -147,7 +136,6 @@ internal fun PhotoReasoningRoute(
             mainActivity?.checkAccessibilityServiceEnabled()
         },
         onClearChatHistory = {
-            // Rufe die ViewModel-Funktion auf
             viewModel.clearChatHistory(context)
             // Der Reset des LazyListState passiert jetzt im onClick des Buttons
         }
@@ -183,7 +171,6 @@ fun PhotoReasoningScreen(
     // Scroll to the bottom when new messages arrive
     LaunchedEffect(chatMessages.size) {
         if (chatMessages.isNotEmpty()) {
-            // Nur scrollen, wenn die Liste nicht gerade geleert wurde
             listState.animateScrollToItem(chatMessages.size - 1)
         }
     }
@@ -284,15 +271,12 @@ fun PhotoReasoningScreen(
                     // New button to clear chat history
                     IconButton(
                         onClick = {
-                            // Rufe die ViewModel-Funktion auf
                             onClearChatHistory()
-                            // <<< KORREKTUR: Setze den LazyListState zurück >>>
                             coroutineScope.launch {
                                 listState.scrollToItem(0) // Scrolle zum Anfang (leere Liste)
                             }
-                            // Leere auch die lokalen Bild-URIs
                             imageUris.clear()
-                            userQuestion = "" // Leere auch das Textfeld
+                            userQuestion = ""
                         },
                         modifier = Modifier
                             .padding(top = 4.dp)
@@ -386,8 +370,8 @@ fun PhotoReasoningScreen(
                             is Command.ScrollRightFromCoordinates -> "Nach rechts scrollen von Position (${command.x}, ${command.y}) mit Distanz ${command.distance}px und Dauer ${command.duration}ms"
                             is Command.OpenApp -> "App öffnen: \"${command.packageName}\""
                             is Command.WriteText -> "Text schreiben: \"${command.text}\""
-                            is Command.UseHighReasoningModel -> "Wechsle zu ${ModelPreferences.HIGH_REASONING_MODEL}"
-                            is Command.UseLowReasoningModel -> "Wechsle zu ${ModelPreferences.LOW_REASONING_MODEL}"
+                            is Command.UseHighReasoningModel -> "Wechsle zu ${ModelPreferences.HIGH_REASONING_MODEL}" // <<< KORREKTUR: Verwendet jetzt den korrekten Import
+                            is Command.UseLowReasoningModel -> "Wechsle zu ${ModelPreferences.LOW_REASONING_MODEL}" // <<< KORREKTUR: Verwendet jetzt den korrekten Import
                         }
                         Text(text = "${index + 1}. $commandText", color = MaterialTheme.colorScheme.onTertiaryContainer)
                         if (index < detectedCommands.size - 1) {
@@ -445,7 +429,20 @@ fun ErrorChatBubble(text: String) {
 // --- Previews (unverändert) ---
 @Preview
 @Composable
-fun PhotoReasoningScreenPreviewWithContent() { /* ... */ }
+fun PhotoReasoningScreenPreviewWithContent() {
+     PhotoReasoningScreen(
+         uiState = PhotoReasoningUiState.Success("This is a preview."),
+         commandExecutionStatus = "Befehl ausgeführt",
+         detectedCommands = listOf(Command.ClickButton("OK")),
+         systemMessage = "Systemnachricht",
+         chatMessages = listOf(
+             PhotoReasoningMessage("User message", PhotoParticipant.USER),
+             PhotoReasoningMessage("Model response", PhotoParticipant.MODEL)
+         )
+     )
+}
 @Composable
 @Preview(showSystemUi = true)
-fun PhotoReasoningScreenPreviewEmpty() { /* ... */ }
+fun PhotoReasoningScreenPreviewEmpty() {
+    PhotoReasoningScreen()
+}
