@@ -1,6 +1,5 @@
 package com.google.ai.sample.feature.multimodal
 
-// Imports bleiben bestehen, da die Typen jetzt aus ihrer Originaldatei importiert werden
 import android.graphics.drawable.BitmapDrawable
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -40,6 +39,7 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key // <<< NEU: Import für key Composable
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.rememberCoroutineScope
@@ -69,17 +69,9 @@ import com.google.ai.sample.util.UriSaver
 import kotlinx.coroutines.launch
 import android.util.Log
 
-// <<< KORREKTUR: Die folgenden Definitionen wurden entfernt, da sie in PhotoReasoningMessage.kt existieren sollten >>>
-/*
-enum class PhotoParticipant { USER, MODEL, ERROR }
-
-data class PhotoReasoningMessage(
-    val text: String,
-    val participant: PhotoParticipant,
-    val imageUris: List<String> = emptyList(),
-    val isPending: Boolean = false
-)
-*/
+// Definitionen sollten in PhotoReasoningMessage.kt sein
+// enum class PhotoParticipant { USER, MODEL, ERROR }
+// data class PhotoReasoningMessage(...)
 
 @Composable
 internal fun PhotoReasoningRoute(
@@ -90,7 +82,8 @@ internal fun PhotoReasoningRoute(
     val detectedCommands by viewModel.detectedCommands.collectAsState()
     val systemMessage by viewModel.systemMessage.collectAsState()
     val chatMessages by viewModel.chatMessagesFlow.collectAsState()
-    val modelUpdateTrigger by viewModel.modelUpdateTrigger.collectAsState() // Trigger beobachten
+    // --- NEU: Aktuellen Modellnamen beobachten ---
+    val currentModelName by viewModel.currentModelName.collectAsState()
 
     val coroutineScope = rememberCoroutineScope()
     val imageRequestBuilder = ImageRequest.Builder(LocalContext.current)
@@ -105,54 +98,56 @@ internal fun PhotoReasoningRoute(
         onDispose { }
     }
 
-    LaunchedEffect(modelUpdateTrigger) {
-         Log.d("PhotoReasoningRoute", "Model update trigger changed: $modelUpdateTrigger. Recomposition might occur.")
-    }
+    // --- ENTFERNT: LaunchedEffect für alten Trigger ---
+    // LaunchedEffect(modelUpdateTrigger) { /* ... */ }
 
-    PhotoReasoningScreen(
-        uiState = photoReasoningUiState,
-        commandExecutionStatus = commandExecutionStatus,
-        detectedCommands = detectedCommands,
-        systemMessage = systemMessage,
-        chatMessages = chatMessages,
-        onSystemMessageChanged = { message ->
-            viewModel.updateSystemMessage(message, context)
-        },
-        onReasonClicked = { inputText, selectedItems ->
-            coroutineScope.launch {
-                Log.d("PhotoReasoningScreen", "Go button clicked, processing images")
-                val bitmaps = selectedItems.mapNotNull {
-                    Log.d("PhotoReasoningScreen", "Processing image: $it")
-                    val imageRequest = imageRequestBuilder.data(it).precision(Precision.EXACT).build()
-                    try {
-                        val result = imageLoader.execute(imageRequest)
-                        if (result is SuccessResult) {
-                            Log.d("PhotoReasoningScreen", "Successfully processed image")
-                            (result.drawable as BitmapDrawable).bitmap
-                        } else {
-                            Log.e("PhotoReasoningScreen", "Failed to process image: result is not SuccessResult")
+    // --- NEU: Verwende currentModelName als Key für den Screen ---
+    key(currentModelName) { // Erzwingt Neukomposition des Screens bei Modellwechsel
+        PhotoReasoningScreen(
+            uiState = photoReasoningUiState,
+            commandExecutionStatus = commandExecutionStatus,
+            detectedCommands = detectedCommands,
+            systemMessage = systemMessage,
+            chatMessages = chatMessages,
+            onSystemMessageChanged = { message ->
+                viewModel.updateSystemMessage(message, context)
+            },
+            onReasonClicked = { inputText, selectedItems ->
+                coroutineScope.launch {
+                    Log.d("PhotoReasoningScreen", "Go button clicked, processing images")
+                    val bitmaps = selectedItems.mapNotNull {
+                        Log.d("PhotoReasoningScreen", "Processing image: $it")
+                        val imageRequest = imageRequestBuilder.data(it).precision(Precision.EXACT).build()
+                        try {
+                            val result = imageLoader.execute(imageRequest)
+                            if (result is SuccessResult) {
+                                Log.d("PhotoReasoningScreen", "Successfully processed image")
+                                (result.drawable as BitmapDrawable).bitmap
+                            } else {
+                                Log.e("PhotoReasoningScreen", "Failed to process image: result is not SuccessResult")
+                                null
+                            }
+                        } catch (e: Exception) {
+                            Log.e("PhotoReasoningScreen", "Error processing image: ${e.message}")
                             null
                         }
-                    } catch (e: Exception) {
-                        Log.e("PhotoReasoningScreen", "Error processing image: ${e.message}")
-                        null
                     }
+                    Log.d("PhotoReasoningScreen", "Processed ${bitmaps.size} images")
+                    viewModel.reason(inputText, bitmaps)
                 }
-                Log.d("PhotoReasoningScreen", "Processed ${bitmaps.size} images")
-                viewModel.reason(inputText, bitmaps)
+            },
+            isAccessibilityServiceEnabled = mainActivity?.let {
+                ScreenOperatorAccessibilityService.isAccessibilityServiceEnabled(it)
+            } ?: false,
+            onEnableAccessibilityService = {
+                mainActivity?.checkAccessibilityServiceEnabled()
+            },
+            onClearChatHistory = {
+                viewModel.clearChatHistory(context)
+                // Der Reset des LazyListState passiert jetzt im onClick des Buttons
             }
-        },
-        isAccessibilityServiceEnabled = mainActivity?.let {
-            ScreenOperatorAccessibilityService.isAccessibilityServiceEnabled(it)
-        } ?: false,
-        onEnableAccessibilityService = {
-            mainActivity?.checkAccessibilityServiceEnabled()
-        },
-        onClearChatHistory = {
-            viewModel.clearChatHistory(context)
-            // Der Reset des LazyListState passiert jetzt im onClick des Buttons
-        }
-    )
+        )
+    }
 }
 
 @Composable
