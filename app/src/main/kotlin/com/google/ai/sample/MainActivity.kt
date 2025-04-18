@@ -36,59 +36,45 @@ class MainActivity : ComponentActivity() {
     private val chatViewModel: ChatViewModel by viewModels { GenerativeViewModelFactory }
     private val photoReasoningViewModel: PhotoReasoningViewModel by viewModels { GenerativeViewModelFactory }
 
-    // --- Bestehende Methode zum Setzen/Holen von PhotoReasoningViewModel ---
-    // Hinweis: Das explizite Setzen ist bei Verwendung von 'by viewModels' oft nicht nötig.
-    // Der AccessibilityService kann jetzt 'getPhotoReasoningViewModel()' verwenden.
-    // private var photoReasoningViewModelInstance: PhotoReasoningViewModel? = null // Wird durch by viewModels ersetzt
-
-    // Function to get the PhotoReasoningViewModel
-    fun getPhotoReasoningViewModel(): PhotoReasoningViewModel? {
-        // Log.d(TAG, "getPhotoReasoningViewModel called, returning: ${photoReasoningViewModel != null}") // Log kann bleiben
-        // Gibt die Instanz zurück, die über 'by viewModels' verwaltet wird
-        // Entferne die isInitialized-Prüfung
+    // --- Umbenannte Methode für PhotoReasoningViewModel ---
+    /**
+     * Gibt die Instanz des PhotoReasoningViewModels zurück.
+     * Wird vom AccessibilityService verwendet.
+     * Kann null sein, wenn die Activity nicht bereit ist.
+     */
+    fun retrievePhotoReasoningViewModel(): PhotoReasoningViewModel? { // <<< Umbenannt
         return try {
             photoReasoningViewModel // Direkter Zugriff
-        } catch (e: UninitializedPropertyAccessException) {
-            // Sollte bei by viewModels selten passieren, aber sicher ist sicher
-            Log.e(TAG, "getPhotoReasoningViewModel called before ViewModel was initialized", e)
+        } catch (e: Exception) { // Fange allgemeinere Exception ab
+            Log.e(TAG, "Error retrieving photoReasoningViewModel", e)
             null
-        } catch (e: Exception) {
-            // Andere mögliche Fehler beim Zugriff
-             Log.e(TAG, "Error accessing photoReasoningViewModel", e)
-             null
         }
     }
 
     // Function to set the PhotoReasoningViewModel
     // Diese Methode ist wahrscheinlich nicht mehr nötig, wenn 'by viewModels' verwendet wird.
-    // Der Service sollte 'getPhotoReasoningViewModel' aufrufen.
-    // Wenn du sie dennoch brauchst, muss sie anders implementiert werden, da photoReasoningViewModel 'val' ist.
+    // Der Service sollte 'retrievePhotoReasoningViewModel' aufrufen.
     /*
     fun setPhotoReasoningViewModel(viewModel: PhotoReasoningViewModel) {
         Log.d(TAG, "setPhotoReasoningViewModel called with viewModel: $viewModel")
         // photoReasoningViewModel = viewModel // Kann nicht zugewiesen werden, da 'val'
         // Stattdessen: Logge nur, dass die Route aktiv ist
-        Log.d(TAG, "PhotoReasoningRoute is active, ViewModel instance should be available via getPhotoReasoningViewModel().")
+        Log.d(TAG, "PhotoReasoningRoute is active, ViewModel instance should be available via retrievePhotoReasoningViewModel().")
     }
     */
 
-    // --- NEUE METHODE für ChatViewModel ---
+    // --- Umbenannte Methode für ChatViewModel ---
     /**
      * Gibt die Instanz des ChatViewModels zurück.
-     * Kann null sein, wenn die Activity nicht bereit ist oder das ViewModel noch nicht initialisiert wurde.
+     * Wird vom AccessibilityService verwendet.
+     * Kann null sein, wenn die Activity nicht bereit ist.
      */
-    fun getChatViewModel(): ChatViewModel? {
-        // Entferne die isInitialized-Prüfung
+    fun retrieveChatViewModel(): ChatViewModel? { // <<< Umbenannt
         return try {
             chatViewModel // Direkter Zugriff
-        } catch (e: UninitializedPropertyAccessException) {
-            // Sollte bei by viewModels selten passieren, aber sicher ist sicher
-            Log.e(TAG, "getChatViewModel called before ViewModel was initialized", e)
+        } catch (e: Exception) { // Fange allgemeinere Exception ab
+            Log.e(TAG, "Error retrieving chatViewModel", e)
             null
-        } catch (e: Exception) {
-            // Andere mögliche Fehler beim Zugriff
-             Log.e(TAG, "Error accessing chatViewModel", e)
-             null
         }
     }
 
