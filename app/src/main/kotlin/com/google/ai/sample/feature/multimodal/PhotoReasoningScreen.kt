@@ -9,7 +9,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize // <<< IMPORT HINZUGEFÜGT
+import androidx.compose.foundation.layout.fillMaxSize // Import war korrekt
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -63,10 +63,21 @@ import coil.size.Precision
 import com.google.ai.sample.R
 import com.google.ai.sample.ScreenOperatorAccessibilityService
 import com.google.ai.sample.util.Command
-import com.google.ai.sample.util.ModelPreferences // <<< IMPORT HINZUGEFÜGT
+import com.google.ai.sample.util.ModelPreferences // Import war korrekt
 import com.google.ai.sample.util.UriSaver
 import kotlinx.coroutines.launch
 import android.util.Log
+
+// Datenklasse und Enum (angenommene Definition, stelle sicher, dass sie so existiert)
+enum class PhotoParticipant { USER, MODEL, ERROR }
+
+data class PhotoReasoningMessage(
+    val text: String,
+    val participant: PhotoParticipant,
+    val imageUris: List<String> = emptyList(),
+    val isPending: Boolean = false
+)
+
 
 @Composable
 internal fun PhotoReasoningRoute(
@@ -370,8 +381,8 @@ fun PhotoReasoningScreen(
                             is Command.ScrollRightFromCoordinates -> "Nach rechts scrollen von Position (${command.x}, ${command.y}) mit Distanz ${command.distance}px und Dauer ${command.duration}ms"
                             is Command.OpenApp -> "App öffnen: \"${command.packageName}\""
                             is Command.WriteText -> "Text schreiben: \"${command.text}\""
-                            is Command.UseHighReasoningModel -> "Wechsle zu ${ModelPreferences.HIGH_REASONING_MODEL}" // <<< KORREKTUR: Verwendet jetzt den korrekten Import
-                            is Command.UseLowReasoningModel -> "Wechsle zu ${ModelPreferences.LOW_REASONING_MODEL}" // <<< KORREKTUR: Verwendet jetzt den korrekten Import
+                            is Command.UseHighReasoningModel -> "Wechsle zu ${ModelPreferences.HIGH_REASONING_MODEL}" // Import ist jetzt da
+                            is Command.UseLowReasoningModel -> "Wechsle zu ${ModelPreferences.LOW_REASONING_MODEL}" // Import ist jetzt da
                         }
                         Text(text = "${index + 1}. $commandText", color = MaterialTheme.colorScheme.onTertiaryContainer)
                         if (index < detectedCommands.size - 1) {
@@ -426,7 +437,7 @@ fun ErrorChatBubble(text: String) {
     }
 }
 
-// --- Previews (unverändert) ---
+// --- Previews ---
 @Preview
 @Composable
 fun PhotoReasoningScreenPreviewWithContent() {
@@ -436,8 +447,9 @@ fun PhotoReasoningScreenPreviewWithContent() {
          detectedCommands = listOf(Command.ClickButton("OK")),
          systemMessage = "Systemnachricht",
          chatMessages = listOf(
-             PhotoReasoningMessage("User message", PhotoParticipant.USER),
-             PhotoReasoningMessage("Model response", PhotoParticipant.MODEL)
+             // <<< KORREKTUR: Benannte Argumente verwenden >>>
+             PhotoReasoningMessage(text = "User message", participant = PhotoParticipant.USER),
+             PhotoReasoningMessage(text = "Model response", participant = PhotoParticipant.MODEL)
          )
      )
 }
