@@ -87,7 +87,6 @@ internal fun PhotoReasoningRoute(
     // Share the ViewModel with MainActivity for AccessibilityService access
     DisposableEffect(viewModel) {
         // Set the ViewModel in MainActivity when the composable is first composed
-        mainActivity?.setPhotoReasoningViewModel(viewModel)
         Log.d("PhotoReasoningRoute", "ViewModel shared with MainActivity: ${mainActivity != null}")
         
         // Check if accessibility service is enabled
