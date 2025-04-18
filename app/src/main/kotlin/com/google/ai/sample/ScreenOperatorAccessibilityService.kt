@@ -181,39 +181,39 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
                     serviceInstance?.writeText(command.text)
                 }
                 // --- GEÄNDERT: Ruft ViewModel-Methode statt Factory auf ---
-                is Command.UseHighReasoningModel -> {
-                    val newModelName = "gemini-2.5-pro-exp-03-25" // Neuer Modellname
-                    Log.i(TAG, "Command received: Switch to high reasoning model ($newModelName)")
-                    showToast("Wechsle zu leistungsfähigerem Modell ($newModelName)...", false)
-                    // Rufe die neue Methode im/in den relevanten ViewModel(s) auf
-                    val mainActivity = MainActivity.getInstance()
-                    if (mainActivity != null) {
-                        mainActivity.getChatViewModel()?.updateGenerativeModel(newModelName)
-                        mainActivity.getPhotoReasoningViewModel()?.updateGenerativeModel(newModelName)
-                        Log.i(TAG, "Requested model update in ViewModels for $newModelName")
-                    } else {
-                        Log.e(TAG, "MainActivity instance is null, cannot update ViewModels.")
-                        showToast("Fehler: MainActivity nicht gefunden, Modellwechsel nicht möglich.", true)
-                    }
-                    // GenerativeAiViewModelFactory.highReasoningModel() // Nicht mehr benötigt für aktiven Wechsel
+                            is Command.UseHighReasoningModel -> {
+                val newModelName = "gemini-2.5-pro-exp-03-25" // Neuer Modellname
+                Log.i(TAG, "Command received: Switch to high reasoning model ($newModelName)")
+                showToast("Wechsle zu leistungsfähigerem Modell ($newModelName)...", false)
+                // Rufe die neue Methode im/in den relevanten ViewModel(s) auf
+                val mainActivity = MainActivity.getInstance()
+                if (mainActivity != null) {
+                    mainActivity.retrieveChatViewModel()?.updateGenerativeModel(newModelName) // <<< Aufruf angepasst
+                    mainActivity.retrievePhotoReasoningViewModel()?.updateGenerativeModel(newModelName) // <<< Aufruf angepasst
+                    Log.i(TAG, "Requested model update in ViewModels for $newModelName")
+                } else {
+                    Log.e(TAG, "MainActivity instance is null, cannot update ViewModels.")
+                    showToast("Fehler: MainActivity nicht gefunden, Modellwechsel nicht möglich.", true)
                 }
+                // GenerativeAiViewModelFactory.highReasoningModel() // Nicht mehr benötigt für aktiven Wechsel
+            }
                 // --- GEÄNDERT: Ruft ViewModel-Methode statt Factory auf ---
                 is Command.UseLowReasoningModel -> {
                     val newModelName = "gemini-2.0-flash-lite"
                     Log.i(TAG, "Command received: Switch to low reasoning model ($newModelName)")
-                    showToast("Wechsle zu schnellerem Modell ($newModelName)...", false)
-                    // Rufe die neue Methode im/in den relevanten ViewModel(s) auf
-                     val mainActivity = MainActivity.getInstance()
-                    if (mainActivity != null) {
-                        mainActivity.getChatViewModel()?.updateGenerativeModel(newModelName)
-                        mainActivity.getPhotoReasoningViewModel()?.updateGenerativeModel(newModelName)
-                        Log.i(TAG, "Requested model update in ViewModels for $newModelName")
-                    } else {
-                        Log.e(TAG, "MainActivity instance is null, cannot update ViewModels.")
-                        showToast("Fehler: MainActivity nicht gefunden, Modellwechsel nicht möglich.", true)
-                    }
-                    // GenerativeAiViewModelFactory.lowReasoningModel() // Nicht mehr benötigt für aktiven Wechsel
+                                    showToast("Wechsle zu schnellerem Modell ($newModelName)...", false)
+                // Rufe die neue Methode im/in den relevanten ViewModel(s) auf
+                 val mainActivity = MainActivity.getInstance()
+                if (mainActivity != null) {
+                    mainActivity.retrieveChatViewModel()?.updateGenerativeModel(newModelName) // <<< Aufruf angepasst
+                    mainActivity.retrievePhotoReasoningViewModel()?.updateGenerativeModel(newModelName) // <<< Aufruf angepasst
+                    Log.i(TAG, "Requested model update in ViewModels for $newModelName")
+                } else {
+                     Log.e(TAG, "MainActivity instance is null, cannot update ViewModels.")
+                     showToast("Fehler: MainActivity nicht gefunden, Modellwechsel nicht möglich.", true)
                 }
+                // GenerativeAiViewModelFactory.lowReasoningModel() // Nicht mehr benötigt für aktiven Wechsel
+            }
             }
         }
 
