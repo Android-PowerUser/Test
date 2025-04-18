@@ -12,6 +12,7 @@ import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.activity.viewModels // Import für by viewModels hinzugefügt
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -22,36 +23,69 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import com.google.ai.sample.feature.chat.ChatRoute
+import com.google.ai.sample.feature.chat.ChatViewModel // Import für ChatViewModel hinzugefügt
 import com.google.ai.sample.feature.multimodal.PhotoReasoningRoute
+import com.google.ai.sample.feature.multimodal.PhotoReasoningViewModel // Import für PhotoReasoningViewModel hinzugefügt
 import com.google.ai.sample.feature.text.SummarizeRoute
 import com.google.ai.sample.ui.theme.GenerativeAISample
 
 class MainActivity : ComponentActivity() {
 
-    // PhotoReasoningViewModel instance
-    private var photoReasoningViewModel: com.google.ai.sample.feature.multimodal.PhotoReasoningViewModel? = null
-    
+    // --- Initialisiere deine ViewModels hier (Beispiel mit by viewModels) ---
+    // Stelle sicher, dass die Factory korrekt verwendet wird
+    private val chatViewModel: ChatViewModel by viewModels { GenerativeViewModelFactory }
+    private val photoReasoningViewModel: PhotoReasoningViewModel by viewModels { GenerativeViewModelFactory }
+
+    // --- Bestehende Methode zum Setzen/Holen von PhotoReasoningViewModel ---
+    // Hinweis: Das explizite Setzen ist bei Verwendung von 'by viewModels' oft nicht nötig.
+    // Der AccessibilityService kann jetzt 'getPhotoReasoningViewModel()' verwenden.
+    // private var photoReasoningViewModelInstance: PhotoReasoningViewModel? = null // Wird durch by viewModels ersetzt
+
     // Function to get the PhotoReasoningViewModel
-    fun getPhotoReasoningViewModel(): com.google.ai.sample.feature.multimodal.PhotoReasoningViewModel? {
-        Log.d(TAG, "getPhotoReasoningViewModel called, returning: ${photoReasoningViewModel != null}")
-        return photoReasoningViewModel
+    fun getPhotoReasoningViewModel(): PhotoReasoningViewModel? {
+        // Log.d(TAG, "getPhotoReasoningViewModel called, returning: ${photoReasoningViewModel != null}") // Log kann bleiben
+        // Gibt die Instanz zurück, die über 'by viewModels' verwaltet wird
+        return if (::photoReasoningViewModel.isInitialized) photoReasoningViewModel else {
+            Log.w(TAG, "getPhotoReasoningViewModel called but ViewModel is not initialized yet.")
+            null
+        }
     }
-    
+
     // Function to set the PhotoReasoningViewModel
-    fun setPhotoReasoningViewModel(viewModel: com.google.ai.sample.feature.multimodal.PhotoReasoningViewModel) {
+    // Diese Methode ist wahrscheinlich nicht mehr nötig, wenn 'by viewModels' verwendet wird.
+    // Der Service sollte 'getPhotoReasoningViewModel' aufrufen.
+    // Wenn du sie dennoch brauchst, muss sie anders implementiert werden, da photoReasoningViewModel 'val' ist.
+    /*
+    fun setPhotoReasoningViewModel(viewModel: PhotoReasoningViewModel) {
         Log.d(TAG, "setPhotoReasoningViewModel called with viewModel: $viewModel")
-        photoReasoningViewModel = viewModel
+        // photoReasoningViewModel = viewModel // Kann nicht zugewiesen werden, da 'val'
+        // Stattdessen: Logge nur, dass die Route aktiv ist
+        Log.d(TAG, "PhotoReasoningRoute is active, ViewModel instance should be available via getPhotoReasoningViewModel().")
     }
+    */
+
+    // --- NEUE METHODE für ChatViewModel ---
+    /**
+     * Gibt die Instanz des ChatViewModels zurück.
+     * Kann null sein, wenn die Activity nicht bereit ist oder das ViewModel noch nicht initialisiert wurde.
+     */
+    fun getChatViewModel(): ChatViewModel? {
+        return if (::chatViewModel.isInitialized) chatViewModel else {
+            Log.w(TAG, "getChatViewModel called but ViewModel is not initialized yet.")
+            null
+        }
+    }
+
 
     private val requiredPermissions = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
         arrayOf(
             Manifest.permission.READ_MEDIA_IMAGES,
-            Manifest.permission.READ_MEDIA_VIDEO
+            Manifest.permission.READ_MEDIA_VIDEO // Video wird hier nicht direkt verwendet, aber oft zusammen angefragt
         )
     } else {
         arrayOf(
-            Manifest.permission.READ_EXTERNAL_STORAGE,
-            Manifest.permission.WRITE_EXTERNAL_STORAGE
+            Manifest.permission.READ_EXTERNAL_STORAGE // WRITE ist oft nicht mehr nötig für Mediendateien
+            // Manifest.permission.WRITE_EXTERNAL_STORAGE // Nur wenn wirklich nötig
         )
     }
 
@@ -60,31 +94,48 @@ class MainActivity : ComponentActivity() {
     ) { permissions ->
         val allGranted = permissions.entries.all { it.value }
         if (allGranted) {
-            Log.d(TAG, "All permissions granted")
-            Toast.makeText(this, "Alle Berechtigungen erteilt", Toast.LENGTH_SHORT).show()
-        } else {
-            Log.d(TAG, "Some permissions denied")
-            Toast.makeText(this, "Einige Berechtigungen wurden verweigert. Die App benötigt Zugriff auf Medien, um Screenshots zu verarbeiten.", Toast.LENGTH_LONG).show()
-            
-            // If MANAGE_EXTERNAL_STORAGE is needed (for Android 11+)
+            Log.i(TAG, "All required media permissions granted.")
+            Toast.makeText(this, "Medien-Berechtigungen erteilt", Toast.LENGTH_SHORT).show()
+            // Prüfe nach Medienerlaubnis die "Alle Dateien"-Erlaubnis
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-                requestManageExternalStoragePermission()
+                checkAndRequestManageExternalStoragePermission()
+            }
+        } else {
+            Log.w(TAG, "Some media permissions were denied.")
+            Toast.makeText(this, "Medien-Berechtigungen teilweise verweigert. Screenshot-Verarbeitung benötigt Zugriff.", Toast.LENGTH_LONG).show()
+            // Optional: Erkläre genauer oder leite zu den Einstellungen
+        }
+    }
+
+    // Launcher für ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION
+    private val requestManageStorageLauncher = registerForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) {
+        // Prüfe erneut nach dem Ergebnis aus den Einstellungen
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            if (android.os.Environment.isExternalStorageManager()) {
+                Log.i(TAG, "MANAGE_EXTERNAL_STORAGE permission granted after returning from settings.")
+                Toast.makeText(this, "Zugriff auf alle Dateien erteilt.", Toast.LENGTH_SHORT).show()
+            } else {
+                Log.w(TAG, "MANAGE_EXTERNAL_STORAGE permission still not granted after returning from settings.")
+                Toast.makeText(this, "Zugriff auf alle Dateien weiterhin nicht erteilt. Screenshot-Suche könnte eingeschränkt sein.", Toast.LENGTH_LONG).show()
             }
         }
     }
 
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        
+
         // Set the instance immediately when created
         instance = this
         Log.d(TAG, "onCreate: Setting MainActivity instance")
 
         // Check and request permissions
-        checkAndRequestPermissions()
-        
-        // Check if accessibility service is enabled
-        checkAccessibilityServiceEnabled()
+        checkAndRequestMediaPermissions() // Umbenannt für Klarheit
+
+        // Check if accessibility service is enabled (wird auch in onResume geprüft)
+        // checkAccessibilityServiceEnabled() // Kann hier optional sein
 
         setContent {
             GenerativeAISample {
@@ -105,10 +156,12 @@ class MainActivity : ComponentActivity() {
                             SummarizeRoute()
                         }
                         composable("photo_reasoning") {
-                            PhotoReasoningRoute()
+                            // Hier wird das photoReasoningViewModel implizit von Compose verwendet
+                            PhotoReasoningRoute(/* viewModel = photoReasoningViewModel */)
                         }
                         composable("chat") {
-                            ChatRoute()
+                            // Hier wird das chatViewModel implizit von Compose verwendet
+                            ChatRoute(/* viewModel = chatViewModel */)
                         }
                     }
                 }
@@ -116,117 +169,136 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    private fun checkAndRequestPermissions() {
-        val permissionsToRequest = mutableListOf<String>()
-
-        // Check which permissions we need to request
-        for (permission in requiredPermissions) {
-            if (ContextCompat.checkSelfPermission(this, permission) != PackageManager.PERMISSION_GRANTED) {
-                permissionsToRequest.add(permission)
-            }
+    private fun checkAndRequestMediaPermissions() {
+        val permissionsToRequest = requiredPermissions.filter {
+            ContextCompat.checkSelfPermission(this, it) != PackageManager.PERMISSION_GRANTED
         }
 
-        // Request permissions if needed
         if (permissionsToRequest.isNotEmpty()) {
+            Log.i(TAG, "Requesting media permissions: $permissionsToRequest")
             requestPermissionLauncher.launch(permissionsToRequest.toTypedArray())
         } else {
-            Log.d(TAG, "All permissions already granted")
-            
-            // If MANAGE_EXTERNAL_STORAGE is needed (for Android 11+)
+            Log.i(TAG, "All media permissions already granted.")
+            // Wenn Medien OK sind, prüfe "Alle Dateien"
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-                requestManageExternalStoragePermission()
+                checkAndRequestManageExternalStoragePermission()
             }
         }
     }
 
-    private fun requestManageExternalStoragePermission() {
+    private fun checkAndRequestManageExternalStoragePermission() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
             if (!android.os.Environment.isExternalStorageManager()) {
+                Log.w(TAG, "MANAGE_EXTERNAL_STORAGE permission not granted. Requesting...")
                 try {
                     val intent = Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION)
                     intent.addCategory("android.intent.category.DEFAULT")
                     intent.data = Uri.parse("package:$packageName")
-                    startActivity(intent)
-                    Toast.makeText(this, "Bitte erteilen Sie Zugriff auf alle Dateien", Toast.LENGTH_LONG).show()
+                    requestManageStorageLauncher.launch(intent) // Verwende den neuen Launcher
+                    Toast.makeText(this, "Zusätzliche Berechtigung für Dateizugriff benötigt (Screenshot-Suche)", Toast.LENGTH_LONG).show()
                 } catch (e: Exception) {
-                    val intent = Intent(Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION)
+                    Log.e(TAG, "Could not launch ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION", e)
+                    try {
+                         // Fallback für einige Geräte
+                         val intent = Intent(Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION)
+                         requestManageStorageLauncher.launch(intent)
+                         Toast.makeText(this, "Zusätzliche Berechtigung für Dateizugriff benötigt (Screenshot-Suche)", Toast.LENGTH_LONG).show()
+                    } catch (e2: Exception) {
+                         Log.e(TAG, "Could not launch ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION either", e2)
+                         Toast.makeText(this, "Fehler beim Öffnen der Dateizugriffs-Einstellungen.", Toast.LENGTH_SHORT).show()
+                    }
+                }
+            } else {
+                 Log.i(TAG, "MANAGE_EXTERNAL_STORAGE permission already granted.")
+            }
+        }
+    }
+
+    // Check if accessibility service is enabled and prompt user if not
+    fun checkAccessibilityServiceEnabled() {
+        // Führe Prüfung nur aus, wenn die Activity im Vordergrund ist (resumed)
+        if (!isFinishing && !isChangingConfigurations) {
+            val isEnabled = ScreenOperatorAccessibilityService.isAccessibilityServiceEnabled(this)
+            Log.d(TAG, "Checking Accessibility service status. Enabled: $isEnabled")
+
+            if (!isEnabled) {
+                // Zeige Toast nur einmal oder seltener, um nicht zu nerven
+                Toast.makeText(
+                    this,
+                    "Barrierefreiheitsdienst für ScreenOperator ist nicht aktiviert. Klick-Funktionen sind nicht verfügbar.",
+                    Toast.LENGTH_LONG
+                ).show()
+
+                // Open accessibility settings
+                try {
+                    val intent = Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)
                     startActivity(intent)
-                    Toast.makeText(this, "Bitte erteilen Sie Zugriff auf alle Dateien", Toast.LENGTH_LONG).show()
+                } catch (e: Exception) {
+                     Log.e(TAG, "Could not open Accessibility Settings", e)
+                     Toast.makeText(this, "Fehler beim Öffnen der Barrierefreiheits-Einstellungen.", Toast.LENGTH_SHORT).show()
                 }
             }
         }
     }
-    
-    // Check if accessibility service is enabled and prompt user if not
-    fun checkAccessibilityServiceEnabled() {
-        val isEnabled = ScreenOperatorAccessibilityService.isAccessibilityServiceEnabled(this)
-        Log.d(TAG, "Accessibility service enabled: $isEnabled")
-        
-        if (!isEnabled) {
-            // Show a toast message
-            Toast.makeText(
-                this,
-                "Bitte aktivieren Sie den Accessibility Service für die Klick-Funktionalität",
-                Toast.LENGTH_LONG
-            ).show()
-            
-            // Open accessibility settings
-            val intent = Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)
-            startActivity(intent)
-        }
-    }
-    
-    // Function to update status message in UI
+
+    // Function to update status message in UI (using Toast)
     fun updateStatusMessage(message: String, isError: Boolean) {
+        // Stelle sicher, dass es auf dem UI-Thread läuft
         runOnUiThread {
             val duration = if (isError) Toast.LENGTH_LONG else Toast.LENGTH_SHORT
             Toast.makeText(this, message, duration).show()
-            Log.d(TAG, "Status message: $message, isError: $isError")
-        }
-    }
-    
-    // Function to check if all required permissions are granted
-    fun areAllPermissionsGranted(): Boolean {
-        for (permission in requiredPermissions) {
-            if (ContextCompat.checkSelfPermission(this, permission) != PackageManager.PERMISSION_GRANTED) {
-                return false
+            if (isError) {
+                Log.e(TAG, "Status message (Error): $message")
+            } else {
+                Log.i(TAG, "Status message: $message")
             }
         }
-        return true
+    }
+
+    // Function to check if all required permissions are granted (optional helper)
+    fun areAllRequiredPermissionsGranted(): Boolean {
+        val mediaGranted = requiredPermissions.all {
+            ContextCompat.checkSelfPermission(this, it) == PackageManager.PERMISSION_GRANTED
+        }
+        val storageManagerGranted = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            android.os.Environment.isExternalStorageManager()
+        } else {
+            true // Nicht relevant für ältere Versionen
+        }
+        return mediaGranted && storageManagerGranted
     }
 
     companion object {
         private const val TAG = "MainActivity"
-        
+
         // Static instance of MainActivity for accessibility service access
         @Volatile
         private var instance: MainActivity? = null
-        
+
         // Method to get the MainActivity instance
         fun getInstance(): MainActivity? {
-            Log.d(TAG, "getInstance called, returning: ${instance != null}")
+            // Log.d(TAG, "getInstance called, returning: ${instance != null}") // Kann sehr gesprächig sein
             return instance
         }
     }
-    
+
     override fun onResume() {
         super.onResume()
         // Set the instance when activity is resumed
         instance = this
         Log.d(TAG, "onResume: Setting MainActivity instance")
-        
-        // Check if accessibility service is enabled
+
+        // Check permissions and accessibility service status when returning to the app
+        checkAndRequestMediaPermissions()
         checkAccessibilityServiceEnabled()
     }
-    
+
     override fun onPause() {
         super.onPause()
         // DO NOT clear the instance when activity is paused
-        // This is critical for the accessibility service to work when app is in background
         Log.d(TAG, "onPause: Keeping MainActivity instance")
-        // instance = null  // This line was causing the issue
     }
-    
+
     override fun onDestroy() {
         super.onDestroy()
         // Only clear if this instance is the current one
