@@ -17,7 +17,7 @@ val GenerativeViewModelFactory = object : ViewModelProvider.Factory {
      * Set the model to high reasoning capability (gemini-2.5-pro-preview-03-25)
      */
     fun highReasoningModel() {
-        currentModelName = "gemini-2.5-pro-preview-03-25"
+        currentModelName = "gemini-2.5.pro-exp-03-25"
     }
     
     /**
@@ -85,7 +85,7 @@ object GenerativeAiViewModelFactory {
      * Set the model to high reasoning capability (gemini-2.5-pro-preview-03-25)
      */
     fun highReasoningModel() {
-        currentModelName = "gemini-2.5-pro-preview-03-25"
+        currentModelName = "gemini-2.5.pro-exp-03-25"
         // Also update the original factory to keep them in sync
         (GenerativeViewModelFactory as ViewModelProvider.Factory).apply {
             if (this is ViewModelProvider.Factory) {
