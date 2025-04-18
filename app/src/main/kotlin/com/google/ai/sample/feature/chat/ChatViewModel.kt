@@ -1,4 +1,3 @@
-// --- START OF FILE ChatViewModel.kt.txt ---
 package com.google.ai.sample.feature.chat
 
 import android.content.Context // Import für Context
@@ -13,7 +12,7 @@ import com.google.ai.sample.MainActivity
 import com.google.ai.sample.ScreenOperatorAccessibilityService
 import com.google.ai.sample.util.Command
 import com.google.ai.sample.util.CommandParser
-import com.google.ai.sample.util.ModelPreferences // <<< KORREKTUR: Fehlender Import hinzugefügt
+import com.google.ai.sample.util.ModelPreferences // Import für ModelPreferences
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -28,6 +27,14 @@ class ChatViewModel(
 
     private var currentGenerativeModel: GenerativeModel = initialGenerativeModel
         private set
+
+    // --- NEU: StateFlow für den aktuellen Modellnamen ---
+    private val _currentModelName = MutableStateFlow(initialGenerativeModel.modelName)
+    val currentModelName: StateFlow<String> = _currentModelName.asStateFlow()
+
+    // --- ENTFERNT: Separater Trigger nicht mehr nötig ---
+    // private val _modelUpdateTrigger = MutableStateFlow(0)
+    // val modelUpdateTrigger: StateFlow<Int> = _modelUpdateTrigger.asStateFlow()
 
     private var chat = currentGenerativeModel.startChat(
         history = listOf(
@@ -50,6 +57,8 @@ class ChatViewModel(
 
     init {
         Log.i(TAG, "ViewModel initialized with model: ${initialGenerativeModel.modelName}")
+        // Setze den initialen Namen im StateFlow (redundant, da schon im Konstruktor, aber sicher)
+        _currentModelName.value = initialGenerativeModel.modelName
     }
 
     // Keep track of detected commands
@@ -59,11 +68,7 @@ class ChatViewModel(
     // Keep track of command execution status
     private val _commandExecutionStatus = MutableStateFlow<String>("")
     val commandExecutionStatus: StateFlow<String> = _commandExecutionStatus.asStateFlow()
-    
-// --- NEU: Trigger für UI-Update nach Modellwechsel ---
-private val _modelUpdateTrigger = MutableStateFlow(0) // Einfacher Trigger-State
-val modelUpdateTrigger: StateFlow<Int> = _modelUpdateTrigger.asStateFlow()
-   
+
     fun sendMessage(userMessage: String) {
         _uiState.value.addMessage(
             ChatMessage(
@@ -77,7 +82,6 @@ val modelUpdateTrigger: StateFlow<Int> = _modelUpdateTrigger.asStateFlow()
 
         viewModelScope.launch {
             try {
-                // <<< KORREKTUR: Verwende currentGenerativeModel für den Log >>>
                 Log.d(TAG, "sendMessage: Using chat instance with model: ${currentGenerativeModel.modelName}")
                 val response = chat.sendMessage(userMessage)
 
@@ -124,10 +128,24 @@ val modelUpdateTrigger: StateFlow<Int> = _modelUpdateTrigger.asStateFlow()
 
                     val commandDescriptions = commands.map {
                         when (it) {
-                            // ... (andere Befehle) ...
-                            is Command.UseHighReasoningModel -> "Wechsle zu ${ModelPreferences.HIGH_REASONING_MODEL}" // <<< KORREKTUR: Verwendet jetzt den korrekten Import
-                            is Command.UseLowReasoningModel -> "Wechsle zu ${ModelPreferences.LOW_REASONING_MODEL}" // <<< KORREKTUR: Verwendet jetzt den korrekten Import
-                            else -> "..."
+                            is Command.ClickButton -> "Klick auf Button: \"${it.buttonText}\""
+                            is Command.TapCoordinates -> "Tippen auf Koordinaten: (${it.x}, ${it.y})"
+                            is Command.TakeScreenshot -> "Screenshot aufnehmen"
+                            is Command.PressHomeButton -> "Home-Button drücken"
+                            is Command.PressBackButton -> "Zurück-Button drücken"
+                            is Command.ShowRecentApps -> "Übersicht der letzten Apps öffnen"
+                            is Command.ScrollDown -> "Nach unten scrollen"
+                            is Command.ScrollUp -> "Nach oben scrollen"
+                            is Command.ScrollLeft -> "Nach links scrollen"
+                            is Command.ScrollRight -> "Nach rechts scrollen"
+                            is Command.ScrollDownFromCoordinates -> "Nach unten scrollen von Position (${it.x}, ${it.y}) mit Distanz ${it.distance}px und Dauer ${it.duration}ms"
+                            is Command.ScrollUpFromCoordinates -> "Nach oben scrollen von Position (${it.x}, ${it.y}) mit Distanz ${it.distance}px und Dauer ${it.duration}ms"
+                            is Command.ScrollLeftFromCoordinates -> "Nach links scrollen von Position (${it.x}, ${it.y}) mit Distanz ${it.distance}px und Dauer ${it.duration}ms"
+                            is Command.ScrollRightFromCoordinates -> "Nach rechts scrollen von Position (${it.x}, ${it.y}) mit Distanz ${it.distance}px und Dauer ${it.duration}ms"
+                            is Command.OpenApp -> "App öffnen: \"${it.packageName}\""
+                            is Command.WriteText -> "Text schreiben: \"${it.text}\""
+                            is Command.UseHighReasoningModel -> "Wechsle zu ${ModelPreferences.HIGH_REASONING_MODEL}"
+                            is Command.UseLowReasoningModel -> "Wechsle zu ${ModelPreferences.LOW_REASONING_MODEL}"
                         }
                     }
                      val mainActivity = MainActivity.getInstance()
@@ -144,10 +162,24 @@ val modelUpdateTrigger: StateFlow<Int> = _modelUpdateTrigger.asStateFlow()
                      commands.forEachIndexed { index, command ->
                         Log.d(TAG, "Executing command: $command")
                         val commandDescription = when (command) {
-                             // ... (andere Befehle) ...
-                             is Command.UseHighReasoningModel -> "Wechsle zu ${ModelPreferences.HIGH_REASONING_MODEL}" // <<< KORREKTUR: Verwendet jetzt den korrekten Import
-                             is Command.UseLowReasoningModel -> "Wechsle zu ${ModelPreferences.LOW_REASONING_MODEL}" // <<< KORREKTUR: Verwendet jetzt den korrekten Import
-                             else -> "..."
+                             is Command.ClickButton -> "Klick auf Button: \"${command.buttonText}\""
+                             is Command.TapCoordinates -> "Tippen auf Koordinaten: (${command.x}, ${command.y})"
+                             is Command.TakeScreenshot -> "Screenshot aufnehmen"
+                             is Command.PressHomeButton -> "Home-Button drücken"
+                             is Command.PressBackButton -> "Zurück-Button drücken"
+                             is Command.ShowRecentApps -> "Übersicht der letzten Apps öffnen"
+                             is Command.ScrollDown -> "Nach unten scrollen"
+                             is Command.ScrollUp -> "Nach oben scrollen"
+                             is Command.ScrollLeft -> "Nach links scrollen"
+                             is Command.ScrollRight -> "Nach rechts scrollen"
+                             is Command.ScrollDownFromCoordinates -> "Nach unten scrollen von Position (${command.x}, ${command.y}) mit Distanz ${command.distance}px und Dauer ${command.duration}ms"
+                             is Command.ScrollUpFromCoordinates -> "Nach oben scrollen von Position (${command.x}, ${command.y}) mit Distanz ${command.distance}px und Dauer ${command.duration}ms"
+                             is Command.ScrollLeftFromCoordinates -> "Nach links scrollen von Position (${command.x}, ${command.y}) mit Distanz ${command.distance}px und Dauer ${command.duration}ms"
+                             is Command.ScrollRightFromCoordinates -> "Nach rechts scrollen von Position (${command.x}, ${command.y}) mit Distanz ${command.distance}px und Dauer ${command.duration}ms"
+                             is Command.OpenApp -> "App öffnen: \"${command.packageName}\""
+                             is Command.WriteText -> "Text schreiben: \"${command.text}\""
+                             is Command.UseHighReasoningModel -> "Wechsle zu ${ModelPreferences.HIGH_REASONING_MODEL}"
+                             is Command.UseLowReasoningModel -> "Wechsle zu ${ModelPreferences.LOW_REASONING_MODEL}"
                         }
                         _commandExecutionStatus.value = "Führe aus: $commandDescription (${index + 1}/${commands.size})"
                         mainActivity?.updateStatusMessage("Führe aus: $commandDescription", false)
@@ -173,7 +205,8 @@ val modelUpdateTrigger: StateFlow<Int> = _modelUpdateTrigger.asStateFlow()
      * @param newModelName The name of the new model to use.
      */
     fun updateGenerativeModel(newModelName: String) {
-        if (currentGenerativeModel.modelName == newModelName) {
+        // --- GEÄNDERT: Verwende den StateFlow für die Prüfung ---
+        if (_currentModelName.value == newModelName) {
             Log.i(TAG, "Model $newModelName is already active. No update needed.")
             _commandExecutionStatus.value = "Modell '$newModelName' ist bereits aktiv."
              MainActivity.getInstance()?.updateStatusMessage("Modell '$newModelName' ist bereits aktiv.", false)
@@ -181,7 +214,7 @@ val modelUpdateTrigger: StateFlow<Int> = _modelUpdateTrigger.asStateFlow()
         }
 
         viewModelScope.launch {
-            Log.i(TAG, "Updating GenerativeModel from ${currentGenerativeModel.modelName} to: $newModelName")
+            Log.i(TAG, "Updating GenerativeModel from ${_currentModelName.value} to: $newModelName")
             val context = MainActivity.getInstance()?.applicationContext
             if (context == null) {
                 Log.e(TAG, "Cannot update model, application context is null.")
@@ -200,8 +233,10 @@ val modelUpdateTrigger: StateFlow<Int> = _modelUpdateTrigger.asStateFlow()
                 chat = currentGenerativeModel.startChat(history = currentHistory)
                 Log.i(TAG, "GenerativeModel and chat instance updated successfully. History preserved.")
 
-                // <<< KORREKTUR: Verwendet jetzt den korrekten Import >>>
                 ModelPreferences.saveModelName(context, newModelName)
+
+                // --- NEU: Aktualisiere den StateFlow mit dem neuen Namen ---
+                _currentModelName.value = newModelName
 
                  _uiState.value.addMessage(
                      ChatMessage(
@@ -210,11 +245,12 @@ val modelUpdateTrigger: StateFlow<Int> = _modelUpdateTrigger.asStateFlow()
                          isPending = false
                      )
                  )
-                               // <<< NEU: Trigger für die UI aktualisieren >>>
-              _modelUpdateTrigger.value++ // Ändere den Wert, um die UI zu triggern
 
-              _commandExecutionStatus.value = "Modell erfolgreich zu '$newModelName' gewechselt." // Update Status
-            
+                // --- ENTFERNT: Trigger nicht mehr nötig ---
+                // _modelUpdateTrigger.value++
+
+                 _commandExecutionStatus.value = "Modell erfolgreich zu '$newModelName' gewechselt."
+
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to update GenerativeModel to $newModelName: ${e.message}", e)
                  _uiState.value.addMessage(
@@ -229,4 +265,3 @@ val modelUpdateTrigger: StateFlow<Int> = _modelUpdateTrigger.asStateFlow()
         }
     }
 }
-// --- END OF FILE ChatViewModel.kt.txt ---
