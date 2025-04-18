@@ -59,7 +59,11 @@ class ChatViewModel(
     // Keep track of command execution status
     private val _commandExecutionStatus = MutableStateFlow<String>("")
     val commandExecutionStatus: StateFlow<String> = _commandExecutionStatus.asStateFlow()
-
+    
+// --- NEU: Trigger für UI-Update nach Modellwechsel ---
+private val _modelUpdateTrigger = MutableStateFlow(0) // Einfacher Trigger-State
+val modelUpdateTrigger: StateFlow<Int> = _modelUpdateTrigger.asStateFlow()
+   
     fun sendMessage(userMessage: String) {
         _uiState.value.addMessage(
             ChatMessage(
@@ -206,8 +210,11 @@ class ChatViewModel(
                          isPending = false
                      )
                  )
-                 _commandExecutionStatus.value = "Modell erfolgreich zu '$newModelName' gewechselt."
+                               // <<< NEU: Trigger für die UI aktualisieren >>>
+              _modelUpdateTrigger.value++ // Ändere den Wert, um die UI zu triggern
 
+              _commandExecutionStatus.value = "Modell erfolgreich zu '$newModelName' gewechselt." // Update Status
+            
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to update GenerativeModel to $newModelName: ${e.message}", e)
                  _uiState.value.addMessage(
