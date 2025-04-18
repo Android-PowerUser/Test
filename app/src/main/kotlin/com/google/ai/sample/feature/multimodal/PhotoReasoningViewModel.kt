@@ -40,6 +40,14 @@ class PhotoReasoningViewModel(
     private var currentGenerativeModel: GenerativeModel = initialGenerativeModel
         private set
 
+    // --- NEU: StateFlow für den aktuellen Modellnamen ---
+    private val _currentModelName = MutableStateFlow(initialGenerativeModel.modelName)
+    val currentModelName: StateFlow<String> = _currentModelName.asStateFlow()
+
+    // --- ENTFERNT: Separater Trigger nicht mehr nötig ---
+    // private val _modelUpdateTrigger = MutableStateFlow(0)
+    // val modelUpdateTrigger: StateFlow<Int> = _modelUpdateTrigger.asStateFlow()
+
     private val _uiState: MutableStateFlow<PhotoReasoningUiState> =
         MutableStateFlow(PhotoReasoningUiState.Initial)
     val uiState: StateFlow<PhotoReasoningUiState> =
@@ -62,10 +70,6 @@ class PhotoReasoningViewModel(
     private val _commandExecutionStatus = MutableStateFlow<String>("")
     val commandExecutionStatus: StateFlow<String> = _commandExecutionStatus.asStateFlow()
 
-    // --- NEU: Trigger für UI-Update nach Modellwechsel ---
-    private val _modelUpdateTrigger = MutableStateFlow(0) // Einfacher Trigger-State
-    val modelUpdateTrigger: StateFlow<Int> = _modelUpdateTrigger.asStateFlow()
-
     // System message state
     private val _systemMessage = MutableStateFlow<String>("")
     val systemMessage: StateFlow<String> = _systemMessage.asStateFlow()
@@ -87,7 +91,8 @@ class PhotoReasoningViewModel(
 
     init {
         Log.i(TAG, "ViewModel initialized with model: ${initialGenerativeModel.modelName}")
-        // Context wird jetzt in loadSystemMessage übergeben, das von der Route aufgerufen wird
+        // Setze den initialen Namen im StateFlow (redundant, da schon im Konstruktor, aber sicher)
+        _currentModelName.value = initialGenerativeModel.modelName
     }
 
 
@@ -111,9 +116,7 @@ class PhotoReasoningViewModel(
             text = userInput,
             participant = PhotoParticipant.USER,
             isPending = false,
-            // TODO: Hier müssten die URIs der 'selectedImages' übergeben werden,
-            //       wenn sie im Chat angezeigt werden sollen. Aktuell werden Bitmaps übergeben.
-            imageUris = emptyList() // Platzhalter
+            imageUris = emptyList() // Placeholder
         )
         _chatState.addMessage(userMessage)
         _chatMessagesFlow.value = _chatState.messages // Update Flow mit neuer Liste
@@ -414,7 +417,6 @@ class PhotoReasoningViewModel(
 
         if (history.isNotEmpty()) {
              try {
-                 // Verwende das AKTUELLE Modell zum Starten des Chats mit History
                  chat = currentGenerativeModel.startChat(history = history)
                  Log.d(TAG, "Chat history rebuilt successfully with ${history.size} items using model ${currentGenerativeModel.modelName}.")
              } catch (e: Exception) {
@@ -472,7 +474,8 @@ class PhotoReasoningViewModel(
      * @param newModelName The name of the new model to use.
      */
     fun updateGenerativeModel(newModelName: String) {
-        if (currentGenerativeModel.modelName == newModelName) {
+        // --- GEÄNDERT: Verwende den StateFlow für die Prüfung ---
+        if (_currentModelName.value == newModelName) {
             Log.i(TAG, "Model $newModelName is already active. No update needed.")
             _commandExecutionStatus.value = "Modell '$newModelName' ist bereits aktiv."
              MainActivity.getInstance()?.updateStatusMessage("Modell '$newModelName' ist bereits aktiv.", false)
@@ -480,7 +483,7 @@ class PhotoReasoningViewModel(
         }
 
         viewModelScope.launch {
-            Log.i(TAG, "Updating GenerativeModel from ${currentGenerativeModel.modelName} to: $newModelName")
+            Log.i(TAG, "Updating GenerativeModel from ${_currentModelName.value} to: $newModelName")
             val context = MainActivity.getInstance()?.applicationContext
             if (context == null) {
                 Log.e(TAG, "Cannot update model, application context is null.")
@@ -501,6 +504,9 @@ class PhotoReasoningViewModel(
 
                 ModelPreferences.saveModelName(context, newModelName)
 
+                // --- NEU: Aktualisiere den StateFlow mit dem neuen Namen ---
+                _currentModelName.value = newModelName
+
                 _chatState.addMessage(
                     PhotoReasoningMessage(
                         text = "Chat-Modell wurde zu '$newModelName' gewechselt.",
@@ -511,8 +517,8 @@ class PhotoReasoningViewModel(
                 _chatMessagesFlow.value = _chatState.messages // Update UI Flow
                 saveChatHistory(context) // Speichern nach UI-Update
 
-                // <<< NEU: Trigger für die UI aktualisieren >>>
-                _modelUpdateTrigger.value++ // Ändere den Wert, um die UI zu triggern
+                // --- ENTFERNT: Trigger nicht mehr nötig ---
+                // _modelUpdateTrigger.value++
 
                 _commandExecutionStatus.value = "Modell erfolgreich zu '$newModelName' gewechselt."
 
