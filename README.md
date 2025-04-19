@@ -6,6 +6,8 @@ This app is intended to operate the screen with AI.
 
 Current development step:
 
+Fix a bug that caused that if you switch the LLM you must go back and in again (branch Gem-change-LLM).
+
 Fix a bug that prevents some apps from being launched by Screen Operator (branch open_apps_attempt_2).
 
 Correct implementation of MediaProjection (Create screenshots for Gemini). Almost finished code in the screenshot branch. The current workaround is to trigger a screenshot via the accessibility service. However, this leads to the thumbnail.
