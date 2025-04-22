@@ -111,12 +111,12 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
                     serviceInstance?.tapAtCoordinates(command.x, command.y)
                 }
                 is Command.TakeScreenshot -> {
-                    Log.d(TAG, "Taking screenshot with 700ms delay")
-                    showToast("Versuche Screenshot aufzunehmen (mit 700ms Verzögerung)", false)
-                    // Add a 700ms delay before taking the screenshot, sure all commands executed before
+                    Log.d(TAG, "Taking screenshot with 850ms delay")
+                    showToast("Versuche Screenshot aufzunehmen (mit 850ms Verzögerung)", false)
+                    // Add a 850ms delay before taking the screenshot, sure all commands executed before
                     mainHandler.postDelayed({
                         serviceInstance?.takeScreenshot()
-                    }, 700) // 700ms delay
+                    }, 850) // 850ms delay
                 }
                 is Command.PressHomeButton -> {
                     Log.d(TAG, "Pressing home button")
