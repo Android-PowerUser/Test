@@ -9,7 +9,7 @@ Get notified with an E-Mail. https://docs.google.com/forms/d/1wQiKmP9R2PTmZQe_1Z
 
 Current development step:
 
-Fix a bug that caused that if you switch the LLM you must go back and in again (branch Gem-change-LLM).
+Fix a bug that caused that if you switch the LLM you must go back and in again (branch auto-change-LLM-attempt_2).
 
 Fix a bug that prevents some apps from being launched by Screen Operator (branch open_apps_attempt_2).
 
