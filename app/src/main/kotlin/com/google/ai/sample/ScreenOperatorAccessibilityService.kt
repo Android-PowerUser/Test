@@ -111,9 +111,12 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
                     serviceInstance?.tapAtCoordinates(command.x, command.y)
                 }
                 is Command.TakeScreenshot -> {
-                    Log.d(TAG, "Taking screenshot")
-                    showToast("Versuche Screenshot aufzunehmen", false)
-                    serviceInstance?.takeScreenshot()
+                    Log.d(TAG, "Taking screenshot with 300ms delay")
+                    showToast("Versuche Screenshot aufzunehmen (mit 300ms Verzögerung)", false)
+                    // Add a 300ms delay before taking the screenshot
+                    mainHandler.postDelayed({
+                        serviceInstance?.takeScreenshot()
+                    }, 300) // 300ms delay
                 }
                 is Command.PressHomeButton -> {
                     Log.d(TAG, "Pressing home button")
@@ -363,39 +366,33 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
                 // Recycle the node
                 focusedNode.recycle()
             } else {
-                Log.e(TAG, "No focused editable node found")
-                showToast("Kein fokussiertes Textfeld gefunden", true)
+                Log.d(TAG, "No focused editable node found, trying to find any editable node")
                 
                 // Try to find any editable node
                 val editableNode = findAnyEditableNode(rootNode!!)
                 
                 if (editableNode != null) {
-                    Log.d(TAG, "Found editable node, trying to focus and write text")
-                    showToast("Textfeld gefunden, versuche zu fokussieren und Text zu schreiben", false)
+                    Log.d(TAG, "Found editable node")
+                    showToast("Textfeld gefunden, schreibe Text: \"$text\"", false)
                     
                     // Focus the node first
-                    val focusResult = editableNode.performAction(AccessibilityNodeInfo.ACTION_FOCUS)
+                    editableNode.performAction(AccessibilityNodeInfo.ACTION_FOCUS)
                     
-                    if (focusResult) {
-                        // Set the text in the editable field
-                        val bundle = android.os.Bundle()
-                        bundle.putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, text)
-                        
-                        val result = editableNode.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, bundle)
-                        
-                        if (result) {
-                            Log.d(TAG, "Successfully wrote text: $text")
-                            showToast("Text erfolgreich geschrieben: \"$text\"", false)
-                        } else {
-                            Log.e(TAG, "Failed to write text")
-                            showToast("Fehler beim Schreiben des Textes, versuche alternative Methode", true)
-                            
-                            // Try alternative method: paste text
-                            tryPasteText(editableNode, text)
-                        }
+                    // Set the text in the editable field
+                    val bundle = android.os.Bundle()
+                    bundle.putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, text)
+                    
+                    val result = editableNode.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, bundle)
+                    
+                    if (result) {
+                        Log.d(TAG, "Successfully wrote text: $text")
+                        showToast("Text erfolgreich geschrieben: \"$text\"", false)
                     } else {
-                        Log.e(TAG, "Failed to focus editable node")
-                        showToast("Fehler beim Fokussieren des Textfeldes", true)
+                        Log.e(TAG, "Failed to write text")
+                        showToast("Fehler beim Schreiben des Textes, versuche alternative Methode", true)
+                        
+                        // Try alternative method: paste text
+                        tryPasteText(editableNode, text)
                     }
                     
                     // Recycle the node
@@ -1139,7 +1136,7 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
                     // Wait a moment for the screenshot to be saved, then retrieve it
                     handler.postDelayed({
                         retrieveLatestScreenshot(screenInfo)
-                    }, 1000) // Wait 1 second for the screenshot to be saved
+                    }, 800) // Wait 800ms for the screenshot to be saved (reduced from 1000ms)
                     
                     return
                 } else {
@@ -1176,70 +1173,59 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
         val screenInfo = StringBuilder()
         screenInfo.append("Bildschirmelemente:\n")
         
-        // Capture information about all interactive elements
-        val interactiveElements = findAllInteractiveElements(rootNode!!)
+        // Find all interactive elements
+        val elements = findAllInteractiveElements(rootNode!!)
         
-        if (interactiveElements.isEmpty()) {
-            screenInfo.append("Keine interaktiven Elemente gefunden.")
-        } else {
-            screenInfo.append("Gefundene interaktive Elemente (${interactiveElements.size}):\n\n")
+        // Add information about each element
+        elements.forEachIndexed { index, element ->
+            screenInfo.append("${index + 1}. ")
             
-            interactiveElements.forEachIndexed { index, element ->
-                screenInfo.append("${index + 1}. ")
-                
-                // Get element ID if available
-                val elementId = getNodeId(element)
-                if (elementId.isNotEmpty()) {
-                    screenInfo.append("ID: \"$elementId\" ")
-                }
-                
-                // Add element text if available
-                if (!element.text.isNullOrEmpty()) {
-                    screenInfo.append("Text: \"${element.text}\" ")
-                }
-                
-                // Add content description if available
-                if (!element.contentDescription.isNullOrEmpty()) {
-                    screenInfo.append("Beschreibung: \"${element.contentDescription}\" ")
-                }
-                
-                // Add element class name if available
-                if (element.className != null) {
-                    screenInfo.append("Klasse: ${element.className} ")
-                }
-                
-                // Add element properties
-                val properties = mutableListOf<String>()
-                if (element.isClickable) properties.add("klickbar")
-                if (element.isLongClickable) properties.add("lang-klickbar")
-                if (element.isCheckable) properties.add("auswählbar")
-                if (element.isChecked) properties.add("ausgewählt")
-                if (element.isEditable) properties.add("editierbar")
-                if (element.isFocusable) properties.add("fokussierbar")
-                if (element.isFocused) properties.add("fokussiert")
-                if (element.isPassword) properties.add("passwort")
-                if (element.isScrollable) properties.add("scrollbar")
-                
-                if (properties.isNotEmpty()) {
-                    screenInfo.append("Eigenschaften: ${properties.joinToString(", ")} ")
-                }
-                
-                // Add element bounds
-                val rect = Rect()
-                element.getBoundsInScreen(rect)
-                screenInfo.append("Position: (${rect.left}, ${rect.top}, ${rect.right}, ${rect.bottom})")
-                
-                // Add a button name if we can infer one
-                val buttonName = getButtonName(element)
-                if (buttonName.isNotEmpty()) {
-                    screenInfo.append(" Vermuteter Name: \"$buttonName\"")
-                }
-                
-                screenInfo.append("\n")
-                
-                // Recycle the element
-                element.recycle()
+            // Add text if available
+            if (!element.text.isNullOrEmpty()) {
+                screenInfo.append("Text: \"${element.text}\" ")
             }
+            
+            // Add content description if available
+            if (!element.contentDescription.isNullOrEmpty()) {
+                screenInfo.append("Beschreibung: \"${element.contentDescription}\" ")
+            }
+            
+            // Add element class name if available
+            if (element.className != null) {
+                screenInfo.append("Klasse: ${element.className} ")
+            }
+            
+            // Add element properties
+            val properties = mutableListOf<String>()
+            if (element.isClickable) properties.add("klickbar")
+            if (element.isLongClickable) properties.add("lang-klickbar")
+            if (element.isCheckable) properties.add("auswählbar")
+            if (element.isChecked) properties.add("ausgewählt")
+            if (element.isEditable) properties.add("editierbar")
+            if (element.isFocusable) properties.add("fokussierbar")
+            if (element.isFocused) properties.add("fokussiert")
+            if (element.isPassword) properties.add("passwort")
+            if (element.isScrollable) properties.add("scrollbar")
+            
+            if (properties.isNotEmpty()) {
+                screenInfo.append("Eigenschaften: ${properties.joinToString(", ")} ")
+            }
+            
+            // Add element bounds
+            val rect = Rect()
+            element.getBoundsInScreen(rect)
+            screenInfo.append("Position: (${rect.left}, ${rect.top}, ${rect.right}, ${rect.bottom})")
+            
+            // Add a button name if we can infer one
+            val buttonName = getButtonName(element)
+            if (buttonName.isNotEmpty()) {
+                screenInfo.append(" Vermuteter Name: \"$buttonName\"")
+            }
+            
+            screenInfo.append("\n")
+            
+            // Recycle the element
+            element.recycle()
         }
         
         return screenInfo.toString()
@@ -1594,7 +1580,7 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
     }
     
     /**
-     * Show recent apps overview
+     * Show the recent apps screen
      */
     fun showRecentApps() {
         Log.d(TAG, "Showing recent apps")
