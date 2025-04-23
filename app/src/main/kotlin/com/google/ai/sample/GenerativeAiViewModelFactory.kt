@@ -10,22 +10,45 @@ import com.google.ai.sample.feature.chat.ChatViewModel
 import com.google.ai.sample.feature.multimodal.PhotoReasoningViewModel
 import com.google.ai.sample.feature.text.SummarizeViewModel
 
+// Model options
+enum class ModelOption(val displayName: String, val modelName: String) {
+    GEMINI_FLASH_LITE("Gemini Flash Lite", "gemini-2.0-flash-lite"),
+    GEMINI_FLASH("Gemini Flash", "gemini-2.0-flash"),
+    GEMINI_FLASH_PREVIEW("Gemini 2.5 Flash Preview", "gemini-2.5-flash-preview-04-17"),
+    GEMINI_PRO("Gemini 2.5 Pro", "gemini-2.5-pro-exp-03-25")
+}
+
 val GenerativeViewModelFactory = object : ViewModelProvider.Factory {
     // Current selected model name
-    private var currentModelName = "gemini-2.0-flash-lite"
+    private var currentModelName = ModelOption.GEMINI_FLASH_LITE.modelName
     
     /**
      * Set the model to high reasoning capability (gemini-2.5-pro-preview-03-25)
      */
     fun highReasoningModel() {
-        currentModelName = "gemini-2.5-pro-exp-03-25"
+        currentModelName = ModelOption.GEMINI_PRO.modelName
     }
     
     /**
      * Set the model to low reasoning capability (gemini-2.0-flash-lite)
      */
     fun lowReasoningModel() {
-        currentModelName = "gemini-2.0-flash-lite"
+        currentModelName = ModelOption.GEMINI_FLASH_LITE.modelName
+    }
+    
+    /**
+     * Set the model to a specific model option
+     */
+    fun setModel(modelOption: ModelOption) {
+        currentModelName = modelOption.modelName
+    }
+    
+    /**
+     * Get the current model option
+     */
+    fun getCurrentModel(): ModelOption {
+        return ModelOption.values().find { it.modelName == currentModelName } 
+            ?: ModelOption.GEMINI_FLASH_LITE
     }
     
     override fun <T : ViewModel> create(
@@ -93,13 +116,13 @@ val GenerativeViewModelFactory = object : ViewModelProvider.Factory {
 // Add companion object with static methods for easier access
 object GenerativeAiViewModelFactory {
     // Current selected model name - duplicated from GenerativeViewModelFactory
-    private var currentModelName = "gemini-2.0-flash-lite"
+    private var currentModelName = ModelOption.GEMINI_FLASH_LITE.modelName
     
     /**
      * Set the model to high reasoning capability (gemini-2.5-pro-preview-03-25)
      */
     fun highReasoningModel() {
-        currentModelName = "gemini-2.5-pro-exp-03-25"
+        currentModelName = ModelOption.GEMINI_PRO.modelName
         // Also update the original factory to keep them in sync
         (GenerativeViewModelFactory as ViewModelProvider.Factory).apply {
             if (this is ViewModelProvider.Factory) {
@@ -118,7 +141,7 @@ object GenerativeAiViewModelFactory {
      * Set the model to low reasoning capability (gemini-2.0-flash-lite)
      */
     fun lowReasoningModel() {
-        currentModelName = "gemini-2.0-flash-lite"
+        currentModelName = ModelOption.GEMINI_FLASH_LITE.modelName
         // Also update the original factory to keep them in sync
         (GenerativeViewModelFactory as ViewModelProvider.Factory).apply {
             if (this is ViewModelProvider.Factory) {
@@ -131,5 +154,32 @@ object GenerativeAiViewModelFactory {
                 }
             }
         }
+    }
+    
+    /**
+     * Set the model to a specific model option
+     */
+    fun setModel(modelOption: ModelOption) {
+        currentModelName = modelOption.modelName
+        // Also update the original factory to keep them in sync
+        (GenerativeViewModelFactory as ViewModelProvider.Factory).apply {
+            if (this is ViewModelProvider.Factory) {
+                try {
+                    val field = this.javaClass.getDeclaredField("currentModelName")
+                    field.isAccessible = true
+                    field.set(this, currentModelName)
+                } catch (e: Exception) {
+                    // Fallback if reflection fails
+                }
+            }
+        }
+    }
+    
+    /**
+     * Get the current model option
+     */
+    fun getCurrentModel(): ModelOption {
+        return ModelOption.values().find { it.modelName == currentModelName } 
+            ?: ModelOption.GEMINI_FLASH_LITE
     }
 }
