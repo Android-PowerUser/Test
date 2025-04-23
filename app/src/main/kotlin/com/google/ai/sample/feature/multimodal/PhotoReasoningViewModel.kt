@@ -14,6 +14,7 @@ import coil.size.Precision
 import com.google.ai.client.generativeai.GenerativeModel
 import com.google.ai.client.generativeai.type.content
 import com.google.ai.client.generativeai.type.Content
+import com.google.ai.client.generativeai.type.GenerationConfig
 import com.google.ai.sample.ApiKeyManager
 import com.google.ai.sample.MainActivity
 import com.google.ai.sample.PhotoReasoningApplication
@@ -232,11 +233,12 @@ class PhotoReasoningViewModel(
                             }
                             
                             // Create a new GenerativeModel with the new API key
-                            val generationConfig = generativeModel.config.generationConfig
+                            // Get the current model name and generation config if available
+                            val modelName = generativeModel.modelName
+                            // Create a new model with the same settings but new API key
                             generativeModel = GenerativeModel(
-                                modelName = generativeModel.modelName,
-                                apiKey = nextKey,
-                                generationConfig = generationConfig
+                                modelName = modelName,
+                                apiKey = nextKey
                             )
                             
                             // Create a new chat instance with the new model
