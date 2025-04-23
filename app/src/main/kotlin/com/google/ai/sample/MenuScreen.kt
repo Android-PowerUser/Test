@@ -60,7 +60,7 @@ fun MenuScreen(
     )
     
     // Get current model
-    val currentModel = GenerativeViewModelFactory.getCurrentModel()
+    val currentModel = GenerativeAiViewModelFactory.getCurrentModel()
     var selectedModel by remember { mutableStateOf(currentModel) }
     var expanded by remember { mutableStateOf(false) }
     
@@ -138,7 +138,15 @@ fun MenuScreen(
                             expanded = expanded,
                             onDismissRequest = { expanded = false }
                         ) {
-                            ModelOption.values().forEach { modelOption ->
+                            // Zeige die Modelle in der gewünschten Reihenfolge an
+                            val orderedModels = listOf(
+                                ModelOption.GEMINI_FLASH_LITE,
+                                ModelOption.GEMINI_FLASH,
+                                ModelOption.GEMINI_FLASH_PREVIEW,
+                                ModelOption.GEMINI_PRO
+                            )
+                            
+                            orderedModels.forEach { modelOption ->
                                 DropdownMenuItem(
                                     text = { Text(modelOption.displayName) },
                                     onClick = {
