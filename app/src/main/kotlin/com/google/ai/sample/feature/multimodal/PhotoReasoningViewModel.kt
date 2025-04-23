@@ -14,6 +14,7 @@ import coil.size.Precision
 import com.google.ai.client.generativeai.GenerativeModel
 import com.google.ai.client.generativeai.type.content
 import com.google.ai.client.generativeai.type.Content
+import com.google.ai.sample.ApiKeyManager
 import com.google.ai.sample.MainActivity
 import com.google.ai.sample.PhotoReasoningApplication
 import com.google.ai.sample.ScreenOperatorAccessibilityService
@@ -27,9 +28,12 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.io.IOException
+import java.net.HttpURLConnection
 
 class PhotoReasoningViewModel(
-    private val generativeModel: GenerativeModel
+    private var generativeModel: GenerativeModel,
+    private val apiKeyManager: ApiKeyManager? = null
 ) : ViewModel() {
     private val TAG = "PhotoReasoningViewModel"
 
@@ -76,6 +80,9 @@ class PhotoReasoningViewModel(
     private var chat = generativeModel.startChat(
         history = emptyList()
     )
+    
+    // Maximum number of retry attempts for API calls
+    private val MAX_RETRY_ATTEMPTS = 3
 
     fun reason(
         userInput: String,
@@ -121,61 +128,171 @@ class PhotoReasoningViewModel(
 
         // Use application scope to prevent cancellation when app goes to background
         PhotoReasoningApplication.applicationScope.launch(Dispatchers.IO) {
-            try {
-                // Create content with the current images and prompt
-                val inputContent = content {
-                    for (bitmap in selectedImages) {
-                        image(bitmap)
-                    }
-                    text(prompt)
+            // Create content with the current images and prompt
+            val inputContent = content {
+                for (bitmap in selectedImages) {
+                    image(bitmap)
                 }
-
-                // Send the message to the chat to maintain context
-                val response = chat.sendMessage(inputContent)
-                
-                var outputContent = ""
-                
-                // Process the response
-                response.text?.let { modelResponse ->
-                    outputContent = modelResponse
-                    
-                    withContext(Dispatchers.Main) {
-                        _uiState.value = PhotoReasoningUiState.Success(outputContent)
-                        
-                        // Update the AI message in chat history
-                        updateAiMessage(outputContent)
-                        
-                        // Parse and execute commands from the response
-                        processCommands(modelResponse)
-                    }
-                }
-                
-                // Save chat history after successful response
-                withContext(Dispatchers.Main) {
-                    saveChatHistory(MainActivity.getInstance()?.applicationContext)
-                }
-            } catch (e: Exception) {
-                Log.e(TAG, "Error generating content: ${e.message}", e)
+                text(prompt)
+            }
+            
+            // Try to send the message with retry logic for 503 errors
+            sendMessageWithRetry(inputContent, 0)
+        }
+    }
+    
+    /**
+     * Send a message to the AI with retry logic for 503 errors
+     * 
+     * @param inputContent The content to send
+     * @param retryCount The current retry count
+     */
+    private suspend fun sendMessageWithRetry(inputContent: Content, retryCount: Int) {
+        try {
+            // Send the message to the chat to maintain context
+            val response = chat.sendMessage(inputContent)
+            
+            var outputContent = ""
+            
+            // Process the response
+            response.text?.let { modelResponse ->
+                outputContent = modelResponse
                 
                 withContext(Dispatchers.Main) {
-                    _uiState.value = PhotoReasoningUiState.Error(e.localizedMessage ?: "Unknown error")
-                    _commandExecutionStatus.value = "Fehler bei der Generierung: ${e.localizedMessage}"
+                    _uiState.value = PhotoReasoningUiState.Success(outputContent)
                     
-                    // Update chat with error message
-                    _chatState.replaceLastPendingMessage()
-                    _chatState.addMessage(
-                        PhotoReasoningMessage(
-                            text = e.localizedMessage ?: "Unknown error",
-                            participant = PhotoParticipant.ERROR
-                        )
-                    )
-                    _chatMessagesFlow.value = chatMessages
+                    // Update the AI message in chat history
+                    updateAiMessage(outputContent)
                     
-                    // Save chat history even after error
-                    saveChatHistory(MainActivity.getInstance()?.applicationContext)
+                    // Parse and execute commands from the response
+                    processCommands(modelResponse)
                 }
             }
+            
+            // Save chat history after successful response
+            withContext(Dispatchers.Main) {
+                saveChatHistory(MainActivity.getInstance()?.applicationContext)
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error generating content: ${e.message}", e)
+            
+            // Check if this is a 503 error
+            if (is503Error(e) && apiKeyManager != null) {
+                // Mark the current API key as failed
+                val currentKey = MainActivity.getInstance()?.getCurrentApiKey()
+                if (currentKey != null) {
+                    apiKeyManager.markKeyAsFailed(currentKey)
+                    
+                    // Check if we have only one key or if all keys are failed
+                    val keyCount = apiKeyManager.getKeyCount()
+                    val allKeysFailed = apiKeyManager.areAllKeysFailed()
+                    
+                    if (keyCount <= 1 || (allKeysFailed && retryCount >= MAX_RETRY_ATTEMPTS)) {
+                        // Only one key available or all keys have failed after multiple attempts
+                        // Show the special message about waiting or adding more keys
+                        withContext(Dispatchers.Main) {
+                            _uiState.value = PhotoReasoningUiState.Error(
+                                "Server überlastet (503). Bitte warten Sie 45 Sekunden oder fügen Sie weitere API-Schlüssel hinzu."
+                            )
+                            _commandExecutionStatus.value = "Alle API-Schlüssel erschöpft. Bitte warten Sie 45 Sekunden oder fügen Sie weitere API-Schlüssel hinzu."
+                            
+                            // Update chat with error message
+                            _chatState.replaceLastPendingMessage()
+                            _chatState.addMessage(
+                                PhotoReasoningMessage(
+                                    text = "Server überlastet (503). Bitte warten Sie 45 Sekunden oder fügen Sie weitere API-Schlüssel hinzu.",
+                                    participant = PhotoParticipant.ERROR
+                                )
+                            )
+                            _chatMessagesFlow.value = chatMessages
+                            
+                            // Reset failed keys to allow retry after waiting
+                            apiKeyManager.resetFailedKeys()
+                            
+                            // Show toast
+                            MainActivity.getInstance()?.updateStatusMessage(
+                                "Alle API-Schlüssel erschöpft. Bitte warten Sie 45 Sekunden oder fügen Sie weitere API-Schlüssel hinzu.",
+                                true
+                            )
+                            
+                            // Save chat history even after error
+                            saveChatHistory(MainActivity.getInstance()?.applicationContext)
+                        }
+                    } else if (retryCount < MAX_RETRY_ATTEMPTS) {
+                        // Try to switch to the next available key
+                        val nextKey = apiKeyManager.switchToNextAvailableKey()
+                        if (nextKey != null) {
+                            withContext(Dispatchers.Main) {
+                                _commandExecutionStatus.value = "API-Schlüssel erschöpft. Wechsle zu nächstem Schlüssel..."
+                                
+                                // Show toast
+                                MainActivity.getInstance()?.updateStatusMessage(
+                                    "API-Schlüssel erschöpft (503). Wechsle zu nächstem Schlüssel...",
+                                    false
+                                )
+                            }
+                            
+                            // Create a new GenerativeModel with the new API key
+                            val config = generativeModel.config
+                            generativeModel = GenerativeModel(
+                                modelName = generativeModel.modelName,
+                                apiKey = nextKey,
+                                generationConfig = config.generationConfig
+                            )
+                            
+                            // Create a new chat instance with the new model
+                            chat = generativeModel.startChat(
+                                history = emptyList()
+                            )
+                            
+                            // Retry the request with the new API key
+                            sendMessageWithRetry(inputContent, retryCount + 1)
+                            return
+                        }
+                    }
+                }
+            }
+            
+            // If we get here, either it's not a 503 error, or we've exhausted all API keys, or reached max retries
+            withContext(Dispatchers.Main) {
+                _uiState.value = PhotoReasoningUiState.Error(e.localizedMessage ?: "Unknown error")
+                _commandExecutionStatus.value = "Fehler bei der Generierung: ${e.localizedMessage}"
+                
+                // Update chat with error message
+                _chatState.replaceLastPendingMessage()
+                _chatState.addMessage(
+                    PhotoReasoningMessage(
+                        text = if (is503Error(e)) 
+                            "Server überlastet (503). Bitte warten Sie 45 Sekunden oder fügen Sie weitere API-Schlüssel hinzu." 
+                        else 
+                            e.localizedMessage ?: "Unknown error",
+                        participant = PhotoParticipant.ERROR
+                    )
+                )
+                _chatMessagesFlow.value = chatMessages
+                
+                // Save chat history even after error
+                saveChatHistory(MainActivity.getInstance()?.applicationContext)
+            }
         }
+    }
+    
+    /**
+     * Check if an exception represents a 503 Service Unavailable error
+     * 
+     * @param e The exception to check
+     * @return True if the exception represents a 503 error, false otherwise
+     */
+    private fun is503Error(e: Exception): Boolean {
+        // Check for HTTP 503 error in the exception message
+        val message = e.message?.lowercase() ?: ""
+        
+        // Check for common 503 error patterns
+        return message.contains("503") || 
+               message.contains("service unavailable") || 
+               message.contains("server unavailable") ||
+               message.contains("server error") ||
+               (e is IOException && message.contains("server"))
     }
     
     /**
@@ -366,6 +483,34 @@ class PhotoReasoningViewModel(
     }
     
     /**
+     * Save chat history to SharedPreferences
+     */
+    fun saveChatHistory(context: android.content.Context?) {
+        if (context != null) {
+            ChatHistoryPreferences.saveChatHistory(context, chatMessages)
+        }
+    }
+    
+    /**
+     * Load chat history from SharedPreferences
+     */
+    fun loadChatHistory(context: android.content.Context) {
+        val history = ChatHistoryPreferences.loadChatHistory(context)
+        _chatState.clearMessages()
+        history.forEach { _chatState.addMessage(it) }
+        _chatMessagesFlow.value = chatMessages
+    }
+    
+    /**
+     * Clear chat history
+     */
+    fun clearChatHistory(context: android.content.Context) {
+        _chatState.clearMessages()
+        _chatMessagesFlow.value = chatMessages
+        ChatHistoryPreferences.clearChatHistory(context)
+    }
+    
+    /**
      * Add a screenshot to the conversation
      * 
      * @param screenshotUri URI of the screenshot
@@ -492,149 +637,6 @@ class PhotoReasoningViewModel(
                 Log.e(TAG, "Error adding screenshot to conversation: ${e.message}", e)
                 _commandExecutionStatus.value = "Fehler beim Hinzufügen des Screenshots: ${e.message}"
                 Toast.makeText(context, "Fehler beim Hinzufügen des Screenshots: ${e.message}", Toast.LENGTH_SHORT).show()
-                
-                // Add error message to chat
-                _chatState.addMessage(
-                    PhotoReasoningMessage(
-                        text = "Fehler beim Hinzufügen des Screenshots: ${e.message}",
-                        participant = PhotoParticipant.ERROR
-                    )
-                )
-                _chatMessagesFlow.value = chatMessages
-                
-                // Save chat history after adding error message
-                saveChatHistory(context)
-            }
-        }
-    }
-    
-    /**
-     * Load saved chat history from SharedPreferences and initialize chat with history
-     */
-    fun loadChatHistory(context: android.content.Context) {
-        val savedMessages = ChatHistoryPreferences.loadChatMessages(context)
-        if (savedMessages.isNotEmpty()) {
-            _chatState.clearMessages()
-            savedMessages.forEach { _chatState.addMessage(it) }
-            _chatMessagesFlow.value = chatMessages
-            
-            // Rebuild the chat history for the AI
-            rebuildChatHistory()
-        }
-    }
-    
-    /**
-     * Rebuild the chat history for the AI based on the current messages
-     */
-    private fun rebuildChatHistory() {
-        // Convert the current chat messages to Content objects for the chat history
-        val history = mutableListOf<Content>()
-        
-        // Group messages by participant to create proper conversation turns
-        var currentUserContent = ""
-        var currentModelContent = ""
-        
-        for (message in chatMessages) {
-            when (message.participant) {
-                PhotoParticipant.USER -> {
-                    // If we have model content and are now seeing a user message,
-                    // add the model content to history and reset
-                    if (currentModelContent.isNotEmpty()) {
-                        history.add(content(role = "model") { text(currentModelContent) })
-                        currentModelContent = ""
-                    }
-                    
-                    // Append to current user content
-                    if (currentUserContent.isNotEmpty()) {
-                        currentUserContent += "\n\n"
-                    }
-                    currentUserContent += message.text
-                }
-                PhotoParticipant.MODEL -> {
-                    // If we have user content and are now seeing a model message,
-                    // add the user content to history and reset
-                    if (currentUserContent.isNotEmpty()) {
-                        history.add(content(role = "user") { text(currentUserContent) })
-                        currentUserContent = ""
-                    }
-                    
-                    // Append to current model content
-                    if (currentModelContent.isNotEmpty()) {
-                        currentModelContent += "\n\n"
-                    }
-                    currentModelContent += message.text
-                }
-                PhotoParticipant.ERROR -> {
-                    // Errors are not included in the AI history
-                    continue
-                }
-            }
-        }
-        
-        // Add any remaining content
-        if (currentUserContent.isNotEmpty()) {
-            history.add(content(role = "user") { text(currentUserContent) })
-        }
-        if (currentModelContent.isNotEmpty()) {
-            history.add(content(role = "model") { text(currentModelContent) })
-        }
-        
-        // Create a new chat with the rebuilt history
-        if (history.isNotEmpty()) {
-            chat = generativeModel.startChat(
-                history = history
-            )
-        }
-    }
-    
-    /**
-     * Save current chat history to SharedPreferences
-     */
-    fun saveChatHistory(context: android.content.Context?) {
-        context?.let {
-            ChatHistoryPreferences.saveChatMessages(it, chatMessages)
-        }
-    }
-    
-    /**
-     * Clear the chat history
-     */
-    fun clearChatHistory(context: android.content.Context? = null) {
-        _chatState.clearMessages()
-        _chatMessagesFlow.value = emptyList()
-        
-        // Reset the chat with empty history
-        chat = generativeModel.startChat(
-            history = emptyList()
-        )
-        
-        // Also clear from SharedPreferences if context is provided
-        context?.let {
-            ChatHistoryPreferences.clearChatMessages(it)
-        }
-    }
-    
-    /**
-     * Chat state management class
-     */
-    private class ChatState {
-        private val _messages = mutableListOf<PhotoReasoningMessage>()
-        
-        val messages: List<PhotoReasoningMessage>
-            get() = _messages.toList()
-        
-        fun addMessage(message: PhotoReasoningMessage) {
-            _messages.add(message)
-        }
-        
-        fun clearMessages() {
-            _messages.clear()
-        }
-        
-        fun replaceLastPendingMessage() {
-            val lastPendingIndex = _messages.indexOfLast { it.isPending }
-            if (lastPendingIndex >= 0) {
-                _messages.removeAt(lastPendingIndex)
             }
         }
     }
