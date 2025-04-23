@@ -15,6 +15,9 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
@@ -30,6 +33,12 @@ class MainActivity : ComponentActivity() {
 
     // PhotoReasoningViewModel instance
     private var photoReasoningViewModel: com.google.ai.sample.feature.multimodal.PhotoReasoningViewModel? = null
+    
+    // API Key Manager
+    private lateinit var apiKeyManager: ApiKeyManager
+    
+    // Show API Key Dialog state
+    private var showApiKeyDialog by mutableStateOf(false)
     
     // Function to get the PhotoReasoningViewModel
     fun getPhotoReasoningViewModel(): com.google.ai.sample.feature.multimodal.PhotoReasoningViewModel? {
@@ -80,6 +89,18 @@ class MainActivity : ComponentActivity() {
         instance = this
         Log.d(TAG, "onCreate: Setting MainActivity instance")
 
+        // Initialize API Key Manager
+        apiKeyManager = ApiKeyManager.getInstance(this)
+        
+        // Check if API key exists, if not, show dialog
+        val apiKey = apiKeyManager.getCurrentApiKey()
+        if (apiKey.isNullOrEmpty()) {
+            showApiKeyDialog = true
+            Log.d(TAG, "No API key found, showing dialog")
+        } else {
+            Log.d(TAG, "API key found: ${apiKey.take(5)}...")
+        }
+
         // Check and request permissions
         checkAndRequestPermissions()
         
@@ -97,9 +118,14 @@ class MainActivity : ComponentActivity() {
 
                     NavHost(navController = navController, startDestination = "menu") {
                         composable("menu") {
-                            MenuScreen(onItemClicked = { routeId ->
-                                navController.navigate(routeId)
-                            })
+                            MenuScreen(
+                                onItemClicked = { routeId ->
+                                    navController.navigate(routeId)
+                                },
+                                onApiKeyButtonClicked = {
+                                    showApiKeyDialog = true
+                                }
+                            )
                         }
                         composable("summarize") {
                             SummarizeRoute()
@@ -110,6 +136,21 @@ class MainActivity : ComponentActivity() {
                         composable("chat") {
                             ChatRoute()
                         }
+                    }
+                    
+                    // Show API Key Dialog if needed
+                    if (showApiKeyDialog) {
+                        ApiKeyDialog(
+                            apiKeyManager = apiKeyManager,
+                            isFirstLaunch = apiKeyManager.getApiKeys().isEmpty(),
+                            onDismiss = {
+                                showApiKeyDialog = false
+                                // Refresh the activity if keys have changed
+                                if (apiKeyManager.getApiKeys().isNotEmpty()) {
+                                    recreate()
+                                }
+                            }
+                        )
                     }
                 }
             }
@@ -193,6 +234,16 @@ class MainActivity : ComponentActivity() {
             }
         }
         return true
+    }
+    
+    // Function to show API key dialog
+    fun showApiKeyDialog() {
+        showApiKeyDialog = true
+    }
+    
+    // Function to get current API key
+    fun getCurrentApiKey(): String? {
+        return apiKeyManager.getCurrentApiKey()
     }
 
     companion object {

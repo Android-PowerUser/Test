@@ -17,10 +17,12 @@
 package com.google.ai.sample
 
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -40,7 +42,8 @@ data class MenuItem(
 
 @Composable
 fun MenuScreen(
-    onItemClicked: (String) -> Unit = { }
+    onItemClicked: (String) -> Unit = { },
+    onApiKeyButtonClicked: () -> Unit = { }
 ) {
     val menuItems = listOf(
         MenuItem("summarize", R.string.menu_summarize_title, R.string.menu_summarize_description),
@@ -51,6 +54,35 @@ fun MenuScreen(
         Modifier
             .padding(top = 16.dp, bottom = 16.dp)
     ) {
+        // API Key Management Button
+        item {
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 8.dp)
+            ) {
+                Row(
+                    modifier = Modifier
+                        .padding(all = 16.dp)
+                        .fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "API Key Management",
+                        style = MaterialTheme.typography.titleMedium,
+                        modifier = Modifier.weight(1f)
+                    )
+                    Button(
+                        onClick = onApiKeyButtonClicked,
+                        modifier = Modifier.padding(start = 8.dp)
+                    ) {
+                        Text(text = "Change API Key")
+                    }
+                }
+            }
+        }
+        
+        // Menu Items
         items(menuItems) { menuItem ->
             Card(
                 modifier = Modifier
