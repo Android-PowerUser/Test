@@ -1,5 +1,7 @@
 package com.google.ai.sample
 
+import android.content.Intent
+import android.net.Uri
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
@@ -7,6 +9,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
@@ -24,6 +27,7 @@ fun ApiKeyDialog(
     var errorMessage by remember { mutableStateOf("") }
     val apiKeys = remember { mutableStateListOf<String>() }
     var selectedKeyIndex by remember { mutableStateOf(apiKeyManager.getCurrentKeyIndex()) }
+    val context = LocalContext.current
     
     // Load existing keys
     LaunchedEffect(Unit) {
@@ -61,6 +65,19 @@ fun ApiKeyDialog(
                         style = MaterialTheme.typography.bodyMedium,
                         modifier = Modifier.padding(bottom = 16.dp)
                     )
+                }
+                
+                // Get API Key button
+                Button(
+                    onClick = {
+                        val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://aistudio.google.com/u/0/apikey"))
+                        context.startActivity(intent)
+                    },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(bottom = 16.dp)
+                ) {
+                    Text("Get API Key")
                 }
                 
                 // Input field for new API key
