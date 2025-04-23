@@ -1,5 +1,6 @@
 package com.google.ai.sample
 
+import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewmodel.CreationExtras
@@ -67,7 +68,9 @@ val GenerativeViewModelFactory = object : ViewModelProvider.Factory {
                         apiKey = apiKey,
                         generationConfig = config
                     )
-                    PhotoReasoningViewModel(generativeModel)
+                    // Pass the ApiKeyManager to the ViewModel for key rotation
+                    val apiKeyManager = ApiKeyManager.getInstance(application)
+                    PhotoReasoningViewModel(generativeModel, apiKeyManager)
                 }
 
                 isAssignableFrom(ChatViewModel::class.java) -> {

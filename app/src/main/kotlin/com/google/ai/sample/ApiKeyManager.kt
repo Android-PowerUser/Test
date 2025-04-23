@@ -12,6 +12,7 @@ class ApiKeyManager(context: Context) {
     private val PREFS_NAME = "api_key_prefs"
     private val API_KEYS = "api_keys"
     private val CURRENT_KEY_INDEX = "current_key_index"
+    private val FAILED_KEYS = "failed_keys"
     
     private val prefs: SharedPreferences = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
     
@@ -73,6 +74,9 @@ class ApiKeyManager(context: Context) {
             setCurrentKeyIndex(0)
         }
         
+        // Clear this key from failed keys if it was previously marked as failed
+        removeFailedKey(apiKey)
+        
         Log.d(TAG, "Added new API key, total keys: ${keys.size}")
         return true
     }
@@ -94,6 +98,9 @@ class ApiKeyManager(context: Context) {
             if (currentIndex >= keys.size && keys.isNotEmpty()) {
                 setCurrentKeyIndex(0)
             }
+            
+            // Also remove from failed keys if present
+            removeFailedKey(apiKey)
             
             Log.d(TAG, "Removed API key, remaining keys: ${keys.size}")
         } else {
@@ -129,6 +136,122 @@ class ApiKeyManager(context: Context) {
     }
     
     /**
+     * Mark an API key as failed (e.g., due to 503 error)
+     * @param apiKey The API key to mark as failed
+     */
+    fun markKeyAsFailed(apiKey: String) {
+        val failedKeys = getFailedKeys().toMutableList()
+        if (!failedKeys.contains(apiKey)) {
+            failedKeys.add(apiKey)
+            saveFailedKeys(failedKeys)
+            Log.d(TAG, "Marked API key as failed: ${apiKey.take(5)}...")
+        }
+    }
+    
+    /**
+     * Remove an API key from the failed keys list
+     * @param apiKey The API key to remove from failed keys
+     */
+    fun removeFailedKey(apiKey: String) {
+        val failedKeys = getFailedKeys().toMutableList()
+        if (failedKeys.remove(apiKey)) {
+            saveFailedKeys(failedKeys)
+            Log.d(TAG, "Removed API key from failed keys: ${apiKey.take(5)}...")
+        }
+    }
+    
+    /**
+     * Get all failed API keys
+     * @return List of failed API keys
+     */
+    fun getFailedKeys(): List<String> {
+        val keysString = prefs.getString(FAILED_KEYS, "") ?: ""
+        return if (keysString.isEmpty()) {
+            emptyList()
+        } else {
+            keysString.split(",")
+        }
+    }
+    
+    /**
+     * Check if an API key is marked as failed
+     * @param apiKey The API key to check
+     * @return True if the key is marked as failed, false otherwise
+     */
+    fun isKeyFailed(apiKey: String): Boolean {
+        return getFailedKeys().contains(apiKey)
+    }
+    
+    /**
+     * Reset all failed keys
+     */
+    fun resetFailedKeys() {
+        prefs.edit().remove(FAILED_KEYS).apply()
+        Log.d(TAG, "Reset all failed keys")
+    }
+    
+    /**
+     * Check if all API keys are marked as failed
+     * @return True if all keys are failed, false otherwise
+     */
+    fun areAllKeysFailed(): Boolean {
+        val keys = getApiKeys()
+        val failedKeys = getFailedKeys()
+        return keys.isNotEmpty() && failedKeys.size >= keys.size
+    }
+    
+    /**
+     * Get the count of available API keys
+     * @return The number of API keys
+     */
+    fun getKeyCount(): Int {
+        return getApiKeys().size
+    }
+    
+    /**
+     * Switch to the next available API key that is not marked as failed
+     * @return The new API key or null if no valid keys are available
+     */
+    fun switchToNextAvailableKey(): String? {
+        val keys = getApiKeys()
+        if (keys.isEmpty()) {
+            Log.d(TAG, "No API keys available to switch to")
+            return null
+        }
+        
+        val failedKeys = getFailedKeys()
+        val currentIndex = getCurrentKeyIndex()
+        
+        // If all keys are failed, reset failed keys and start from the beginning
+        if (failedKeys.size >= keys.size) {
+            Log.d(TAG, "All keys are marked as failed, resetting failed keys")
+            resetFailedKeys()
+            setCurrentKeyIndex(0)
+            return keys[0]
+        }
+        
+        // Find the next key that is not failed
+        var nextIndex = (currentIndex + 1) % keys.size
+        var attempts = 0
+        
+        while (attempts < keys.size) {
+            if (!failedKeys.contains(keys[nextIndex])) {
+                setCurrentKeyIndex(nextIndex)
+                Log.d(TAG, "Switched to next available key at index $nextIndex")
+                return keys[nextIndex]
+            }
+            nextIndex = (nextIndex + 1) % keys.size
+            attempts++
+        }
+        
+        // If we get here, all keys are failed (shouldn't happen due to earlier check)
+        Log.d(TAG, "Could not find a non-failed key, resetting failed keys")
+        resetFailedKeys()
+        setCurrentKeyIndex(0)
+        return keys[0]
+    }
+    
+    /**
      * Save the list of API keys to SharedPreferences
      * @param keys The list of API keys to save
      */
@@ -138,10 +261,19 @@ class ApiKeyManager(context: Context) {
     }
     
     /**
+     * Save the list of failed API keys to SharedPreferences
+     * @param keys The list of failed API keys to save
+     */
+    private fun saveFailedKeys(keys: List<String>) {
+        val keysString = keys.joinToString(",")
+        prefs.edit().putString(FAILED_KEYS, keysString).apply()
+    }
+    
+    /**
      * Clear all stored API keys
      */
     fun clearAllKeys() {
-        prefs.edit().remove(API_KEYS).remove(CURRENT_KEY_INDEX).apply()
+        prefs.edit().remove(API_KEYS).remove(CURRENT_KEY_INDEX).remove(FAILED_KEYS).apply()
         Log.d(TAG, "Cleared all API keys")
     }
     
