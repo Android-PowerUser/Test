@@ -29,7 +29,6 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.IOException
-import java.net.HttpURLConnection
 
 class PhotoReasoningViewModel(
     private var generativeModel: GenerativeModel,
@@ -233,11 +232,11 @@ class PhotoReasoningViewModel(
                             }
                             
                             // Create a new GenerativeModel with the new API key
-                            val config = generativeModel.config
+                            val generationConfig = generativeModel.config.generationConfig
                             generativeModel = GenerativeModel(
                                 modelName = generativeModel.modelName,
                                 apiKey = nextKey,
-                                generationConfig = config.generationConfig
+                                generationConfig = generationConfig
                             )
                             
                             // Create a new chat instance with the new model
@@ -309,7 +308,9 @@ class PhotoReasoningViewModel(
             
             // Clear and re-add all messages to maintain order
             _chatState.clearMessages()
-            messages.forEach { _chatState.addMessage(it) }
+            for (message in messages) {
+                _chatState.addMessage(message)
+            }
             
             // Update the flow
             _chatMessagesFlow.value = chatMessages
@@ -358,10 +359,10 @@ class PhotoReasoningViewModel(
                     _detectedCommands.value = currentCommands
                     
                     // Update status to show commands were detected
-                    val commandDescriptions = commands.map { 
-                        when (it) {
-                            is Command.ClickButton -> "Klick auf Button: \"${it.buttonText}\""
-                            is Command.TapCoordinates -> "Tippen auf Koordinaten: (${it.x}, ${it.y})"
+                    val commandDescriptions = commands.map { command -> 
+                        when (command) {
+                            is Command.ClickButton -> "Klick auf Button: \"${command.buttonText}\""
+                            is Command.TapCoordinates -> "Tippen auf Koordinaten: (${command.x}, ${command.y})"
                             is Command.TakeScreenshot -> "Screenshot aufnehmen"
                             is Command.PressHomeButton -> "Home-Button drücken"
                             is Command.PressBackButton -> "Zurück-Button drücken"
@@ -370,12 +371,12 @@ class PhotoReasoningViewModel(
                             is Command.ScrollUp -> "Nach oben scrollen"
                             is Command.ScrollLeft -> "Nach links scrollen"
                             is Command.ScrollRight -> "Nach rechts scrollen"
-                            is Command.ScrollDownFromCoordinates -> "Nach unten scrollen von Position (${it.x}, ${it.y}) mit Distanz ${it.distance}px und Dauer ${it.duration}ms"
-                            is Command.ScrollUpFromCoordinates -> "Nach oben scrollen von Position (${it.x}, ${it.y}) mit Distanz ${it.distance}px und Dauer ${it.duration}ms"
-                            is Command.ScrollLeftFromCoordinates -> "Nach links scrollen von Position (${it.x}, ${it.y}) mit Distanz ${it.distance}px und Dauer ${it.duration}ms"
-                            is Command.ScrollRightFromCoordinates -> "Nach rechts scrollen von Position (${it.x}, ${it.y}) mit Distanz ${it.distance}px und Dauer ${it.duration}ms"
-                            is Command.OpenApp -> "App öffnen: \"${it.packageName}\""
-                            is Command.WriteText -> "Text schreiben: \"${it.text}\""
+                            is Command.ScrollDownFromCoordinates -> "Nach unten scrollen von Position (${command.x}, ${command.y}) mit Distanz ${command.distance}px und Dauer ${command.duration}ms"
+                            is Command.ScrollUpFromCoordinates -> "Nach oben scrollen von Position (${command.x}, ${command.y}) mit Distanz ${command.distance}px und Dauer ${command.duration}ms"
+                            is Command.ScrollLeftFromCoordinates -> "Nach links scrollen von Position (${command.x}, ${command.y}) mit Distanz ${command.distance}px und Dauer ${command.duration}ms"
+                            is Command.ScrollRightFromCoordinates -> "Nach rechts scrollen von Position (${command.x}, ${command.y}) mit Distanz ${command.distance}px und Dauer ${command.duration}ms"
+                            is Command.OpenApp -> "App öffnen: \"${command.packageName}\""
+                            is Command.WriteText -> "Text schreiben: \"${command.text}\""
                             is Command.UseHighReasoningModel -> "Wechsle zu leistungsfähigerem Modell (gemini-2.5-pro-preview-03-25)"
                             is Command.UseLowReasoningModel -> "Wechsle zu schnellerem Modell (gemini-2.0-flash-lite)"
                         }
@@ -392,8 +393,8 @@ class PhotoReasoningViewModel(
                     _commandExecutionStatus.value = "Befehle erkannt: ${commandDescriptions.joinToString(", ")}"
                     
                     // Check if accessibility service is enabled
-                    val isServiceEnabled = mainActivity?.let { 
-                        ScreenOperatorAccessibilityService.isAccessibilityServiceEnabled(it)
+                    val isServiceEnabled = mainActivity?.let { activity -> 
+                        ScreenOperatorAccessibilityService.isAccessibilityServiceEnabled(activity)
                     } ?: false
                     
                     if (!isServiceEnabled) {
@@ -487,7 +488,7 @@ class PhotoReasoningViewModel(
      */
     fun saveChatHistory(context: android.content.Context?) {
         if (context != null) {
-            ChatHistoryPreferences.saveChatHistory(context, chatMessages)
+            ChatHistoryPreferences.saveChatMessages(context, chatMessages)
         }
     }
     
@@ -495,19 +496,99 @@ class PhotoReasoningViewModel(
      * Load chat history from SharedPreferences
      */
     fun loadChatHistory(context: android.content.Context) {
-        val history = ChatHistoryPreferences.loadChatHistory(context)
-        _chatState.clearMessages()
-        history.forEach { _chatState.addMessage(it) }
-        _chatMessagesFlow.value = chatMessages
+        val savedMessages = ChatHistoryPreferences.loadChatMessages(context)
+        if (savedMessages.isNotEmpty()) {
+            _chatState.clearMessages()
+            for (message in savedMessages) {
+                _chatState.addMessage(message)
+            }
+            _chatMessagesFlow.value = chatMessages
+            
+            // Rebuild the chat history for the AI
+            rebuildChatHistory()
+        }
     }
     
     /**
-     * Clear chat history
+     * Rebuild the chat history for the AI based on the current messages
      */
-    fun clearChatHistory(context: android.content.Context) {
+    private fun rebuildChatHistory() {
+        // Convert the current chat messages to Content objects for the chat history
+        val history = mutableListOf<Content>()
+        
+        // Group messages by participant to create proper conversation turns
+        var currentUserContent = ""
+        var currentModelContent = ""
+        
+        for (message in chatMessages) {
+            when (message.participant) {
+                PhotoParticipant.USER -> {
+                    // If we have model content and are now seeing a user message,
+                    // add the model content to history and reset
+                    if (currentModelContent.isNotEmpty()) {
+                        history.add(content(role = "model") { text(currentModelContent) })
+                        currentModelContent = ""
+                    }
+                    
+                    // Append to current user content
+                    if (currentUserContent.isNotEmpty()) {
+                        currentUserContent += "\n\n"
+                    }
+                    currentUserContent += message.text
+                }
+                PhotoParticipant.MODEL -> {
+                    // If we have user content and are now seeing a model message,
+                    // add the user content to history and reset
+                    if (currentUserContent.isNotEmpty()) {
+                        history.add(content(role = "user") { text(currentUserContent) })
+                        currentUserContent = ""
+                    }
+                    
+                    // Append to current model content
+                    if (currentModelContent.isNotEmpty()) {
+                        currentModelContent += "\n\n"
+                    }
+                    currentModelContent += message.text
+                }
+                PhotoParticipant.ERROR -> {
+                    // Errors are not included in the AI history
+                    continue
+                }
+            }
+        }
+        
+        // Add any remaining content
+        if (currentUserContent.isNotEmpty()) {
+            history.add(content(role = "user") { text(currentUserContent) })
+        }
+        if (currentModelContent.isNotEmpty()) {
+            history.add(content(role = "model") { text(currentModelContent) })
+        }
+        
+        // Create a new chat with the rebuilt history
+        if (history.isNotEmpty()) {
+            chat = generativeModel.startChat(
+                history = history
+            )
+        }
+    }
+    
+    /**
+     * Clear the chat history
+     */
+    fun clearChatHistory(context: android.content.Context? = null) {
         _chatState.clearMessages()
-        _chatMessagesFlow.value = chatMessages
-        ChatHistoryPreferences.clearChatHistory(context)
+        _chatMessagesFlow.value = emptyList()
+        
+        // Reset the chat with empty history
+        chat = generativeModel.startChat(
+            history = emptyList()
+        )
+        
+        // Also clear from SharedPreferences if context is provided
+        context?.let {
+            ChatHistoryPreferences.clearChatMessages(it)
+        }
     }
     
     /**
@@ -637,6 +718,31 @@ class PhotoReasoningViewModel(
                 Log.e(TAG, "Error adding screenshot to conversation: ${e.message}", e)
                 _commandExecutionStatus.value = "Fehler beim Hinzufügen des Screenshots: ${e.message}"
                 Toast.makeText(context, "Fehler beim Hinzufügen des Screenshots: ${e.message}", Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+    
+    /**
+     * Chat state management class
+     */
+    private class ChatState {
+        private val _messages = mutableListOf<PhotoReasoningMessage>()
+        
+        val messages: List<PhotoReasoningMessage>
+            get() = _messages.toList()
+        
+        fun addMessage(message: PhotoReasoningMessage) {
+            _messages.add(message)
+        }
+        
+        fun clearMessages() {
+            _messages.clear()
+        }
+        
+        fun replaceLastPendingMessage() {
+            val lastPendingIndex = _messages.indexOfLast { it.isPending }
+            if (lastPendingIndex >= 0) {
+                _messages.removeAt(lastPendingIndex)
             }
         }
     }
