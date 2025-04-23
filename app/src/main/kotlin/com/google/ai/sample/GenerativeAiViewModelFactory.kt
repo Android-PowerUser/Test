@@ -35,6 +35,17 @@ val GenerativeViewModelFactory = object : ViewModelProvider.Factory {
             temperature = 0.0f
         }
 
+        // Get the application context from extras
+        val application = checkNotNull(extras[ViewModelProvider.AndroidViewModelFactory.APPLICATION_KEY])
+        
+        // Get the API key from MainActivity
+        val mainActivity = MainActivity.getInstance()
+        val apiKey = mainActivity?.getCurrentApiKey() ?: ""
+        
+        if (apiKey.isEmpty()) {
+            throw IllegalStateException("API key is not available. Please set an API key.")
+        }
+
         return with(viewModelClass) {
             when {
                 isAssignableFrom(SummarizeViewModel::class.java) -> {
@@ -42,7 +53,7 @@ val GenerativeViewModelFactory = object : ViewModelProvider.Factory {
                     // for text generation
                     val generativeModel = GenerativeModel(
                         modelName = currentModelName,
-                        apiKey = BuildConfig.apiKey,
+                        apiKey = apiKey,
                         generationConfig = config
                     )
                     SummarizeViewModel(generativeModel)
@@ -53,7 +64,7 @@ val GenerativeViewModelFactory = object : ViewModelProvider.Factory {
                     // for multimodal text generation
                     val generativeModel = GenerativeModel(
                         modelName = currentModelName,
-                        apiKey = BuildConfig.apiKey,
+                        apiKey = apiKey,
                         generationConfig = config
                     )
                     PhotoReasoningViewModel(generativeModel)
@@ -63,7 +74,7 @@ val GenerativeViewModelFactory = object : ViewModelProvider.Factory {
                     // Initialize a GenerativeModel with the currently selected model for chat
                     val generativeModel = GenerativeModel(
                         modelName = currentModelName,
-                        apiKey = BuildConfig.apiKey,
+                        apiKey = apiKey,
                         generationConfig = config
                     )
                     ChatViewModel(generativeModel)
