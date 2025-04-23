@@ -356,50 +356,59 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
                     Log.d(TAG, "Successfully wrote text: $text")
                     showToast("Text erfolgreich geschrieben: \"$text\"", false)
                 } else {
-                    Log.e(TAG, "Failed to write text")
-                    showToast("Fehler beim Schreiben des Textes, versuche alternative Methode", true)
+                    Log.e(TAG, "Failed to write text, trying alternative methods")
+                    showToast("Fehler beim Schreiben des Textes, versuche alternative Methoden", true)
                     
-                    // Try alternative method: paste text
-                    tryPasteText(focusedNode, text)
+                    // Try alternative methods
+                    tryAlternativeTextInputMethods(focusedNode, text)
                 }
                 
                 // Recycle the node
                 focusedNode.recycle()
             } else {
-                Log.d(TAG, "No focused editable node found, trying to find any editable node")
+                Log.e(TAG, "Could not find focused editable node")
+                showToast("Kein fokussiertes Textfeld gefunden, versuche Suche nach editierbaren Feldern", true)
                 
-                // Try to find any editable node
-                val editableNode = findAnyEditableNode(rootNode!!)
+                // Try to find any editable field
+                val editableNode = findFirstEditableNode(rootNode!!)
                 
                 if (editableNode != null) {
                     Log.d(TAG, "Found editable node")
-                    showToast("Textfeld gefunden, schreibe Text: \"$text\"", false)
+                    showToast("Editierbares Textfeld gefunden, versuche zu fokussieren", false)
                     
-                    // Focus the node first
-                    editableNode.performAction(AccessibilityNodeInfo.ACTION_FOCUS)
+                    // Focus the editable field
+                    val focusResult = editableNode.performAction(AccessibilityNodeInfo.ACTION_FOCUS)
                     
-                    // Set the text in the editable field
-                    val bundle = android.os.Bundle()
-                    bundle.putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, text)
-                    
-                    val result = editableNode.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, bundle)
-                    
-                    if (result) {
-                        Log.d(TAG, "Successfully wrote text: $text")
-                        showToast("Text erfolgreich geschrieben: \"$text\"", false)
-                    } else {
-                        Log.e(TAG, "Failed to write text")
-                        showToast("Fehler beim Schreiben des Textes, versuche alternative Methode", true)
+                    if (focusResult) {
+                        Log.d(TAG, "Successfully focused editable node")
+                        showToast("Textfeld erfolgreich fokussiert, schreibe Text: \"$text\"", false)
                         
-                        // Try alternative method: paste text
-                        tryPasteText(editableNode, text)
+                        // Set the text in the editable field
+                        val bundle = android.os.Bundle()
+                        bundle.putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, text)
+                        
+                        val result = editableNode.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, bundle)
+                        
+                        if (result) {
+                            Log.d(TAG, "Successfully wrote text: $text")
+                            showToast("Text erfolgreich geschrieben: \"$text\"", false)
+                        } else {
+                            Log.e(TAG, "Failed to write text, trying alternative methods")
+                            showToast("Fehler beim Schreiben des Textes, versuche alternative Methoden", true)
+                            
+                            // Try alternative methods
+                            tryAlternativeTextInputMethods(editableNode, text)
+                        }
+                    } else {
+                        Log.e(TAG, "Failed to focus editable node")
+                        showToast("Fehler beim Fokussieren des Textfeldes", true)
                     }
                     
                     // Recycle the node
                     editableNode.recycle()
                 } else {
-                    Log.e(TAG, "No editable node found")
-                    showToast("Kein Textfeld gefunden", true)
+                    Log.e(TAG, "Could not find any editable node")
+                    showToast("Kein editierbares Textfeld gefunden", true)
                 }
             }
         } catch (e: Exception) {
@@ -409,12 +418,12 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
     }
     
     /**
-     * Find the focused editable node in the accessibility tree
+     * Find the focused editable node
      */
     private fun findFocusedEditableNode(node: AccessibilityNodeInfo): AccessibilityNodeInfo? {
         try {
             // Check if this node is focused and editable
-            if (node.isFocused && isNodeEditable(node)) {
+            if (node.isFocused && node.isEditable) {
                 return AccessibilityNodeInfo.obtain(node)
             }
             
@@ -436,19 +445,19 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
     }
     
     /**
-     * Find any editable node in the accessibility tree
+     * Find the first editable node
      */
-    private fun findAnyEditableNode(node: AccessibilityNodeInfo): AccessibilityNodeInfo? {
+    private fun findFirstEditableNode(node: AccessibilityNodeInfo): AccessibilityNodeInfo? {
         try {
             // Check if this node is editable
-            if (isNodeEditable(node)) {
+            if (node.isEditable) {
                 return AccessibilityNodeInfo.obtain(node)
             }
             
             // Check children recursively
             for (i in 0 until node.childCount) {
                 val child = node.getChild(i) ?: continue
-                val result = findAnyEditableNode(child)
+                val result = findFirstEditableNode(child)
                 child.recycle()
                 
                 if (result != null) {
@@ -456,48 +465,54 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
                 }
             }
         } catch (e: Exception) {
-            Log.e(TAG, "Error finding any editable node: ${e.message}")
+            Log.e(TAG, "Error finding first editable node: ${e.message}")
         }
         
         return null
     }
     
     /**
-     * Check if a node is editable
+     * Try alternative methods to input text
      */
-    private fun isNodeEditable(node: AccessibilityNodeInfo): Boolean {
-        return node.isEditable || 
-               (node.className?.contains("EditText", ignoreCase = true) == true) ||
-               (node.className?.contains("TextInputLayout", ignoreCase = true) == true)
+    private fun tryAlternativeTextInputMethods(node: AccessibilityNodeInfo, text: String) {
+        try {
+            Log.d(TAG, "Trying alternative text input methods")
+            showToast("Versuche alternative Methoden zum Texteingeben", false)
+            
+            // Try to paste text
+            pasteText(node, text)
+        } catch (e: Exception) {
+            Log.e(TAG, "Error trying alternative text input methods: ${e.message}")
+            showToast("Fehler bei alternativen Texteingabemethoden: ${e.message}", true)
+        }
     }
     
     /**
-     * Try to paste text as an alternative method
+     * Paste text into a node
      */
-    private fun tryPasteText(node: AccessibilityNodeInfo, text: String) {
+    private fun pasteText(node: AccessibilityNodeInfo, text: String) {
         try {
             Log.d(TAG, "Trying to paste text: $text")
+            showToast("Versuche Text einzufügen: \"$text\"", false)
             
-            // First, try to select all existing text
-            val selectAllResult = node.performAction(AccessibilityNodeInfo.ACTION_FOCUS)
-            // Use a constant value for ACTION_SELECT_ALL (16 is the value defined in AccessibilityNodeInfo)
-            val selectAllAction = node.performAction(16)
+            // First, select all existing text
+            val selectAllResult = node.performAction(AccessibilityNodeInfo.ACTION_SELECT_ALL)
             
-            if (selectAllAction) {
+            if (selectAllResult) {
                 Log.d(TAG, "Successfully selected all text")
                 
-                // Set clipboard text
-                val clipboardManager = applicationContext.getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
-                val clip = android.content.ClipData.newPlainText("Text", text)
-                clipboardManager.setPrimaryClip(clip)
-                
-                // Wait a moment for clipboard to update
+                // Add a small delay before pasting
                 Handler(Looper.getMainLooper()).postDelayed({
+                    // Set the text in the clipboard
+                    val clipboard = applicationContext.getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+                    val clip = android.content.ClipData.newPlainText("Accessibility Service Text", text)
+                    clipboard.setPrimaryClip(clip)
+                    
                     // Paste the text
                     val pasteResult = node.performAction(AccessibilityNodeInfo.ACTION_PASTE)
                     
                     if (pasteResult) {
-                        Log.d(TAG, "Successfully pasted text")
+                        Log.d(TAG, "Successfully pasted text: $text")
                         showToast("Text erfolgreich eingefügt: \"$text\"", false)
                     } else {
                         Log.e(TAG, "Failed to paste text")
@@ -924,7 +939,7 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
             path.moveTo(x, y)
             
             val gesture = GestureDescription.Builder()
-                .addStroke(GestureDescription.StrokeDescription(path, 0, 800))
+                .addStroke(GestureDescription.StrokeDescription(path, 0, 300)) // 300ms duration
                 .build()
             
             // Dispatch the gesture
@@ -932,66 +947,60 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
                 override fun onCompleted(gestureDescription: GestureDescription) {
                     super.onCompleted(gestureDescription)
                     Log.d(TAG, "Long tap gesture completed")
-                    showToast("Langes Tippen auf Koordinaten ($x, $y) erfolgreich", false)
+                    showToast("Tippen mit längerer Dauer auf Koordinaten ($x, $y) erfolgreich", false)
                 }
                 
                 override fun onCancelled(gestureDescription: GestureDescription) {
                     super.onCancelled(gestureDescription)
                     Log.e(TAG, "Long tap gesture cancelled")
-                    showToast("Langes Tippen auf Koordinaten ($x, $y) abgebrochen", true)
+                    showToast("Tippen mit längerer Dauer auf Koordinaten ($x, $y) abgebrochen", true)
                 }
             }, null)
             
             if (!dispatchResult) {
                 Log.e(TAG, "Failed to dispatch long tap gesture")
-                showToast("Fehler beim Senden der langen Tipp-Geste", true)
+                showToast("Fehler beim Senden der Tipp-Geste mit längerer Dauer", true)
             }
         } catch (e: Exception) {
             Log.e(TAG, "Error tapping at coordinates with longer duration: ${e.message}")
-            showToast("Fehler beim langen Tippen auf Koordinaten: ${e.message}", true)
+            showToast("Fehler beim Tippen mit längerer Dauer auf Koordinaten: ${e.message}", true)
         }
     }
     
     /**
-     * Open an app by name or package name using multiple methods to ensure success
+     * Open an app by package name
      */
-    fun openApp(nameOrPackage: String) {
-        Log.d(TAG, "Opening app with name or package: $nameOrPackage")
-        showToast("Versuche App zu öffnen: $nameOrPackage", false)
+    fun openApp(packageName: String) {
+        Log.d(TAG, "Opening app with package name: $packageName")
         
         try {
-            // First, try to resolve the app name to a package name if needed
-            val packageName = appNamePackageMapper.getPackageName(nameOrPackage) ?: nameOrPackage
+            // Get the app name from the package name
+            val appName = appNamePackageMapper.getAppNameFromPackage(packageName) ?: packageName
             
-            // If the input was an app name, show the resolved package name
-            if (packageName != nameOrPackage) {
-                Log.d(TAG, "Resolved app name '$nameOrPackage' to package name '$packageName'")
-                showToast("App-Name '$nameOrPackage' aufgelöst zu Paket-Name '$packageName'", false)
+            // Try different methods to open the app
+            if (openAppUsingLaunchIntent(packageName, appName)) {
+                return
             }
             
-            // Get the app name for display purposes
-            val appName = appNamePackageMapper.getAppName(packageName)
+            if (openAppUsingMainActivity(packageName, appName)) {
+                return
+            }
             
-            // Try multiple methods to open the app
-            if (openAppUsingLaunchIntent(packageName, appName) ||
-                openAppUsingMainActivity(packageName, appName) ||
-                openAppUsingQueryIntentActivities(packageName, appName)) {
-                // One of the methods succeeded
+            if (openAppUsingQueryIntentActivities(packageName, appName)) {
                 return
             }
             
             // If all methods failed, show an error
-            Log.e(TAG, "All methods to open app failed for package: $packageName")
-            showToast("Fehler: Keine App mit dem Namen oder Paket-Namen '$nameOrPackage' gefunden oder App kann nicht geöffnet werden", true)
-            
+            Log.e(TAG, "Failed to open app: $packageName")
+            showToast("Fehler beim Öffnen der App: $appName", true)
         } catch (e: Exception) {
-            Log.e(TAG, "Error opening app: ${e.message}", e)
+            Log.e(TAG, "Error opening app: ${e.message}")
             showToast("Fehler beim Öffnen der App: ${e.message}", true)
         }
     }
     
     /**
-     * Try to open an app using the standard launch intent
+     * Try to open an app using the launch intent
      */
     private fun openAppUsingLaunchIntent(packageName: String, appName: String): Boolean {
         try {
@@ -1367,6 +1376,9 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
                 
                 // Add the screenshot to the conversation with screen information
                 addScreenshotToConversation(screenshotUri, screenInfo)
+                
+                // Automatically close the screenshot notification
+                closeScreenshotNotification()
             } else {
                 Log.e(TAG, "No screenshot file found")
                 showToast("Kein Screenshot gefunden. Bitte prüfen Sie die Berechtigungen.", true)
@@ -1375,6 +1387,265 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
             Log.e(TAG, "Error retrieving screenshot: ${e.message}")
             showToast("Fehler beim Abrufen des Screenshots: ${e.message}", true)
         }
+    }
+    
+    /**
+     * Automatically close the screenshot notification
+     */
+    private fun closeScreenshotNotification() {
+        Log.d(TAG, "Attempting to close screenshot notification")
+        
+        // Add a delay to ensure the notification is visible
+        handler.postDelayed({
+            try {
+                // Refresh the root node to get the latest UI state
+                refreshRootNode()
+                
+                // Check if root node is available
+                if (rootNode == null) {
+                    Log.e(TAG, "Root node is null, cannot close screenshot notification")
+                    return
+                }
+                
+                // List of possible button texts for "Close" in different languages and ROMs
+                val closeButtonTexts = listOf(
+                    "Close", "Schließen", "Cerrar", "Fermer", "Chiudi", "Fechar", "Sluiten", 
+                    "Lukk", "Luk", "Stäng", "Sulje", "Zamknij", "Zavřít", "Zatvoriť", "Bezárás",
+                    "Închide", "Затвори", "Закрыть", "Закрити", "Затвори", "Κλείσιμο", "Kapat",
+                    "סגור", "إغلاق", "बंद करें", "बंद करा", "閉じる", "关闭", "關閉", "닫기",
+                    "Đóng", "ปิด", "Tutup", "Isara", "Ditutup", "Tanca", "Peche", "Itxi",
+                    "Cau", "Mbyll", "Zapri", "Aizvērt", "Uždaryti", "Sulge", "Zapri", "Zatvori",
+                    "Затвори", "Затвори", "Затвори", "Dùin", "Cau", "Funga", "Vala", "Xirra",
+                    "Dismiss", "Cancel", "Abbrechen", "Cancelar", "Annuler", "Annulla", "Cancelar",
+                    "Annuleren", "Avbryt", "Annuller", "Avbryt", "Peruuta", "Anuluj", "Zrušit",
+                    "Zrušiť", "Mégse", "Anulare", "Отказ", "Отмена", "Скасувати", "Откажи", "Ακύρωση",
+                    "İptal", "ביטול", "إلغاء", "रद्द करें", "रद्द करा", "キャンセル", "取消", "取消", "취소",
+                    "Hủy", "ยกเลิก", "Batal", "Kanselahin", "Batalkan", "Cancel·la", "Anular", "Utzi",
+                    "Canslo", "Anulo", "Prekliči", "Atcelt", "Atšaukti", "Tühista", "Prekini", "Odustani",
+                    "Откажи", "Откажи", "Откажи", "Sguir dheth", "Canslo", "Ghairi", "Khansela", "Ħassar",
+                    "Screenshot close", "Screenshot schließen", "Cerrar captura de pantalla", 
+                    "Fermer la capture d'écran", "Chiudi screenshot", "Fechar captura de tela",
+                    "Screenshot sluiten", "Lukk skjermbilde", "Luk skærmbillede", "Stäng skärmbild",
+                    "Sulje kuvakaappaus", "Zamknij zrzut ekranu", "Zavřít snímek obrazovky",
+                    "Zatvoriť snímku obrazovky", "Képernyőkép bezárása", "Închide captura de ecran",
+                    "Затвори екранна снимка", "Закрыть скриншот", "Закрити знімок екрана",
+                    "Затвори снимак екрана", "Κλείσιμο στιγμιότυπου οθόνης", "Ekran görüntüsünü kapat",
+                    "סגור צילום מסך", "إغلاق لقطة الشاشة", "स्क्रीनशॉट बंद करें", "स्क्रीनशॉट बंद करा",
+                    "スクリーンショットを閉じる", "关闭截图", "關閉截圖", "스크린샷 닫기",
+                    "Đóng ảnh chụp màn hình", "ปิดภาพหน้าจอ", "Tutup tangkapan layar", "Isara ang screenshot",
+                    "Tutup tangkapan skrin", "Tanca la captura de pantalla", "Peche a captura de pantalla",
+                    "Itxi pantaila-argazkia", "Cau'r sgrinlun", "Mbyll fotografinë e ekranit",
+                    "Zapri posnetek zaslona", "Aizvērt ekrānuzņēmumu", "Uždaryti ekrano kopiją",
+                    "Sulge ekraanipilt", "Zapri snimku zaslona", "Zatvori snimak zaslona",
+                    "Затвори снимка на екрана", "Затвори снимак екрана", "Затвори снимка на екранот",
+                    "Dùin an glacadh-sgrìn", "Cau'r sgrinlun", "Funga picha ya skrini", "Vala isithombe-skrini",
+                    "Xirra l-iskrinxott"
+                )
+                
+                // Try to find and click the close button
+                for (buttonText in closeButtonTexts) {
+                    val node = findNodeByText(rootNode!!, buttonText)
+                    if (node != null) {
+                        Log.d(TAG, "Found screenshot close button with text: $buttonText")
+                        showToast("Screenshot-Schließen-Button gefunden: \"$buttonText\"", false)
+                        
+                        // Perform the click
+                        val clickResult = performClickOnNode(node)
+                        
+                        if (clickResult) {
+                            Log.d(TAG, "Successfully clicked on screenshot close button: $buttonText")
+                            showToast("Screenshot-Benachrichtigung automatisch geschlossen", false)
+                        } else {
+                            Log.e(TAG, "Failed to click on screenshot close button: $buttonText")
+                            showToast("Klick auf Screenshot-Schließen-Button fehlgeschlagen, versuche alternative Methoden", true)
+                            
+                            // Try alternative methods
+                            tryAlternativeClickMethods(node, buttonText)
+                        }
+                        
+                        // Recycle the node
+                        node.recycle()
+                        return
+                    }
+                }
+                
+                // If no button with text was found, try to find by content description
+                for (buttonText in closeButtonTexts) {
+                    val node = findNodeByContentDescription(rootNode!!, buttonText)
+                    if (node != null) {
+                        Log.d(TAG, "Found screenshot close button with description: $buttonText")
+                        showToast("Screenshot-Schließen-Button gefunden mit Beschreibung: \"$buttonText\"", false)
+                        
+                        // Perform the click
+                        val clickResult = performClickOnNode(node)
+                        
+                        if (clickResult) {
+                            Log.d(TAG, "Successfully clicked on screenshot close button with description: $buttonText")
+                            showToast("Screenshot-Benachrichtigung automatisch geschlossen", false)
+                        } else {
+                            Log.e(TAG, "Failed to click on screenshot close button with description: $buttonText")
+                            showToast("Klick auf Screenshot-Schließen-Button fehlgeschlagen, versuche alternative Methoden", true)
+                            
+                            // Try alternative methods
+                            tryAlternativeClickMethods(node, buttonText)
+                        }
+                        
+                        // Recycle the node
+                        node.recycle()
+                        return
+                    }
+                }
+                
+                // If no specific button was found, look for any button in a notification
+                val notificationButtons = findNotificationButtons()
+                if (notificationButtons.isNotEmpty()) {
+                    // Try clicking the rightmost button (usually the close/dismiss button)
+                    val rightmostButton = findRightmostButton(notificationButtons)
+                    if (rightmostButton != null) {
+                        Log.d(TAG, "Found rightmost notification button, assuming it's the close button")
+                        showToast("Versuche den rechtesten Button in der Benachrichtigung zu drücken", false)
+                        
+                        // Perform the click
+                        val clickResult = performClickOnNode(rightmostButton)
+                        
+                        if (clickResult) {
+                            Log.d(TAG, "Successfully clicked on rightmost notification button")
+                            showToast("Screenshot-Benachrichtigung automatisch geschlossen", false)
+                        } else {
+                            Log.e(TAG, "Failed to click on rightmost notification button")
+                            showToast("Klick auf rechtesten Button in der Benachrichtigung fehlgeschlagen", true)
+                            
+                            // Try alternative methods
+                            tryAlternativeClickMethods(rightmostButton, "Close")
+                        }
+                        
+                        // Recycle the node
+                        rightmostButton.recycle()
+                        
+                        // Recycle all notification buttons
+                        notificationButtons.forEach { it.recycle() }
+                        return
+                    }
+                    
+                    // Recycle all notification buttons
+                    notificationButtons.forEach { it.recycle() }
+                }
+                
+                Log.d(TAG, "Could not find screenshot close button")
+                showToast("Konnte keinen Screenshot-Schließen-Button finden", true)
+            } catch (e: Exception) {
+                Log.e(TAG, "Error closing screenshot notification: ${e.message}")
+                showToast("Fehler beim Schließen der Screenshot-Benachrichtigung: ${e.message}", true)
+            }
+        }, 1000) // 1000ms delay to ensure notification is visible
+    }
+    
+    /**
+     * Find all buttons in notifications
+     */
+    private fun findNotificationButtons(): List<AccessibilityNodeInfo> {
+        val buttons = mutableListOf<AccessibilityNodeInfo>()
+        
+        try {
+            // Check if root node is available
+            if (rootNode == null) {
+                Log.e(TAG, "Root node is null, cannot find notification buttons")
+                return buttons
+            }
+            
+            // Find nodes that might be notifications
+            val potentialNotifications = findPotentialNotifications(rootNode!!)
+            
+            // For each potential notification, find clickable children
+            for (notification in potentialNotifications) {
+                findClickableChildren(notification, buttons)
+                notification.recycle()
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error finding notification buttons: ${e.message}")
+        }
+        
+        return buttons
+    }
+    
+    /**
+     * Find potential notification containers
+     */
+    private fun findPotentialNotifications(node: AccessibilityNodeInfo): List<AccessibilityNodeInfo> {
+        val notifications = mutableListOf<AccessibilityNodeInfo>()
+        
+        try {
+            // Check if this node might be a notification
+            val className = node.className?.toString() ?: ""
+            if (className.contains("Notification", ignoreCase = true) || 
+                className.contains("StatusBar", ignoreCase = true) ||
+                (getNodeId(node).contains("notification", ignoreCase = true))) {
+                notifications.add(AccessibilityNodeInfo.obtain(node))
+            }
+            
+            // Check children recursively
+            for (i in 0 until node.childCount) {
+                val child = node.getChild(i) ?: continue
+                notifications.addAll(findPotentialNotifications(child))
+                child.recycle()
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error finding potential notifications: ${e.message}")
+        }
+        
+        return notifications
+    }
+    
+    /**
+     * Find clickable children of a node
+     */
+    private fun findClickableChildren(node: AccessibilityNodeInfo, buttons: MutableList<AccessibilityNodeInfo>) {
+        try {
+            // Check if this node is clickable
+            if (node.isClickable) {
+                // Check if it's a button-like element
+                val className = node.className?.toString() ?: ""
+                if (className.contains("Button", ignoreCase = true) || 
+                    className.contains("ImageView", ignoreCase = true) ||
+                    className.contains("TextView", ignoreCase = true) ||
+                    className.contains("ImageButton", ignoreCase = true)) {
+                    buttons.add(AccessibilityNodeInfo.obtain(node))
+                }
+            }
+            
+            // Check children recursively
+            for (i in 0 until node.childCount) {
+                val child = node.getChild(i) ?: continue
+                findClickableChildren(child, buttons)
+                child.recycle()
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error finding clickable children: ${e.message}")
+        }
+    }
+    
+    /**
+     * Find the rightmost button in a list of buttons
+     */
+    private fun findRightmostButton(buttons: List<AccessibilityNodeInfo>): AccessibilityNodeInfo? {
+        if (buttons.isEmpty()) {
+            return null
+        }
+        
+        var rightmostButton: AccessibilityNodeInfo? = null
+        var rightmostX = -1
+        
+        for (button in buttons) {
+            val rect = Rect()
+            button.getBoundsInScreen(rect)
+            
+            if (rect.centerX() > rightmostX) {
+                rightmostX = rect.centerX()
+                rightmostButton = AccessibilityNodeInfo.obtain(button)
+            }
+        }
+        
+        return rightmostButton
     }
     
     /**
@@ -1890,10 +2161,10 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
         showToast("Scrolle nach links von bestimmter Position...", false)
         
         try {
-            // Create a path for the gesture (swipe from specified position leftward by the specified distance)
+            // Create a path for the gesture (swipe from specified position to the left by the specified distance)
             val swipePath = Path()
             swipePath.moveTo(x, y) // Start from specified position
-            swipePath.lineTo(x - distance, y) // Move leftward by the specified distance
+            swipePath.lineTo(x - distance, y) // Move to the left by the specified distance
             
             // Create a gesture builder and add the swipe
             val gestureBuilder = GestureDescription.Builder()
@@ -1998,10 +2269,10 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
         showToast("Scrolle nach rechts von bestimmter Position...", false)
         
         try {
-            // Create a path for the gesture (swipe from specified position rightward by the specified distance)
+            // Create a path for the gesture (swipe from specified position to the right by the specified distance)
             val swipePath = Path()
             swipePath.moveTo(x, y) // Start from specified position
-            swipePath.lineTo(x + distance, y) // Move rightward by the specified distance
+            swipePath.lineTo(x + distance, y) // Move to the right by the specified distance
             
             // Create a gesture builder and add the swipe
             val gestureBuilder = GestureDescription.Builder()
@@ -2043,19 +2314,18 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
      * Show a toast message
      */
     private fun showToast(message: String, isError: Boolean) {
-        Log.d(TAG, "Showing toast: $message, isError: $isError")
-        
-        // Show toast on main thread
-        Handler(Looper.getMainLooper()).post {
-            // Try to use MainActivity to show the toast
-            val mainActivity = MainActivity.getInstance()
-            if (mainActivity != null) {
-                mainActivity.updateStatusMessage(message, isError)
-            } else {
-                // Fallback to regular toast
-                val duration = if (isError) Toast.LENGTH_LONG else Toast.LENGTH_SHORT
-                Toast.makeText(applicationContext, message, duration).show()
+        try {
+            // Show the toast on the main thread
+            Handler(Looper.getMainLooper()).post {
+                val mainActivity = MainActivity.getInstance()
+                if (mainActivity != null) {
+                    mainActivity.updateStatusMessage(message, isError)
+                } else {
+                    Toast.makeText(applicationContext, message, Toast.LENGTH_SHORT).show()
+                }
             }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error showing toast: ${e.message}")
         }
     }
 }
