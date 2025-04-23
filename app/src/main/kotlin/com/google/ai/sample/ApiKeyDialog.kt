@@ -70,7 +70,7 @@ fun ApiKeyDialog(
                 // Get API Key button
                 Button(
                     onClick = {
-                        val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://aistudio.google.com/u/0/apikey"))
+                        val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://makersuite.google.com/app/apikey"))
                         context.startActivity(intent)
                     },
                     modifier = Modifier
