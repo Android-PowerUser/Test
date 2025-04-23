@@ -1406,20 +1406,6 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
                 
                 // List of possible button texts for "Close" in different languages and ROMs
                 val closeButtonTexts = listOf(
-                    "Close", "Schließen", "Cerrar", "Fermer", "Chiudi", "Fechar", "Sluiten", 
-                    "Lukk", "Luk", "Stäng", "Sulje", "Zamknij", "Zavřít", "Zatvoriť", "Bezárás",
-                    "Închide", "Затвори", "Закрыть", "Закрити", "Затвори", "Κλείσιμο", "Kapat",
-                    "סגור", "إغلاق", "बंद करें", "बंद करा", "閉じる", "关闭", "關閉", "닫기",
-                    "Đóng", "ปิด", "Tutup", "Isara", "Ditutup", "Tanca", "Peche", "Itxi",
-                    "Cau", "Mbyll", "Zapri", "Aizvērt", "Uždaryti", "Sulge", "Zapri", "Zatvori",
-                    "Затвори", "Затвори", "Затвори", "Dùin", "Cau", "Funga", "Vala", "Xirra",
-                    "Dismiss", "Cancel", "Abbrechen", "Cancelar", "Annuler", "Annulla", "Cancelar",
-                    "Annuleren", "Avbryt", "Annuller", "Avbryt", "Peruuta", "Anuluj", "Zrušit",
-                    "Zrušiť", "Mégse", "Anulare", "Отказ", "Отмена", "Скасувати", "Откажи", "Ακύρωση",
-                    "İptal", "ביטול", "إلغاء", "रद्द करें", "रद्द करा", "キャンセル", "取消", "取消", "취소",
-                    "Hủy", "ยกเลิก", "Batal", "Kanselahin", "Batalkan", "Cancel·la", "Anular", "Utzi",
-                    "Canslo", "Anulo", "Prekliči", "Atcelt", "Atšaukti", "Tühista", "Prekini", "Odustani",
-                    "Откажи", "Откажи", "Откажи", "Sguir dheth", "Canslo", "Ghairi", "Khansela", "Ħassar",
                     "Screenshot close", "Screenshot schließen", "Cerrar captura de pantalla", 
                     "Fermer la capture d'écran", "Chiudi screenshot", "Fechar captura de tela",
                     "Screenshot sluiten", "Lukk skjermbilde", "Luk skærmbillede", "Stäng skärmbild",
