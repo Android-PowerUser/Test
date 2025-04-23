@@ -1400,7 +1400,8 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
                 // Check if root node is available
                 if (rootNode == null) {
                     Log.e(TAG, "Root node is null, cannot close screenshot notification")
-                    return
+                    showToast("Fehler: Root-Knoten ist nicht verfügbar", true)
+                    return@postDelayed
                 }
                 
                 // List of possible button texts for "Close" in different languages and ROMs
