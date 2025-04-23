@@ -496,10 +496,10 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
             showToast("Versuche Text einzufügen: \"$text\"", false)
             
             // First, select all existing text
-            val selectAllResult = node.performAction(AccessibilityNodeInfo.ACTION_SELECT_ALL)
+            val selectAllResult = node.performAction(AccessibilityNodeInfo.ACTION_FOCUS)
             
             if (selectAllResult) {
-                Log.d(TAG, "Successfully selected all text")
+                Log.d(TAG, "Successfully focused text field")
                 
                 // Add a small delay before pasting
                 Handler(Looper.getMainLooper()).postDelayed({
@@ -975,24 +975,20 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
         
         try {
             // Get the app name from the package name
-            val appName = appNamePackageMapper.getAppNameFromPackage(packageName) ?: packageName
+            val appName = packageName
             
             // Try different methods to open the app
             if (openAppUsingLaunchIntent(packageName, appName)) {
-                return
+                // Successfully opened app
+            } else if (openAppUsingMainActivity(packageName, appName)) {
+                // Successfully opened app
+            } else if (openAppUsingQueryIntentActivities(packageName, appName)) {
+                // Successfully opened app
+            } else {
+                // If all methods failed, show an error
+                Log.e(TAG, "Failed to open app: $packageName")
+                showToast("Fehler beim Öffnen der App: $appName", true)
             }
-            
-            if (openAppUsingMainActivity(packageName, appName)) {
-                return
-            }
-            
-            if (openAppUsingQueryIntentActivities(packageName, appName)) {
-                return
-            }
-            
-            // If all methods failed, show an error
-            Log.e(TAG, "Failed to open app: $packageName")
-            showToast("Fehler beim Öffnen der App: $appName", true)
         } catch (e: Exception) {
             Log.e(TAG, "Error opening app: ${e.message}")
             showToast("Fehler beim Öffnen der App: ${e.message}", true)
@@ -1465,7 +1461,7 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
                         
                         // Recycle the node
                         node.recycle()
-                        return
+                        break
                     }
                 }
                 
@@ -1492,7 +1488,7 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
                         
                         // Recycle the node
                         node.recycle()
-                        return
+                        break
                     }
                 }
                 
@@ -1521,10 +1517,6 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
                         
                         // Recycle the node
                         rightmostButton.recycle()
-                        
-                        // Recycle all notification buttons
-                        notificationButtons.forEach { it.recycle() }
-                        return
                     }
                     
                     // Recycle all notification buttons
