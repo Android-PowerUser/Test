@@ -1136,7 +1136,7 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
                     // Wait a moment for the screenshot to be saved, then retrieve it
                     handler.postDelayed({
                         retrieveLatestScreenshot(screenInfo)
-                    }, 600) // Wait 800ms for the screenshot to be saved (reduced from 1000ms)
+                    }, 800) // Wait 800ms for the screenshot to be saved (reduced from 1000ms)
                     
                     return
                 } else {
