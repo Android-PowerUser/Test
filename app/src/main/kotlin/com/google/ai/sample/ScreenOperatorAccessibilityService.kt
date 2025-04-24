@@ -192,6 +192,11 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
                     Log.d(TAG, "Switching to low reasoning model (gemini-2.0-flash-lite)")
                     showToast("Wechsle zu schnellerem Modell (gemini-2.0-flash-lite)", false)
                     GenerativeAiViewModelFactory.lowReasoningModel()
+                } 
+                    is Command.PressEnterKey -> {
+                    Log.d(TAG, "Pressing Enter key")
+                    showToast("Versuche Enter-Taste zu drücken", false)
+                    serviceInstance?.pressEnterKey()
                 }
             }
         }
@@ -964,6 +969,26 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
         } catch (e: Exception) {
             Log.e(TAG, "Error tapping at coordinates with longer duration: ${e.message}")
             showToast("Fehler beim Tippen mit längerer Dauer auf Koordinaten: ${e.message}", true)
+        }
+    }
+
+	/**
+     * Press the Enter key
+     */
+    fun pressEnterKey() {
+        Log.d(TAG, "Pressing Enter key")
+        try {
+            val result = performGlobalAction(GLOBAL_ACTION_ENTER)
+            if (result) {
+                Log.d(TAG, "Successfully pressed Enter key")
+                showToast("Enter-Taste erfolgreich gedrückt", false)
+            } else {
+                Log.e(TAG, "Failed to press Enter key")
+                showToast("Fehler beim Drücken der Enter-Taste", true)
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error pressing Enter key: ${e.message}")
+            showToast("Fehler beim Drücken der Enter-Taste: ${e.message}", true)
         }
     }
     
