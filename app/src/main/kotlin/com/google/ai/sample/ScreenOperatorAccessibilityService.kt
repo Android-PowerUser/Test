@@ -972,13 +972,13 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
         }
     }
 
-	/**
+	   /**
      * Press the Enter key
      */
     fun pressEnterKey() {
         Log.d(TAG, "Pressing Enter key")
         try {
-            val result = performGlobalAction(GLOBAL_ACTION_ENTER)
+            val result = performGlobalAction(AccessibilityService.GLOBAL_ACTION_ENTER)
             if (result) {
                 Log.d(TAG, "Successfully pressed Enter key")
                 showToast("Enter-Taste erfolgreich gedrückt", false)
