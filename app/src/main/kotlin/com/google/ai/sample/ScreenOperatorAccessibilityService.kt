@@ -978,20 +978,60 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
 fun pressEnterKey() {
     Log.d(TAG, "Pressing Enter key")
     try {
-        val result = performGlobalAction(AccessibilityService.GLOBAL_ACTION_ENTER)
-        if (result) {
-            Log.d(TAG, "Successfully pressed Enter key")
-            showToast("Enter-Taste erfolgreich gedrückt", false)
-        } else {
-            Log.e(TAG, "Failed to press Enter key")
-            showToast("Fehler beim Drücken der Enter-Taste", true)
+        // Für Android 11+ (API 30+) können wir GLOBAL_ACTION_ENTER verwenden
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            val result = performGlobalAction(AccessibilityService.GLOBAL_ACTION_ENTER)
+            if (result) {
+                Log.d(TAG, "Successfully pressed Enter key using GLOBAL_ACTION_ENTER")
+                showToast("Enter-Taste erfolgreich gedrückt", false)
+                return
+            }
         }
+        
+        // Fallback für ältere Android-Versionen: Suche nach fokussiertem Element und führe Aktion aus
+        val rootNode = rootInActiveWindow
+        if (rootNode != null) {
+            val focusedNode = findFocusedNode(rootNode)
+            if (focusedNode != null) {
+                val result = focusedNode.performAction(AccessibilityNodeInfo.ACTION_CLICK)
+                focusedNode.recycle()
+                if (result) {
+                    Log.d(TAG, "Successfully pressed Enter key using ACTION_CLICK on focused node")
+                    showToast("Enter-Taste erfolgreich gedrückt", false)
+                    return
+                }
+            }
+            rootNode.recycle()
+        }
+        
+        Log.e(TAG, "Failed to press Enter key")
+        showToast("Fehler beim Drücken der Enter-Taste", true)
     } catch (e: Exception) {
         Log.e(TAG, "Error pressing Enter key: ${e.message}")
         showToast("Fehler beim Drücken der Enter-Taste: ${e.message}", true)
     }
 }
 
+/**
+ * Find the focused node in the accessibility tree
+ */
+private fun findFocusedNode(node: AccessibilityNodeInfo): AccessibilityNodeInfo? {
+    if (node.isFocused) {
+        return AccessibilityNodeInfo.obtain(node)
+    }
+    
+    for (i in 0 until node.childCount) {
+        val child = node.getChild(i) ?: continue
+        val focusedNode = findFocusedNode(child)
+        child.recycle()
+        
+        if (focusedNode != null) {
+            return focusedNode
+        }
+    }
+    
+    return null
+}
     
     /**
      * Open an app by package name
