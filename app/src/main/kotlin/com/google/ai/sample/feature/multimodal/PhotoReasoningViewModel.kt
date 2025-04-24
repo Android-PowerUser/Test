@@ -258,7 +258,7 @@ class PhotoReasoningViewModel(
     private suspend fun handleQuotaExceededError(e: Exception, inputContent: Content, retryCount: Int) {
         // Mark the current API key as failed
         val currentKey = MainActivity.getInstance()?.getCurrentApiKey()
-        if (currentKey != null) {
+        if (currentKey != null && apiKeyManager != null) {
             apiKeyManager.markKeyAsFailed(currentKey)
             
             // Log the specific quota exceeded error
@@ -345,7 +345,7 @@ class PhotoReasoningViewModel(
     private suspend fun handle503Error(e: Exception, inputContent: Content, retryCount: Int) {
         // Mark the current API key as failed
         val currentKey = MainActivity.getInstance()?.getCurrentApiKey()
-        if (currentKey != null) {
+        if (currentKey != null && apiKeyManager != null) {
             apiKeyManager.markKeyAsFailed(currentKey)
             
             // Check if we have only one key or if all keys are failed
@@ -488,13 +488,13 @@ class PhotoReasoningViewModel(
                     _detectedCommands.value = currentCommands
                     
                     // Update status to show commands were detected
-                    val commandDescriptions = commands.map { command -> 
-                        "${command.action}: ${command.parameters.joinToString(", ")}"
-                    }.joinToString("; ")
+                    val commandDescriptions = commands.joinToString("; ") { command -> 
+                        command.toString()
+                    }
                     _commandExecutionStatus.value = "Befehle erkannt: $commandDescriptions"
                     
                     // Execute the commands if the accessibility service is running
-                    val accessibilityService = ScreenOperatorAccessibilityService.getInstance()
+                    val accessibilityService = ScreenOperatorAccessibilityService.getInstanceStatic()
                     if (accessibilityService != null) {
                         for (command in commands) {
                             try {
