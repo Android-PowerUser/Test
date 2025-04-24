@@ -257,6 +257,7 @@ object CommandParser {
                     is Command.ScrollRightFromCoordinates -> Log.d(TAG, "Command details: ScrollRightFromCoordinates(${command.x}, ${command.y}, ${command.distance}, ${command.duration})")
                     is Command.OpenApp -> Log.d(TAG, "Command details: OpenApp(\"${command.packageName}\")")
                     is Command.WriteText -> Log.d(TAG, "Command details: WriteText(\"${command.text}\")")
+                    is Command.PressEnterKey -> Log.d(TAG, "Command details: PressEnterKey")
                 }
             }
         } catch (e: Exception) {
