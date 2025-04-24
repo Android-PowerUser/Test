@@ -264,7 +264,7 @@ class PhotoReasoningViewModel(
                 _chatState.addMessage(
                     PhotoReasoningMessage(
                         text = if (is503Error(e)) 
-                            "Server überlastet (503). Bitte warten Sie 45 Sekunden oder fügen Sie weitere API-Schlüssel hinzu." 
+                            "Server exceeded (503). Please wait or add more API-keys." 
                         else 
                             e.localizedMessage ?: "Unknown error",
                         participant = PhotoParticipant.ERROR
@@ -293,6 +293,7 @@ class PhotoReasoningViewModel(
                message.contains("service unavailable") || 
                message.contains("server unavailable") ||
                message.contains("server error") ||
+               message.contains("You exceeded your current quota") ||
                (e is IOException && message.contains("server"))
     }
     
