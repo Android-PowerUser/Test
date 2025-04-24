@@ -9,6 +9,18 @@ object CommandParser {
     private const val TAG = "CommandParser"
 
     // Regex patterns for different command formats
+    
+    // Enter key patterns - for simulating Enter key press
+    private val ENTER_KEY_PATTERNS = listOf(
+        // Function-like patterns
+        Regex("(?i)\\benter\\(\\)"),
+        Regex("(?i)\\bpressEnter\\(\\)"),
+        Regex("(?i)\\benterKey\\(\\)"),
+        
+        // Natural language patterns
+        Regex("(?i)\\b(?:press|hit|tap|drücke|tippe auf) (?:the )?enter(?: key| button)?\\b"),
+        Regex("(?i)\\b(?:press|hit|tap|drücke|tippe auf) (?:the )?return(?: key| button)?\\b")
+    )
 
     // Model selection patterns - for switching between high and low reasoning models
     private val MODEL_SELECTION_PATTERNS = listOf(
@@ -245,6 +257,7 @@ object CommandParser {
                     is Command.ScrollRightFromCoordinates -> Log.d(TAG, "Command details: ScrollRightFromCoordinates(${command.x}, ${command.y}, ${command.distance}, ${command.duration})")
                     is Command.OpenApp -> Log.d(TAG, "Command details: OpenApp(\"${command.packageName}\")")
                     is Command.WriteText -> Log.d(TAG, "Command details: WriteText(\"${command.text}\")")
+                    is Command.PressEnterKey -> Log.d(TAG, "Command details: PressEnterKey")
                 }
             }
         } catch (e: Exception) {
@@ -296,6 +309,27 @@ object CommandParser {
 
         // Look for open app commands
         findOpenAppCommands(text, commands)
+        
+        // Look for enter key commands
+        findEnterKeyCommands(text, commands)
+    }
+    
+    /**
+     * Find enter key commands in the text
+     */
+    private fun findEnterKeyCommands(text: String, commands: MutableList<Command>) {
+        // Try each pattern
+        for (pattern in ENTER_KEY_PATTERNS) {
+            if (pattern.containsMatchIn(text)) {
+                // Check if this command is already in the list (avoid duplicates)
+                if (!commands.any { it is Command.PressEnterKey }) {
+                    Log.d(TAG, "Found enter key command with pattern ${pattern.pattern}")
+                    commands.add(Command.PressEnterKey)
+                    // Only add one enter key command even if multiple matches are found
+                    break
+                }
+            }
+        }
     }
 
     /**
@@ -798,6 +832,11 @@ sealed class Command {
      * Command to scroll left
      */
     object ScrollLeft : Command()
+    
+    /**
+     * Command to press the Enter key
+     */
+    object PressEnterKey : Command()
 
     /**
      * Command to scroll right

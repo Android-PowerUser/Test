@@ -192,6 +192,11 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
                     Log.d(TAG, "Switching to low reasoning model (gemini-2.0-flash-lite)")
                     showToast("Wechsle zu schnellerem Modell (gemini-2.0-flash-lite)", false)
                     GenerativeAiViewModelFactory.lowReasoningModel()
+                } 
+                    is Command.PressEnterKey -> {
+                    Log.d(TAG, "Pressing Enter key")
+                    showToast("Versuche Enter-Taste zu drücken", false)
+                    serviceInstance?.pressEnterKey()
                 }
             }
         }
@@ -966,6 +971,55 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
             showToast("Fehler beim Tippen mit längerer Dauer auf Koordinaten: ${e.message}", true)
         }
     }
+
+	   /**
+ * Press the Enter key
+ */
+fun pressEnterKey() {
+    Log.d(TAG, "Pressing Enter key")
+    try {
+        // Get display metrics to calculate screen dimensions
+        val displayMetrics = resources.displayMetrics
+        val screenWidth = displayMetrics.widthPixels
+        val screenHeight = displayMetrics.heightPixels
+        
+        // Calculate tap position at 95% of width and 95% of height
+        val x = (screenWidth * 0.95f).toInt()
+        val y = (screenHeight * 0.96f).toInt()
+        
+        // Create gesture builder
+        val gestureBuilder = GestureDescription.Builder()
+        val clickPath = Path()
+        
+        // Add tap path (down and up at the same position)
+        clickPath.moveTo(x.toFloat(), y.toFloat())
+        
+        // Set gesture stroke - duration 100ms for a quick tap
+        val clickStroke = GestureDescription.StrokeDescription(clickPath, 0, 100)
+        gestureBuilder.addStroke(clickStroke)
+        
+        // Dispatch the gesture
+        val result = dispatchGesture(gestureBuilder.build(), object : GestureResultCallback() {
+            override fun onCompleted(gestureDescription: GestureDescription) {
+                Log.d(TAG, "Enter key tap gesture completed")
+                showToast("Enter-Taste erfolgreich gedrückt", false)
+            }
+            
+            override fun onCancelled(gestureDescription: GestureDescription) {
+                Log.e(TAG, "Enter key tap gesture cancelled")
+                showToast("Enter-Tasten-Geste abgebrochen", true)
+            }
+        }, null)
+        
+        if (!result) {
+            Log.e(TAG, "Failed to dispatch Enter key tap gesture")
+            showToast("Fehler beim Drücken der Enter-Taste", true)
+        }
+    } catch (e: Exception) {
+        Log.e(TAG, "Error pressing Enter key: ${e.message}")
+        showToast("Fehler beim Drücken der Enter-Taste: ${e.message}", true)
+    }
+}
     
     /**
      * Open an app by package name
