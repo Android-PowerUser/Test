@@ -176,85 +176,19 @@ class PhotoReasoningViewModel(
         } catch (e: Exception) {
             Log.e(TAG, "Error generating content: ${e.message}", e)
             
-            // Check if this is a 503 error
-            if (is503Error(e) && apiKeyManager != null) {
-                // Mark the current API key as failed
-                val currentKey = MainActivity.getInstance()?.getCurrentApiKey()
-                if (currentKey != null) {
-                    apiKeyManager.markKeyAsFailed(currentKey)
-                    
-                    // Check if we have only one key or if all keys are failed
-                    val keyCount = apiKeyManager.getKeyCount()
-                    val allKeysFailed = apiKeyManager.areAllKeysFailed()
-                    
-                    if (keyCount <= 1 || (allKeysFailed && retryCount >= MAX_RETRY_ATTEMPTS)) {
-                        // Only one key available or all keys have failed after multiple attempts
-                        // Show the special message about waiting or adding more keys
-                        withContext(Dispatchers.Main) {
-                            _uiState.value = PhotoReasoningUiState.Error(
-                                "Server überlastet (503). Bitte warten Sie 45 Sekunden oder fügen Sie weitere API-Schlüssel hinzu."
-                            )
-                            _commandExecutionStatus.value = "Alle API-Schlüssel erschöpft. Bitte warten Sie 45 Sekunden oder fügen Sie weitere API-Schlüssel hinzu."
-                            
-                            // Update chat with error message
-                            _chatState.replaceLastPendingMessage()
-                            _chatState.addMessage(
-                                PhotoReasoningMessage(
-                                    text = "Server überlastet (503). Bitte warten Sie 45 Sekunden oder fügen Sie weitere API-Schlüssel hinzu.",
-                                    participant = PhotoParticipant.ERROR
-                                )
-                            )
-                            _chatMessagesFlow.value = chatMessages
-                            
-                            // Reset failed keys to allow retry after waiting
-                            apiKeyManager.resetFailedKeys()
-                            
-                            // Show toast
-                            MainActivity.getInstance()?.updateStatusMessage(
-                                "Alle API-Schlüssel erschöpft. Bitte warten Sie 45 Sekunden oder fügen Sie weitere API-Schlüssel hinzu.",
-                                true
-                            )
-                            
-                            // Save chat history even after error
-                            saveChatHistory(MainActivity.getInstance()?.applicationContext)
-                        }
-                    } else if (retryCount < MAX_RETRY_ATTEMPTS) {
-                        // Try to switch to the next available key
-                        val nextKey = apiKeyManager.switchToNextAvailableKey()
-                        if (nextKey != null) {
-                            withContext(Dispatchers.Main) {
-                                _commandExecutionStatus.value = "API-Schlüssel erschöpft. Wechsle zu nächstem Schlüssel..."
-                                
-                                // Show toast
-                                MainActivity.getInstance()?.updateStatusMessage(
-                                    "API-Schlüssel erschöpft (503). Wechsle zu nächstem Schlüssel...",
-                                    false
-                                )
-                            }
-                            
-                            // Create a new GenerativeModel with the new API key
-                            // Get the current model name and generation config if available
-                            val modelName = generativeModel.modelName
-                            // Create a new model with the same settings but new API key
-                            generativeModel = GenerativeModel(
-                                modelName = modelName,
-                                apiKey = nextKey
-                            )
-                            
-                            // Create a new chat instance with the new model
-                            chat = generativeModel.startChat(
-                                history = emptyList()
-                            )
-                            
-                            // Retry the request with the new API key
-                            sendMessageWithRetry(inputContent, retryCount + 1)
-                            return
-                        }
-                    }
-                }
+            // Check specifically for quota exceeded errors first
+            if (isQuotaExceededError(e) && apiKeyManager != null) {
+                handleQuotaExceededError(e, inputContent, retryCount)
+                return
             }
             
-            // If we get here, either it's not a 503 error, or we've exhausted all API keys, or reached max retries
+            // Check for other 503 errors
+            if (is503Error(e) && apiKeyManager != null) {
+                handle503Error(e, inputContent, retryCount)
+                return
+            }
+            
+            // If we get here, it's not a 503 error or quota exceeded error
             withContext(Dispatchers.Main) {
                 _uiState.value = PhotoReasoningUiState.Error(e.localizedMessage ?: "Unknown error")
                 _commandExecutionStatus.value = "Fehler bei der Generierung: ${e.localizedMessage}"
@@ -263,10 +197,7 @@ class PhotoReasoningViewModel(
                 _chatState.replaceLastPendingMessage()
                 _chatState.addMessage(
                     PhotoReasoningMessage(
-                        text = if (is503Error(e)) 
-                            "Server exceeded (503). Please wait or add more API-keys." 
-                        else 
-                            e.localizedMessage ?: "Unknown error",
+                        text = e.localizedMessage ?: "Unknown error",
                         participant = PhotoParticipant.ERROR
                     )
                 )
@@ -279,6 +210,26 @@ class PhotoReasoningViewModel(
     }
     
     /**
+     * Check if an exception represents a quota exceeded error
+     * 
+     * @param e The exception to check
+     * @return True if the exception represents a quota exceeded error, false otherwise
+     */
+    private fun isQuotaExceededError(e: Exception): Boolean {
+        // Check for quota exceeded error in the exception message
+        val message = e.message?.lowercase() ?: ""
+        val stackTrace = e.stackTraceToString().lowercase()
+        
+        // Check for quota exceeded patterns in both message and stack trace
+        return message.contains("exceeded your current quota") || 
+               message.contains("quota exceeded") ||
+               message.contains("rate limit") ||
+               stackTrace.contains("exceeded your current quota") ||
+               stackTrace.contains("quota exceeded") ||
+               stackTrace.contains("rate limit")
+    }
+    
+    /**
      * Check if an exception represents a 503 Service Unavailable error
      * 
      * @param e The exception to check
@@ -288,13 +239,188 @@ class PhotoReasoningViewModel(
         // Check for HTTP 503 error in the exception message
         val message = e.message?.lowercase() ?: ""
         
+        // First check if it's a quota exceeded error, which should be handled separately
+        if (isQuotaExceededError(e)) {
+            return false
+        }
+        
         // Check for common 503 error patterns
         return message.contains("503") || 
                message.contains("service unavailable") || 
                message.contains("server unavailable") ||
                message.contains("server error") ||
-               message.contains("You exceeded your current quota") ||
                (e is IOException && message.contains("server"))
+    }
+    
+    /**
+     * Handle quota exceeded errors specifically
+     */
+    private suspend fun handleQuotaExceededError(e: Exception, inputContent: Content, retryCount: Int) {
+        // Mark the current API key as failed
+        val currentKey = MainActivity.getInstance()?.getCurrentApiKey()
+        if (currentKey != null) {
+            apiKeyManager.markKeyAsFailed(currentKey)
+            
+            // Log the specific quota exceeded error
+            Log.e(TAG, "Quota exceeded for API key: ${currentKey.take(5)}..., error: ${e.message}")
+            
+            // Check if we have only one key or if all keys are failed
+            val keyCount = apiKeyManager.getKeyCount()
+            val allKeysFailed = apiKeyManager.areAllKeysFailed()
+            
+            if (keyCount <= 1 || (allKeysFailed && retryCount >= MAX_RETRY_ATTEMPTS)) {
+                // Only one key available or all keys have failed after multiple attempts
+                withContext(Dispatchers.Main) {
+                    _uiState.value = PhotoReasoningUiState.Error(
+                        "API-Kontingent überschritten. Bitte warten Sie oder fügen Sie weitere API-Schlüssel hinzu."
+                    )
+                    _commandExecutionStatus.value = "Alle API-Schlüssel haben ihr Kontingent überschritten. Bitte warten Sie oder fügen Sie weitere API-Schlüssel hinzu."
+                    
+                    // Update chat with error message
+                    _chatState.replaceLastPendingMessage()
+                    _chatState.addMessage(
+                        PhotoReasoningMessage(
+                            text = "API-Kontingent überschritten. Bitte warten Sie oder fügen Sie weitere API-Schlüssel hinzu.",
+                            participant = PhotoParticipant.ERROR
+                        )
+                    )
+                    _chatMessagesFlow.value = chatMessages
+                    
+                    // Reset failed keys to allow retry after waiting
+                    apiKeyManager.resetFailedKeys()
+                    
+                    // Show toast
+                    MainActivity.getInstance()?.updateStatusMessage(
+                        "Alle API-Schlüssel haben ihr Kontingent überschritten. Bitte warten Sie oder fügen Sie weitere API-Schlüssel hinzu.",
+                        true
+                    )
+                    
+                    // Save chat history even after error
+                    saveChatHistory(MainActivity.getInstance()?.applicationContext)
+                }
+            } else if (retryCount < MAX_RETRY_ATTEMPTS) {
+                // Try to switch to the next available key
+                val nextKey = apiKeyManager.switchToNextAvailableKey()
+                if (nextKey != null) {
+                    withContext(Dispatchers.Main) {
+                        _commandExecutionStatus.value = "API-Kontingent überschritten. Wechsle zu nächstem Schlüssel..."
+                        
+                        // Show toast
+                        MainActivity.getInstance()?.updateStatusMessage(
+                            "API-Kontingent überschritten. Wechsle zu nächstem Schlüssel...",
+                            false
+                        )
+                    }
+                    
+                    // Create a new GenerativeModel with the new API key
+                    // Get the current model name and generation config if available
+                    val modelName = generativeModel.modelName
+                    val generationConfig = generativeModel.generationConfig
+                    val safetySettings = generativeModel.safetySettings
+                    
+                    // Create a new model with the same settings but new API key
+                    generativeModel = GenerativeModel(
+                        modelName = modelName,
+                        apiKey = nextKey,
+                        generationConfig = generationConfig,
+                        safetySettings = safetySettings
+                    )
+                    
+                    // Create a new chat instance with the new model
+                    chat = generativeModel.startChat(
+                        history = emptyList()
+                    )
+                    
+                    // Retry the request with the new API key
+                    sendMessageWithRetry(inputContent, retryCount + 1)
+                    return
+                }
+            }
+        }
+    }
+    
+    /**
+     * Handle 503 errors (excluding quota exceeded errors)
+     */
+    private suspend fun handle503Error(e: Exception, inputContent: Content, retryCount: Int) {
+        // Mark the current API key as failed
+        val currentKey = MainActivity.getInstance()?.getCurrentApiKey()
+        if (currentKey != null) {
+            apiKeyManager.markKeyAsFailed(currentKey)
+            
+            // Check if we have only one key or if all keys are failed
+            val keyCount = apiKeyManager.getKeyCount()
+            val allKeysFailed = apiKeyManager.areAllKeysFailed()
+            
+            if (keyCount <= 1 || (allKeysFailed && retryCount >= MAX_RETRY_ATTEMPTS)) {
+                // Only one key available or all keys have failed after multiple attempts
+                withContext(Dispatchers.Main) {
+                    _uiState.value = PhotoReasoningUiState.Error(
+                        "Server überlastet (503). Bitte warten Sie 45 Sekunden oder fügen Sie weitere API-Schlüssel hinzu."
+                    )
+                    _commandExecutionStatus.value = "Alle API-Schlüssel erschöpft. Bitte warten Sie 45 Sekunden oder fügen Sie weitere API-Schlüssel hinzu."
+                    
+                    // Update chat with error message
+                    _chatState.replaceLastPendingMessage()
+                    _chatState.addMessage(
+                        PhotoReasoningMessage(
+                            text = "Server überlastet (503). Bitte warten Sie 45 Sekunden oder fügen Sie weitere API-Schlüssel hinzu.",
+                            participant = PhotoParticipant.ERROR
+                        )
+                    )
+                    _chatMessagesFlow.value = chatMessages
+                    
+                    // Reset failed keys to allow retry after waiting
+                    apiKeyManager.resetFailedKeys()
+                    
+                    // Show toast
+                    MainActivity.getInstance()?.updateStatusMessage(
+                        "Alle API-Schlüssel erschöpft. Bitte warten Sie 45 Sekunden oder fügen Sie weitere API-Schlüssel hinzu.",
+                        true
+                    )
+                    
+                    // Save chat history even after error
+                    saveChatHistory(MainActivity.getInstance()?.applicationContext)
+                }
+            } else if (retryCount < MAX_RETRY_ATTEMPTS) {
+                // Try to switch to the next available key
+                val nextKey = apiKeyManager.switchToNextAvailableKey()
+                if (nextKey != null) {
+                    withContext(Dispatchers.Main) {
+                        _commandExecutionStatus.value = "API-Schlüssel erschöpft. Wechsle zu nächstem Schlüssel..."
+                        
+                        // Show toast
+                        MainActivity.getInstance()?.updateStatusMessage(
+                            "API-Schlüssel erschöpft (503). Wechsle zu nächstem Schlüssel...",
+                            false
+                        )
+                    }
+                    
+                    // Create a new GenerativeModel with the new API key
+                    // Get the current model name and generation config if available
+                    val modelName = generativeModel.modelName
+                    val generationConfig = generativeModel.generationConfig
+                    val safetySettings = generativeModel.safetySettings
+                    
+                    // Create a new model with the same settings but new API key
+                    generativeModel = GenerativeModel(
+                        modelName = modelName,
+                        apiKey = nextKey,
+                        generationConfig = generationConfig,
+                        safetySettings = safetySettings
+                    )
+                    
+                    // Create a new chat instance with the new model
+                    chat = generativeModel.startChat(
+                        history = emptyList()
+                    )
+                    
+                    // Retry the request with the new API key
+                    sendMessageWithRetry(inputContent, retryCount + 1)
+                    return
+                }
+            }
+        }
     }
     
     /**
@@ -363,127 +489,29 @@ class PhotoReasoningViewModel(
                     
                     // Update status to show commands were detected
                     val commandDescriptions = commands.map { command -> 
-                        when (command) {
-                            is Command.ClickButton -> "Klick auf Button: \"${command.buttonText}\""
-                            is Command.TapCoordinates -> "Tippen auf Koordinaten: (${command.x}, ${command.y})"
-                            is Command.TakeScreenshot -> "Screenshot aufnehmen"
-                            is Command.PressHomeButton -> "Home-Button drücken"
-                            is Command.PressBackButton -> "Zurück-Button drücken"
-                            is Command.ShowRecentApps -> "Übersicht der letzten Apps öffnen"
-                            is Command.ScrollDown -> "Nach unten scrollen"
-                            is Command.ScrollUp -> "Nach oben scrollen"
-                            is Command.ScrollLeft -> "Nach links scrollen"
-                            is Command.ScrollRight -> "Nach rechts scrollen"
-                            is Command.ScrollDownFromCoordinates -> "Nach unten scrollen von Position (${command.x}, ${command.y}) mit Distanz ${command.distance}px und Dauer ${command.duration}ms"
-                            is Command.ScrollUpFromCoordinates -> "Nach oben scrollen von Position (${command.x}, ${command.y}) mit Distanz ${command.distance}px und Dauer ${command.duration}ms"
-                            is Command.ScrollLeftFromCoordinates -> "Nach links scrollen von Position (${command.x}, ${command.y}) mit Distanz ${command.distance}px und Dauer ${command.duration}ms"
-                            is Command.ScrollRightFromCoordinates -> "Nach rechts scrollen von Position (${command.x}, ${command.y}) mit Distanz ${command.distance}px und Dauer ${command.duration}ms"
-                            is Command.OpenApp -> "App öffnen: \"${command.packageName}\""
-                            is Command.WriteText -> "Text schreiben: \"${command.text}\""
-                            is Command.UseHighReasoningModel -> "Wechsle zu leistungsfähigerem Modell (gemini-2.5-pro-preview-03-25)"
-                            is Command.UseLowReasoningModel -> "Wechsle zu schnellerem Modell (gemini-2.0-flash-lite)"
-                       		is Command.PressEnterKey -> "Enter command detected"
+                        "${command.action}: ${command.parameters.joinToString(", ")}"
+                    }.joinToString("; ")
+                    _commandExecutionStatus.value = "Befehle erkannt: $commandDescriptions"
+                    
+                    // Execute the commands if the accessibility service is running
+                    val accessibilityService = ScreenOperatorAccessibilityService.getInstance()
+                    if (accessibilityService != null) {
+                        for (command in commands) {
+                            try {
+                                accessibilityService.executeCommand(command)
+                            } catch (e: Exception) {
+                                Log.e(TAG, "Error executing command: ${e.message}", e)
+                                _commandExecutionStatus.value = "Fehler bei der Befehlsausführung: ${e.message}"
+                            }
                         }
+                    } else {
+                        Log.d(TAG, "Accessibility service not running, commands will not be executed")
+                        _commandExecutionStatus.value = "Befehle erkannt, aber Accessibility-Dienst nicht aktiv"
                     }
-                    
-                    // Show toast with detected commands
-                    val mainActivity = MainActivity.getInstance()
-                    mainActivity?.updateStatusMessage(
-                        "Befehle erkannt: ${commandDescriptions.joinToString(", ")}",
-                        false
-                    )
-                    
-                    // Update status
-                    _commandExecutionStatus.value = "Befehle erkannt: ${commandDescriptions.joinToString(", ")}"
-                    
-                    // Check if accessibility service is enabled
-                    val isServiceEnabled = mainActivity?.let { activity -> 
-                        ScreenOperatorAccessibilityService.isAccessibilityServiceEnabled(activity)
-                    } ?: false
-                    
-                    if (!isServiceEnabled) {
-                        Log.e(TAG, "Accessibility service is not enabled")
-                        _commandExecutionStatus.value = "Accessibility Service ist nicht aktiviert. Bitte aktivieren Sie den Service in den Einstellungen."
-                        
-                        // Prompt user to enable accessibility service
-                        mainActivity?.checkAccessibilityServiceEnabled()
-                        return@launch
-                    }
-                    
-                    // Check if service is available
-                    if (!ScreenOperatorAccessibilityService.isServiceAvailable()) {
-                        Log.e(TAG, "Accessibility service is not available")
-                        _commandExecutionStatus.value = "Accessibility Service ist nicht verfügbar. Bitte starten Sie die App neu."
-                        
-                        // Show toast
-                        mainActivity?.updateStatusMessage(
-                            "Accessibility Service ist nicht verfügbar. Bitte starten Sie die App neu.",
-                            true
-                        )
-                        return@launch
-                    }
-                    
-                    // Execute each command
-                    commands.forEachIndexed { index, command ->
-                        Log.d(TAG, "Executing command: $command")
-                        
-                        // Update status to show command is being executed
-                        val commandDescription = when (command) {
-                            is Command.ClickButton -> "Klick auf Button: \"${command.buttonText}\""
-                            is Command.TapCoordinates -> "Tippen auf Koordinaten: (${command.x}, ${command.y})"
-                            is Command.TakeScreenshot -> "Screenshot aufnehmen"
-                            is Command.PressHomeButton -> "Home-Button drücken"
-                            is Command.PressBackButton -> "Zurück-Button drücken"
-                            is Command.ShowRecentApps -> "Übersicht der letzten Apps öffnen"
-                            is Command.ScrollDown -> "Nach unten scrollen"
-                            is Command.ScrollUp -> "Nach oben scrollen"
-                            is Command.ScrollLeft -> "Nach links scrollen"
-                            is Command.ScrollRight -> "Nach rechts scrollen"
-                            is Command.ScrollDownFromCoordinates -> "Nach unten scrollen von Position (${command.x}, ${command.y}) mit Distanz ${command.distance}px und Dauer ${command.duration}ms"
-                            is Command.ScrollUpFromCoordinates -> "Nach oben scrollen von Position (${command.x}, ${command.y}) mit Distanz ${command.distance}px und Dauer ${command.duration}ms"
-                            is Command.ScrollLeftFromCoordinates -> "Nach links scrollen von Position (${command.x}, ${command.y}) mit Distanz ${command.distance}px und Dauer ${command.duration}ms"
-                            is Command.ScrollRightFromCoordinates -> "Nach rechts scrollen von Position (${command.x}, ${command.y}) mit Distanz ${command.distance}px und Dauer ${command.duration}ms"
-                            is Command.OpenApp -> "App öffnen: \"${command.packageName}\""
-                            is Command.WriteText -> "Text schreiben: \"${command.text}\""
-                            is Command.UseHighReasoningModel -> "Wechsle zu leistungsfähigerem Modell (gemini-2.5-pro-preview-03-25)"
-                            is Command.UseLowReasoningModel -> "Wechsle zu schnellerem Modell (gemini-2.0-flash-lite)"
-                            is Command.PressEnterKey -> "Enter Command simulated"
-                        }
-                        
-                        _commandExecutionStatus.value = "Führe aus: $commandDescription (${index + 1}/${commands.size})"
-                        
-                        // Show toast with command being executed
-                        mainActivity?.updateStatusMessage(
-                            "Führe aus: $commandDescription",
-                            false
-                        )
-                        
-                        // Execute the command
-                        ScreenOperatorAccessibilityService.executeCommand(command)
-                        
-                        // Add a small delay between commands to avoid overwhelming the system
-                        kotlinx.coroutines.delay(800)
-                    }
-                    
-                    // Update status to show all commands were executed
-                    _commandExecutionStatus.value = "Alle Befehle ausgeführt: ${commandDescriptions.joinToString(", ")}"
-                    
-                    // Show toast with all commands executed
-                    mainActivity?.updateStatusMessage(
-                        "Alle Befehle ausgeführt",
-                        false
-                    )
                 }
             } catch (e: Exception) {
                 Log.e(TAG, "Error processing commands: ${e.message}", e)
                 _commandExecutionStatus.value = "Fehler bei der Befehlsverarbeitung: ${e.message}"
-                
-                // Show toast with error
-                val mainActivity = MainActivity.getInstance()
-                mainActivity?.updateStatusMessage(
-                    "Fehler bei der Befehlsverarbeitung: ${e.message}",
-                    true
-                )
             }
         }
     }
@@ -491,9 +519,9 @@ class PhotoReasoningViewModel(
     /**
      * Save chat history to SharedPreferences
      */
-    fun saveChatHistory(context: android.content.Context?) {
-        if (context != null) {
-            ChatHistoryPreferences.saveChatMessages(context, chatMessages)
+    private fun saveChatHistory(context: android.content.Context?) {
+        context?.let {
+            ChatHistoryPreferences.saveChatMessages(it, chatMessages)
         }
     }
     
