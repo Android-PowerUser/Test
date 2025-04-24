@@ -210,7 +210,7 @@ fun ChatScreen(
                             is Command.WriteText -> "Text schreiben: \"${command.text}\""
                             is Command.UseHighReasoningModel -> "Wechsle zu leistungsfähigerem Modell (gemini-2.5-pro-preview-03-25)"
                             is Command.UseLowReasoningModel -> "Wechsle zu schnellerem Modell (gemini-2.0-flash-lite)"
-                            is Command.PressEnterKey -> Log.d(TAG, "Command details: PressEnterKey")
+                            is Command.PressEnterKey -> "Enter command detected"
                         }
                         
                         Text(
