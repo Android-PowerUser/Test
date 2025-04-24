@@ -979,7 +979,7 @@ fun pressEnterKey() {
     Log.d(TAG, "Pressing Enter key")
     try {
         // Get display metrics to calculate screen dimensions
-        val displayMetrics = Resources.getSystem().displayMetrics
+        val displayMetrics = resources.displayMetrics
         val screenWidth = displayMetrics.widthPixels
         val screenHeight = displayMetrics.heightPixels
         
