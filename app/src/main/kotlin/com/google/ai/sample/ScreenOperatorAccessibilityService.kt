@@ -978,11 +978,13 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
 fun pressEnterKey() {
     Log.d(TAG, "Pressing Enter key")
     try {
-        // Für Android 11+ (API 30+) können wir GLOBAL_ACTION_ENTER verwenden
+        // For Android 11+ (API 30+) use key event injection if available
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            val result = performGlobalAction(AccessibilityService.GLOBAL_ACTION_ENTER)
+            // Create and dispatch a KeyEvent for ENTER key
+            val result = dispatchKeyEvent(KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_ENTER)) &&
+                         dispatchKeyEvent(KeyEvent(KeyEvent.ACTION_UP, KeyEvent.KEYCODE_ENTER))
             if (result) {
-                Log.d(TAG, "Successfully pressed Enter key using GLOBAL_ACTION_ENTER")
+                Log.d(TAG, "Successfully pressed Enter key using KeyEvent")
                 showToast("Enter-Taste erfolgreich gedrückt", false)
                 return
             }
@@ -1010,27 +1012,6 @@ fun pressEnterKey() {
         Log.e(TAG, "Error pressing Enter key: ${e.message}")
         showToast("Fehler beim Drücken der Enter-Taste: ${e.message}", true)
     }
-}
-
-/**
- * Find the focused node in the accessibility tree
- */
-private fun findFocusedNode(node: AccessibilityNodeInfo): AccessibilityNodeInfo? {
-    if (node.isFocused) {
-        return AccessibilityNodeInfo.obtain(node)
-    }
-    
-    for (i in 0 until node.childCount) {
-        val child = node.getChild(i) ?: continue
-        val focusedNode = findFocusedNode(child)
-        child.recycle()
-        
-        if (focusedNode != null) {
-            return focusedNode
-        }
-    }
-    
-    return null
 }
     
     /**
