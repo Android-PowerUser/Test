@@ -985,7 +985,7 @@ fun pressEnterKey() {
         
         // Calculate tap position at 95% of width and 95% of height
         val x = (screenWidth * 0.95f).toInt()
-        val y = (screenHeight * 0.95f).toInt()
+        val y = (screenHeight * 0.96f).toInt()
         
         // Create gesture builder
         val gestureBuilder = GestureDescription.Builder()
