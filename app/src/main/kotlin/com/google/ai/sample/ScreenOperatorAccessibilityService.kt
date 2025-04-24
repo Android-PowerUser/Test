@@ -978,36 +978,43 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
 fun pressEnterKey() {
     Log.d(TAG, "Pressing Enter key")
     try {
-        // For Android 11+ (API 30+) use key event injection if available
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            // Create and dispatch a KeyEvent for ENTER key
-            val result = dispatchKeyEvent(KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_ENTER)) &&
-                         dispatchKeyEvent(KeyEvent(KeyEvent.ACTION_UP, KeyEvent.KEYCODE_ENTER))
-            if (result) {
-                Log.d(TAG, "Successfully pressed Enter key using KeyEvent")
+        // Get display metrics to calculate screen dimensions
+        val displayMetrics = Resources.getSystem().displayMetrics
+        val screenWidth = displayMetrics.widthPixels
+        val screenHeight = displayMetrics.heightPixels
+        
+        // Calculate tap position at 95% of width and 95% of height
+        val x = (screenWidth * 0.95f).toInt()
+        val y = (screenHeight * 0.95f).toInt()
+        
+        // Create gesture builder
+        val gestureBuilder = GestureDescription.Builder()
+        val clickPath = Path()
+        
+        // Add tap path (down and up at the same position)
+        clickPath.moveTo(x.toFloat(), y.toFloat())
+        
+        // Set gesture stroke - duration 100ms for a quick tap
+        val clickStroke = GestureDescription.StrokeDescription(clickPath, 0, 100)
+        gestureBuilder.addStroke(clickStroke)
+        
+        // Dispatch the gesture
+        val result = dispatchGesture(gestureBuilder.build(), object : GestureResultCallback() {
+            override fun onCompleted(gestureDescription: GestureDescription) {
+                Log.d(TAG, "Enter key tap gesture completed")
                 showToast("Enter-Taste erfolgreich gedrückt", false)
-                return
             }
-        }
-        
-        // Fallback für ältere Android-Versionen: Suche nach fokussiertem Element und führe Aktion aus
-        val rootNode = rootInActiveWindow
-        if (rootNode != null) {
-            val focusedNode = findFocusedNode(rootNode)
-            if (focusedNode != null) {
-                val result = focusedNode.performAction(AccessibilityNodeInfo.ACTION_CLICK)
-                focusedNode.recycle()
-                if (result) {
-                    Log.d(TAG, "Successfully pressed Enter key using ACTION_CLICK on focused node")
-                    showToast("Enter-Taste erfolgreich gedrückt", false)
-                    return
-                }
+            
+            override fun onCancelled(gestureDescription: GestureDescription) {
+                Log.e(TAG, "Enter key tap gesture cancelled")
+                showToast("Enter-Tasten-Geste abgebrochen", true)
             }
-            rootNode.recycle()
-        }
+        }, null)
         
-        Log.e(TAG, "Failed to press Enter key")
-        showToast("Fehler beim Drücken der Enter-Taste", true)
+        if (!result) {
+            Log.e(TAG, "Failed to dispatch Enter key tap gesture")
+            showToast("Fehler beim Drücken der Enter-Taste", true)
+        }
     } catch (e: Exception) {
         Log.e(TAG, "Error pressing Enter key: ${e.message}")
         showToast("Fehler beim Drücken der Enter-Taste: ${e.message}", true)
