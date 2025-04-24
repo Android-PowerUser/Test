@@ -12,8 +12,8 @@ import com.google.ai.sample.feature.text.SummarizeViewModel
 
 // Model options
 enum class ModelOption(val displayName: String, val modelName: String) {
-    GEMINI_FLASH_LITE("Gemini Flash Lite", "gemini-2.0-flash-lite"),
-    GEMINI_FLASH("Gemini Flash", "gemini-2.0-flash"),
+    GEMINI_FLASH_LITE("Gemini 2.0 Flash Lite", "gemini-2.0-flash-lite"),
+    GEMINI_FLASH("Gemini 2.0 Flash", "gemini-2.0-flash"),
     GEMINI_FLASH_PREVIEW("Gemini 2.5 Flash Preview", "gemini-2.5-flash-preview-04-17"),
     GEMINI_PRO("Gemini 2.5 Pro", "gemini-2.5-pro-exp-03-25")
 }
