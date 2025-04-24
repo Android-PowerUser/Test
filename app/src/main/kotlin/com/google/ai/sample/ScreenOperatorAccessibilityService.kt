@@ -973,24 +973,25 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
     }
 
 	   /**
-     * Press the Enter key
-     */
-    fun pressEnterKey() {
-        Log.d(TAG, "Pressing Enter key")
-        try {
-            val result = performGlobalAction(AccessibilityService.GLOBAL_ACTION_ENTER)
-            if (result) {
-                Log.d(TAG, "Successfully pressed Enter key")
-                showToast("Enter-Taste erfolgreich gedrückt", false)
-            } else {
-                Log.e(TAG, "Failed to press Enter key")
-                showToast("Fehler beim Drücken der Enter-Taste", true)
-            }
-        } catch (e: Exception) {
-            Log.e(TAG, "Error pressing Enter key: ${e.message}")
-            showToast("Fehler beim Drücken der Enter-Taste: ${e.message}", true)
+ * Press the Enter key
+ */
+fun pressEnterKey() {
+    Log.d(TAG, "Pressing Enter key")
+    try {
+        val result = performGlobalAction(AccessibilityService.GLOBAL_ACTION_ENTER)
+        if (result) {
+            Log.d(TAG, "Successfully pressed Enter key")
+            showToast("Enter-Taste erfolgreich gedrückt", false)
+        } else {
+            Log.e(TAG, "Failed to press Enter key")
+            showToast("Fehler beim Drücken der Enter-Taste", true)
         }
+    } catch (e: Exception) {
+        Log.e(TAG, "Error pressing Enter key: ${e.message}")
+        showToast("Fehler beim Drücken der Enter-Taste: ${e.message}", true)
     }
+}
+
     
     /**
      * Open an app by package name
