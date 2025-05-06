@@ -54,9 +54,7 @@ fun MenuScreen(
     onApiKeyButtonClicked: () -> Unit = { }
 ) {
     val menuItems = listOf(
-        MenuItem("summarize", R.string.menu_summarize_title, R.string.menu_summarize_description),
-        MenuItem("photo_reasoning", R.string.menu_reason_title, R.string.menu_reason_description),
-        MenuItem("chat", R.string.menu_chat_title, R.string.menu_chat_description)
+        MenuItem("photo_reasoning", R.string.menu_reason_title, R.string.menu_reason_description)
     )
     
     // Get current model
