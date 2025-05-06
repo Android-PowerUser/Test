@@ -493,20 +493,14 @@ class PhotoReasoningViewModel(
                     }
                     _commandExecutionStatus.value = "Befehle erkannt: $commandDescriptions"
                     
-                    // Execute the commands if the accessibility service is running
-                    val accessibilityService = ScreenOperatorAccessibilityService.getInstance()
-                    if (accessibilityService != null) {
-                        for (command in commands) {
-                            try {
-                                accessibilityService.executeCommand(command)
-                            } catch (e: Exception) {
-                                Log.e(TAG, "Error executing command: ${e.message}", e)
-                                _commandExecutionStatus.value = "Fehler bei der Befehlsausführung: ${e.message}"
-                            }
+                    // Execute the commands
+                    for (command in commands) {
+                        try {
+                            ScreenOperatorAccessibilityService.executeCommand(command)
+                        } catch (e: Exception) {
+                            Log.e(TAG, "Error executing command: ${e.message}", e)
+                            _commandExecutionStatus.value = "Fehler bei der Befehlsausführung: ${e.message}"
                         }
-                    } else {
-                        Log.d(TAG, "Accessibility service not running, commands will not be executed")
-                        _commandExecutionStatus.value = "Befehle erkannt, aber Accessibility-Dienst nicht aktiv"
                     }
                 }
             } catch (e: Exception) {
