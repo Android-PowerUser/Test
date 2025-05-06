@@ -494,7 +494,7 @@ class PhotoReasoningViewModel(
                     _commandExecutionStatus.value = "Befehle erkannt: $commandDescriptions"
                     
                     // Execute the commands if the accessibility service is running
-                    val accessibilityService = ScreenOperatorAccessibilityService.getInstanceStatic()
+                    val accessibilityService = ScreenOperatorAccessibilityService.getInstance()
                     if (accessibilityService != null) {
                         for (command in commands) {
                             try {
