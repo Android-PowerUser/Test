@@ -25,6 +25,13 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import androidx.compose.foundation.text.ClickableText
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.withStyle
+import androidx.compose.ui.text.style.TextDecoration
+import androidx.compose.ui.platform.LocalUriHandler
+import androidx.compose.ui.unit.sp
 
 data class MenuItem(
     val routeId: String,
@@ -177,13 +184,40 @@ fun MenuScreen(
             }
         }
         item {
-            Text(
-                text = "There are rate limits for free use of Gemini models. The less powerful the models are, the more you can use them. The limits range from a maximum of 5 to 30 calls per minute. More information is available at https://ai.google.dev/gemini-api/docs/rate-limits",
+            Card(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 16.dp), // Added padding for consistent spacing
-                style = MaterialTheme.typography.bodyMedium 
-            )
+                    .padding(horizontal = 16.dp, vertical = 8.dp) // Ähnlich wie andere Cards
+            ) {
+                val annotatedText = buildAnnotatedString {
+                    append("There are rate limits for free use of Gemini models. The less powerful the models are, the more you can use them. The limits range from a maximum of 5 to 30 calls per minute. More information is available at ")
+
+                    pushStringAnnotation(tag = "URL", annotation = "https://ai.google.dev/gemini-api/docs/rate-limits")
+                    withStyle(style = SpanStyle(color = MaterialTheme.colorScheme.primary, textDecoration = TextDecoration.Underline)) {
+                        append("https://ai.google.dev/gemini-api/docs/rate-limits")
+                    }
+                    pop()
+                }
+
+                val uriHandler = LocalUriHandler.current
+
+                ClickableText(
+                    text = annotatedText,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(all = 16.dp), // Innenabstand für den Text innerhalb der Card
+                    style = MaterialTheme.typography.bodyMedium.copy(
+                        fontSize = MaterialTheme.typography.bodyMedium.fontSize + 2.sp,
+                        color = MaterialTheme.colorScheme.onSurface // Stellt sicher, dass die Standardtextfarbe dem Thema entspricht
+                    ),
+                    onClick = { offset ->
+                        annotatedText.getStringAnnotations(tag = "URL", start = offset, end = offset)
+                            .firstOrNull()?.let { annotation ->
+                                uriHandler.openUri(annotation.item)
+                            }
+                    }
+                )
+            }
         }
     }
 }
