@@ -6,9 +6,7 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewmodel.CreationExtras
 import com.google.ai.client.generativeai.GenerativeModel
 import com.google.ai.client.generativeai.type.generationConfig
-import com.google.ai.sample.feature.chat.ChatViewModel
 import com.google.ai.sample.feature.multimodal.PhotoReasoningViewModel
-import com.google.ai.sample.feature.text.SummarizeViewModel
 
 // Model options
 enum class ModelOption(val displayName: String, val modelName: String) {
@@ -72,16 +70,6 @@ val GenerativeViewModelFactory = object : ViewModelProvider.Factory {
 
         return with(viewModelClass) {
             when {
-                isAssignableFrom(SummarizeViewModel::class.java) -> {
-                    // Initialize a GenerativeModel with the currently selected model
-                    // for text generation
-                    val generativeModel = GenerativeModel(
-                        modelName = currentModelName,
-                        apiKey = apiKey,
-                        generationConfig = config
-                    )
-                    SummarizeViewModel(generativeModel)
-                }
 
                 isAssignableFrom(PhotoReasoningViewModel::class.java) -> {
                     // Initialize a GenerativeModel with the currently selected model
@@ -96,15 +84,6 @@ val GenerativeViewModelFactory = object : ViewModelProvider.Factory {
                     PhotoReasoningViewModel(generativeModel, apiKeyManager)
                 }
 
-                isAssignableFrom(ChatViewModel::class.java) -> {
-                    // Initialize a GenerativeModel with the currently selected model for chat
-                    val generativeModel = GenerativeModel(
-                        modelName = currentModelName,
-                        apiKey = apiKey,
-                        generationConfig = config
-                    )
-                    ChatViewModel(generativeModel)
-                }
 
                 else ->
                     throw IllegalArgumentException("Unknown ViewModel class: ${viewModelClass.name}")
