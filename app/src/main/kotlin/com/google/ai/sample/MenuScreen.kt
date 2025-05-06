@@ -190,7 +190,7 @@ fun MenuScreen(
                     .padding(horizontal = 16.dp, vertical = 8.dp) // Ähnlich wie andere Cards
             ) {
                 val annotatedText = buildAnnotatedString {
-                    append("There are rate limits for free use of Gemini models. The less powerful the models are, the more you can use them. The limits range from a maximum of 5 to 30 calls per minute. More information is available at ")
+                    append("There are rate limits for free use of Gemini models. The less powerful the models are, the more you can use them. The limits range from a maximum of 5 to 30 calls per minute. After each screenshot (every 2-3 seconds) the LLM must respond again. More information is available at ")
 
                     pushStringAnnotation(tag = "URL", annotation = "https://ai.google.dev/gemini-api/docs/rate-limits")
                     withStyle(style = SpanStyle(color = MaterialTheme.colorScheme.primary, textDecoration = TextDecoration.Underline)) {
