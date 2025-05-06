@@ -207,7 +207,7 @@ fun MenuScreen(
                         .fillMaxWidth()
                         .padding(all = 16.dp), // Innenabstand für den Text innerhalb der Card
                     style = MaterialTheme.typography.bodyMedium.copy(
-                        fontSize = MaterialTheme.typography.bodyMedium.fontSize + 2.sp,
+                        fontSize = 15.sp,
                         color = MaterialTheme.colorScheme.onSurface // Stellt sicher, dass die Standardtextfarbe dem Thema entspricht
                     ),
                     onClick = { offset ->
