@@ -92,13 +92,15 @@ class PhotoReasoningViewModel(
         
         // Get the system message
         val systemMessageText = _systemMessage.value
-        
+
+        /*
         // Create the prompt with system message if available
         val prompt = if (systemMessageText.isNotBlank()) {
             "System Message: $systemMessageText\n\nLook at the image(s), and then answer the following question: $userInput"
         } else {
             "Look at the image(s), and then answer the following question: $userInput"
         }
+        */
         
         // Store the current user input and selected images
         currentUserInput = userInput
