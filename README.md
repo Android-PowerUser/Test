@@ -5,6 +5,10 @@ This an Android app operates the screen with commands from vision LLMs.
 ### Waiting list
 Get notified with an E-Mail. https://docs.google.com/forms/d/1wQiKmP9R2PTmZQe_1ZAp3KCv9M8_d9nlqoLsLot2M-I/edit
 
+### Video
+
+https://m.youtube.com/watch?v=o095RSFXJuc
+
 ### Help with development
 
 Current development step:
