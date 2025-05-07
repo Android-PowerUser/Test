@@ -1,6 +1,6 @@
 ## Screen Operator (In development stage)
 
-### This app is intended to operate the screen with vision LLMs.
+### This app operates the screen with vision LLMs.
 
 ### Waiting list
 Get notified with an E-Mail. https://docs.google.com/forms/d/1wQiKmP9R2PTmZQe_1ZAp3KCv9M8_d9nlqoLsLot2M-I/edit
