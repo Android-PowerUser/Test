@@ -14,15 +14,3 @@ Fix a bug that caused that if you switch the LLM you must go back and in again (
 Fix a bug that prevents some apps from being launched by Screen Operator (branch open_apps_attempt_2).
 
 Correct implementation of MediaProjection (Create screenshots for Gemini). Almost finished code in the screenshot branch. The current workaround is to trigger a screenshot via the accessibility service. However, this leads to the thumbnail.
-
-#### Free API
-
-Follow the instructions on Google AI Studio [setup page](https://makersuite.google.com/app/apikey) to obtain an API key.
-
-```txt
-apiKey=YOUR_API_KEY
-```
-
-##### Documentation
-
-You can find the quick start documentation for the Android Generative AI API [here](https://ai.google.dev/tutorials/android_quickstart).
