@@ -1,2 +1,3 @@
 User-agent: *
 Allow: /
+Allow: /README.md
