@@ -42,7 +42,8 @@ data class MenuItem(
 @Composable
 fun MenuScreen(
     onItemClicked: (String) -> Unit = { },
-    onApiKeyButtonClicked: () -> Unit = { }
+    onApiKeyButtonClicked: () -> Unit = { },
+    onDonationButtonClicked: () -> Unit = { } // Added for donation button
 ) {
     val menuItems = listOf(
         MenuItem("photo_reasoning", R.string.menu_reason_title, R.string.menu_reason_description)
@@ -183,6 +184,35 @@ fun MenuScreen(
                 }
             }
         }
+
+        // Donation Button Card
+        item {
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 8.dp)
+            ) {
+                Row(
+                    modifier = Modifier
+                        .padding(all = 16.dp)
+                        .fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "Unterstütze die App", // Support the App
+                        style = MaterialTheme.typography.titleMedium,
+                        modifier = Modifier.weight(1f)
+                    )
+                    Button(
+                        onClick = onDonationButtonClicked, // Call the new handler
+                        modifier = Modifier.padding(start = 8.dp)
+                    ) {
+                        Text(text = "Spenden (2,90 €/Monat)") // Donate (€2.90/Month)
+                    }
+                }
+            }
+        }
+
         item {
             Card(
                 modifier = Modifier
@@ -227,3 +257,4 @@ fun MenuScreen(
 fun MenuScreenPreview() {
     MenuScreen()
 }
+
