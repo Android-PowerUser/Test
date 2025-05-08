@@ -60,12 +60,13 @@ import com.android.billingclient.api.PurchasesUpdatedListener
 import com.android.billingclient.api.QueryProductDetailsParams
 import com.android.billingclient.api.QueryPurchasesParams
 import com.google.ai.sample.feature.multimodal.PhotoReasoningRoute
+import com.google.ai.sample.feature.multimodal.PhotoReasoningViewModel // Added import
 import com.google.ai.sample.ui.theme.GenerativeAISample
 import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
 
-    private var photoReasoningViewModel: com.google.ai.sample.feature.multimodal.PhotoReasoningViewModel? = null
+    private var photoReasoningViewModel: PhotoReasoningViewModel? = null // Corrected type
     private lateinit var apiKeyManager: ApiKeyManager
     private var showApiKeyDialog by mutableStateOf(false)
 
@@ -147,7 +148,6 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    // Corrected: Made public to be accessible from ViewModels and other classes
     fun getCurrentApiKey(): String? {
         return if (::apiKeyManager.isInitialized) {
             apiKeyManager.getCurrentApiKey()
@@ -156,30 +156,22 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    // Corrected: Made internal to be accessible from other classes in the same module
     internal fun checkAccessibilityServiceEnabled(): Boolean {
-        // Dummy implementation - replace with actual check
-        Log.d(TAG, "Checking accessibility service (dummy check).")
+        Log.d(TAG, "Checking accessibility service.")
         val service = packageName + "/" + ScreenOperatorAccessibilityService::class.java.canonicalName
         val enabledServices = Settings.Secure.getString(contentResolver, Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES)
         val isEnabled = enabledServices?.contains(service, ignoreCase = true) == true
         if (!isEnabled) {
-            Log.d(TAG, "Accessibility Service not enabled. Prompting user.")
-            // Optionally, prompt user to enable it here or show a persistent message
+            Log.d(TAG, "Accessibility Service not enabled.")
         }
         return isEnabled
     }
 
-    // Corrected: Made internal to be accessible from other classes in the same module
     internal fun requestManageExternalStoragePermission() {
-        // Dummy implementation - replace with actual request if needed for specific Android versions
         Log.d(TAG, "Requesting manage external storage permission (dummy).")
     }
 
-    // Corrected: Changed signature to accept a Boolean for error state
     fun updateStatusMessage(message: String, isError: Boolean = false) {
-        // Displaying as a Toast for now, can be changed to Snackbar or other UI element
-        // You might want to change the Toast duration or appearance based on isError
         Toast.makeText(this, message, if (isError) Toast.LENGTH_LONG else Toast.LENGTH_SHORT).show()
         if (isError) {
             Log.e(TAG, "Status Message (Error): $message")
@@ -188,19 +180,29 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    // Added to restore functionality
+    fun getPhotoReasoningViewModel(): PhotoReasoningViewModel? {
+        return photoReasoningViewModel
+    }
+
+    // Added to restore functionality
+    fun setPhotoReasoningViewModel(viewModel: PhotoReasoningViewModel) {
+        this.photoReasoningViewModel = viewModel
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         instance = this
         Log.d(TAG, "onCreate: Setting MainActivity instance")
 
         apiKeyManager = ApiKeyManager.getInstance(this)
-        val apiKey = getCurrentApiKey() // Use the corrected public method
+        val apiKey = getCurrentApiKey()
         if (apiKey.isNullOrEmpty()) {
             showApiKeyDialog = true
         }
 
         checkAndRequestPermissions()
-        checkAccessibilityServiceEnabled() // Call the corrected internal method
+        checkAccessibilityServiceEnabled()
         setupBillingClient()
 
         TrialManager.initializeTrialStateFlagsIfNecessary(this)
@@ -216,7 +218,6 @@ class MainActivity : ComponentActivity() {
             registerReceiver(trialStatusReceiver, intentFilter)
         }
 
-        // Initial check of trial state without internet time (will likely be INTERNET_UNAVAILABLE or NOT_YET_STARTED)
         updateTrialState(TrialManager.getTrialState(this, null))
         startTrialServiceIfNeeded()
 
@@ -240,21 +241,20 @@ class MainActivity : ComponentActivity() {
                             }
                         )
                     }
-                    // Handle different trial states with dialogs
                     when (currentTrialState) {
                         TrialManager.TrialState.EXPIRED_INTERNET_TIME_CONFIRMED -> {
                             TrialExpiredDialog(
                                 onPurchaseClick = { initiateDonationPurchase() },
-                                onDismiss = { /* Persistent dialog, dismiss does nothing or closes app */ }
+                                onDismiss = { /* Persistent dialog */ }
                             )
                         }
                         TrialManager.TrialState.NOT_YET_STARTED_AWAITING_INTERNET,
                         TrialManager.TrialState.INTERNET_UNAVAILABLE_CANNOT_VERIFY -> {
-                            if (showTrialInfoDialog) { // Show a less intrusive dialog/banner for these states
+                            if (showTrialInfoDialog) {
                                 InfoDialog(message = trialInfoMessage, onDismiss = { showTrialInfoDialog = false })
                             }
                         }
-                        else -> { /* ACTIVE or PURCHASED, no special dialog needed here */ }
+                        else -> { /* ACTIVE or PURCHASED */ }
                     }
                 }
             }
@@ -324,7 +324,7 @@ class MainActivity : ComponentActivity() {
                 if (billingResult.responseCode == BillingClient.BillingResponseCode.OK) {
                     Log.d(TAG, "BillingClient setup successful.")
                     queryProductDetails()
-                    queryActiveSubscriptions() // Check for existing purchases
+                    queryActiveSubscriptions()
                 } else {
                     Log.e(TAG, "BillingClient setup failed: ${billingResult.debugMessage}")
                 }
@@ -332,7 +332,6 @@ class MainActivity : ComponentActivity() {
 
             override fun onBillingServiceDisconnected() {
                 Log.w(TAG, "BillingClient service disconnected.")
-                // Consider a retry policy
             }
         })
     }
@@ -413,7 +412,7 @@ class MainActivity : ComponentActivity() {
                             updateTrialState(TrialManager.TrialState.PURCHASED)
                             val stopIntent = Intent(this, TrialTimerService::class.java)
                             stopIntent.action = TrialTimerService.ACTION_STOP_TIMER
-                            startService(stopIntent) // Stop the service
+                            startService(stopIntent)
                         } else {
                             Log.e(TAG, "Failed to acknowledge purchase: ${ackBillingResult.debugMessage}")
                             updateStatusMessage("Fehler beim Bestätigen des Kaufs: ${ackBillingResult.debugMessage}", true)
@@ -422,7 +421,7 @@ class MainActivity : ComponentActivity() {
                 } else {
                     Log.d(TAG, "Subscription already acknowledged.")
                     updateStatusMessage("Abonnement bereits aktiv.")
-                    TrialManager.markAsPurchased(this) // Ensure state is correct
+                    TrialManager.markAsPurchased(this)
                     updateTrialState(TrialManager.TrialState.PURCHASED)
                 }
             }
@@ -441,7 +440,7 @@ class MainActivity : ComponentActivity() {
                 purchases.forEach { purchase ->
                     if (purchase.products.contains(subscriptionProductId) && purchase.purchaseState == Purchase.PurchaseState.PURCHASED) {
                         isSubscribed = true
-                        if (!purchase.isAcknowledged) handlePurchase(purchase) // Acknowledge if needed
+                        if (!purchase.isAcknowledged) handlePurchase(purchase) 
                     }
                 }
                 if (isSubscribed) {
@@ -450,16 +449,14 @@ class MainActivity : ComponentActivity() {
                     updateTrialState(TrialManager.TrialState.PURCHASED)
                     val stopIntent = Intent(this, TrialTimerService::class.java)
                     stopIntent.action = TrialTimerService.ACTION_STOP_TIMER
-                    startService(stopIntent) // Stop service if already purchased
+                    startService(stopIntent)
                 } else {
                     Log.d(TAG, "User has no active subscription. Trial logic will apply.")
-                    // If not purchased, ensure trial state is checked and service started if needed
-                    updateTrialState(TrialManager.getTrialState(this, null)) // Re-check with null initially
+                    updateTrialState(TrialManager.getTrialState(this, null))
                     startTrialServiceIfNeeded()
                 }
             } else {
                 Log.e(TAG, "Failed to query active subscriptions: ${billingResult.debugMessage}")
-                // Fallback: if query fails, still check local trial status and start service
                 updateTrialState(TrialManager.getTrialState(this, null))
                 startTrialServiceIfNeeded()
             }
@@ -472,9 +469,8 @@ class MainActivity : ComponentActivity() {
         Log.d(TAG, "onResume: Setting MainActivity instance")
         checkAccessibilityServiceEnabled()
         if (::billingClient.isInitialized && billingClient.isReady) {
-            queryActiveSubscriptions() // This will also trigger trial state updates
+            queryActiveSubscriptions()
         } else {
-            // If billing client not ready, still update trial state based on local info and start service
             updateTrialState(TrialManager.getTrialState(this, null))
             startTrialServiceIfNeeded()
         }
@@ -498,7 +494,6 @@ class MainActivity : ComponentActivity() {
         if (permissionsToRequest.isNotEmpty()) {
             requestPermissionLauncher.launch(permissionsToRequest)
         } else {
-            // Permissions already granted, ensure service starts if needed
             startTrialServiceIfNeeded()
         }
     }
@@ -507,7 +502,7 @@ class MainActivity : ComponentActivity() {
         arrayOf(
             Manifest.permission.READ_MEDIA_IMAGES,
             Manifest.permission.READ_MEDIA_VIDEO,
-            Manifest.permission.POST_NOTIFICATIONS // For foreground service notifications if used
+            Manifest.permission.POST_NOTIFICATIONS
         )
     } else {
         arrayOf(
@@ -527,7 +522,6 @@ class MainActivity : ComponentActivity() {
         } else {
             Log.d(TAG, "Some permissions denied")
             updateStatusMessage("Einige Berechtigungen wurden verweigert. Die App benötigt diese für volle Funktionalität.", true)
-            // Handle specific permission denials if necessary
         }
     }
 
@@ -543,7 +537,7 @@ class MainActivity : ComponentActivity() {
 @Composable
 fun TrialExpiredDialog(
     onPurchaseClick: () -> Unit,
-    onDismiss: () -> Unit // Usually, a persistent dialog isn't dismissed by user action other than purchase
+    onDismiss: () -> Unit 
 ) {
     Dialog(onDismissRequest = onDismiss) {
         Card(
