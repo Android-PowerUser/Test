@@ -199,7 +199,7 @@ fun MenuScreen(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
-                        text = "Unterstütze die App", // Support the App
+                        text = "Support the Development",
                         style = MaterialTheme.typography.titleMedium,
                         modifier = Modifier.weight(1f)
                     )
