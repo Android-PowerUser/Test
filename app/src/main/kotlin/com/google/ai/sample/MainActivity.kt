@@ -494,14 +494,34 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    private fun checkAccessibilityServiceEnabled() {
+    // Made internal to be accessible from other classes in the same module
+    internal fun checkAccessibilityServiceEnabled() {
         // Dummy implementation
         Log.d(TAG, "Checking accessibility service (dummy check).")
+        // Consider providing a real implementation or a way for other classes to know the status
     }
 
-    private fun requestManageExternalStoragePermission() {
+    // Made internal to be accessible from other classes in the same module
+    internal fun requestManageExternalStoragePermission() {
         // Dummy implementation
         Log.d(TAG, "Requesting manage external storage permission (dummy).")
+        // Consider providing a real implementation
+    }
+
+    // Added to provide API key to other classes like ViewModels
+    fun getCurrentApiKey(): String? {
+        return if (::apiKeyManager.isInitialized) {
+            apiKeyManager.getCurrentApiKey()
+        } else {
+            null
+        }
+    }
+
+    // Added to allow other classes to show messages to the user via MainActivity
+    fun updateStatusMessage(message: String) {
+        // Displaying as a Toast for now, can be changed to Snackbar or other UI element
+        Toast.makeText(this, message, Toast.LENGTH_LONG).show()
+        Log.d(TAG, "Status Message Updated: $message")
     }
 
     companion object {
