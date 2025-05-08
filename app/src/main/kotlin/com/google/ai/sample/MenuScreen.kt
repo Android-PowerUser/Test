@@ -81,14 +81,8 @@ fun MenuScreen(
                         modifier = Modifier.weight(1f)
                     )
                     Button(
-                        onClick = {
-                            if (isTrialExpired) {
-                                Toast.makeText(context, "Bitte abonnieren Sie die App, um fortzufahren.", Toast.LENGTH_LONG).show()
-                            } else {
-                                onApiKeyButtonClicked()
-                            }
-                        },
-                        enabled = !isTrialExpired, // Disable button if trial is expired
+                        onClick = { onApiKeyButtonClicked() },
+                        enabled = true, // Always enabled
                         modifier = Modifier.padding(start = 8.dp)
                     ) {
                         Text(text = "Change API Key")
@@ -130,20 +124,14 @@ fun MenuScreen(
                         Spacer(modifier = Modifier.weight(1f))
 
                         Button(
-                            onClick = { 
-                                if (isTrialExpired) {
-                                    Toast.makeText(context, "Bitte abonnieren Sie die App, um fortzufahren.", Toast.LENGTH_LONG).show()
-                                } else {
-                                    expanded = true 
-                                }
-                            },
-                            enabled = !isTrialExpired // Disable button if trial is expired
+                            onClick = { expanded = true },
+                            enabled = true // Always enabled
                         ) {
                             Text("Change Model")
                         }
 
                         DropdownMenu(
-                            expanded = expanded && !isTrialExpired,
+                            expanded = expanded,
                             onDismissRequest = { expanded = false }
                         ) {
                             val orderedModels = listOf(
@@ -161,7 +149,7 @@ fun MenuScreen(
                                         GenerativeAiViewModelFactory.setModel(modelOption)
                                         expanded = false
                                     },
-                                    enabled = !isTrialExpired // Disable menu item if trial is expired
+                                    enabled = true // Always enabled
                                 )
                             }
                         }
