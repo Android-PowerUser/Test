@@ -90,7 +90,7 @@ dependencies {
     implementation("io.coil-kt:coil-compose:2.5.0")
 
     // Google Play Billing Library
-    implementation("com.android.billingclient:billing-ktx:5.0.0") // Latest version as per documentation
+    implementation("com.android.billingclient:billing-ktx:6.0.0") // Latest version as per documentation
 
     testImplementation("junit:junit:4.13.2")
     androidTestImplementation("androidx.test.ext:junit:1.1.5")
