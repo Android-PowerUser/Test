@@ -66,10 +66,7 @@ object TrialManager {
                 keyGenerator.init(parameterSpec)
                 return keyGenerator.generateKey()
             } else {
-                // For pre-M, KeyStore offers limited capabilities. This is a simplified fallback.
-                // In a real-world scenario for pre-M, you might use a less secure method or disable this feature.
-                // For this example, we'll throw an error or handle it gracefully, as robust KeyStore encryption isn't available.
-                throw SecurityException("KeyStore encryption for trial end time not supported on this API level.")
+                throw SecurityException("KeyStore encryption for trial end time not supported on this API level for key generation.")
             }
         }
         return keyStore.getKey(KEY_ALIAS_TRIAL_END_TIME_KEY, null) as SecretKey
@@ -85,7 +82,7 @@ object TrialManager {
             val secretKey = getOrCreateSecretKey()
             val cipher = Cipher.getInstance(ENCRYPTION_TRANSFORMATION)
             cipher.init(Cipher.ENCRYPT_MODE, secretKey)
-            val iv = cipher.iv // Get the IV, GCM will generate one if not specified
+            val iv = cipher.iv
             val encryptedEndTime = cipher.doFinal(utcEndTimeMs.toString().toByteArray(Charset.defaultCharset()))
 
             val editor = getSharedPreferences(context).edit()
@@ -94,9 +91,9 @@ object TrialManager {
             editor.apply()
             Log.d(TAG, "Encrypted and saved UTC end time.")
         } catch (e: Exception) {
-            Log.e(TAG, "Error encrypting or saving trial end time", e)
-            // Fallback: store unencrypted if Keystore fails, or handle error more strictly
+            Log.e(TAG, "Error encrypting or saving trial end time with KeyStore", e)
             getSharedPreferences(context).edit().putLong(KEY_ENCRYPTED_TRIAL_UTC_END_TIME + "_unencrypted_fallback", utcEndTimeMs).apply()
+            Log.w(TAG, "Saved unencrypted fallback UTC end time due to KeyStore error.")
         }
     }
 
@@ -111,29 +108,33 @@ object TrialManager {
         }
 
         if (encryptedEndTimeString == null || ivString == null) {
-            // Check for unencrypted fallback if main encrypted value is missing
             if (prefs.contains(KEY_ENCRYPTED_TRIAL_UTC_END_TIME + "_unencrypted_fallback")) {
-                Log.w(TAG, "Using unencrypted fallback for end time.")
+                Log.w(TAG, "Using unencrypted fallback for end time as encrypted version not found.")
                 return prefs.getLong(KEY_ENCRYPTED_TRIAL_UTC_END_TIME + "_unencrypted_fallback", 0L)
             }
-            Log.d(TAG, "No encrypted end time or IV found.")
+            Log.d(TAG, "No encrypted end time or IV found, and no fallback.")
             return null
         }
 
         return try {
-            val secretKey = getOrCreateSecretKey() // Or getKey if sure it exists
+            val secretKey = getOrCreateSecretKey()
             val encryptedEndTime = Base64.decode(encryptedEndTimeString, Base64.DEFAULT)
             val iv = Base64.decode(ivString, Base64.DEFAULT)
 
             val cipher = Cipher.getInstance(ENCRYPTION_TRANSFORMATION)
-            val spec = GCMParameterSpec(128, iv) // 128 is the GCM tag length in bits
+            val spec = GCMParameterSpec(128, iv)
             cipher.init(Cipher.DECRYPT_MODE, secretKey, spec)
             val decryptedBytes = cipher.doFinal(encryptedEndTime)
             val decryptedString = String(decryptedBytes, Charset.defaultCharset())
             Log.d(TAG, "Decrypted UTC end time successfully.")
             decryptedString.toLongOrNull()
         } catch (e: Exception) {
-            Log.e(TAG, "Error decrypting trial end time", e)
+            Log.e(TAG, "Error decrypting trial end time with KeyStore", e)
+            // If decryption fails, try to use the fallback if it exists
+            if (prefs.contains(KEY_ENCRYPTED_TRIAL_UTC_END_TIME + "_unencrypted_fallback")) {
+                Log.w(TAG, "Using unencrypted fallback for end time due to decryption error.")
+                return prefs.getLong(KEY_ENCRYPTED_TRIAL_UTC_END_TIME + "_unencrypted_fallback", 0L)
+            }
             null
         }
     }
@@ -144,22 +145,15 @@ object TrialManager {
             Log.d(TAG, "App is purchased, no trial needed.")
             return
         }
+        // Only start if no end time is set AND we are awaiting the first internet time.
         if (getDecryptedTrialUtcEndTime(context) == null && prefs.getBoolean(KEY_TRIAL_AWAITING_FIRST_INTERNET_TIME, true)) {
             val utcEndTimeMs = currentUtcTimeMs + TRIAL_DURATION_MS
             saveEncryptedTrialUtcEndTime(context, utcEndTimeMs)
+            // Crucially, set awaiting flag to false *after* attempting to save.
             prefs.edit().putBoolean(KEY_TRIAL_AWAITING_FIRST_INTERNET_TIME, false).apply()
-            Log.i(TAG, "Trial started with internet time. Ends at UTC: $utcEndTimeMs")
+            Log.i(TAG, "Trial started with internet time. Ends at UTC: $utcEndTimeMs. Awaiting flag set to false.")
         } else {
-            Log.d(TAG, "Trial already started or not awaiting first internet time.")
-        }
-    }
-
-    private fun isTrialExpiredBasedOnInternetTime(context: Context, currentUtcTimeMs: Long): Boolean {
-        val utcEndTimeMs = getDecryptedTrialUtcEndTime(context)
-        return if (utcEndTimeMs != null) {
-            currentUtcTimeMs >= utcEndTimeMs
-        } else {
-            false // If no end time is set, it's not expired (might be awaiting first internet time)
+            Log.d(TAG, "Trial already started or not awaiting first internet time (or end time already exists).")
         }
     }
 
@@ -173,29 +167,31 @@ object TrialManager {
         val decryptedUtcEndTime = getDecryptedTrialUtcEndTime(context)
 
         if (currentUtcTimeMs == null) {
-            // If we don't have current internet time, we can't definitively say if it's active or expired
-            // unless it was already marked as awaiting or an end time was never set.
             return if (decryptedUtcEndTime == null && isAwaitingFirstInternetTime) {
                 TrialState.NOT_YET_STARTED_AWAITING_INTERNET
             } else {
+                // If end time exists, or if not awaiting, but no internet, we can't verify.
                 TrialState.INTERNET_UNAVAILABLE_CANNOT_VERIFY
             }
         }
-
+        // currentUtcTimeMs is NOT null from here
         return when {
             decryptedUtcEndTime == null && isAwaitingFirstInternetTime -> TrialState.NOT_YET_STARTED_AWAITING_INTERNET
             decryptedUtcEndTime == null && !isAwaitingFirstInternetTime -> {
-                // This state should ideally not happen if logic is correct. It means we were not awaiting, but no end time was set.
-                // Treat as if needs to start.
-                Log.w(TAG, "Inconsistent state: Not awaiting internet time, but no end time found. Resetting to await.")
-                prefs.edit().putBoolean(KEY_TRIAL_AWAITING_FIRST_INTERNET_TIME, true).apply()
-                TrialState.NOT_YET_STARTED_AWAITING_INTERNET
+                // This means KEY_TRIAL_AWAITING_FIRST_INTERNET_TIME was set to false (trial start was attempted),
+                // but we couldn't retrieve/decrypt an end time. This is an error in persistence.
+                // Do NOT reset KEY_TRIAL_AWAITING_FIRST_INTERNET_TIME to true, as this causes the "Warte auf..." loop.
+                Log.e(TAG, "CRITICAL INCONSISTENCY: Trial marked as started (not awaiting internet), but no trial end time found. Check save/load logic. Returning INTERNET_UNAVAILABLE_CANNOT_VERIFY.")
+                TrialState.INTERNET_UNAVAILABLE_CANNOT_VERIFY
             }
             decryptedUtcEndTime != null && currentUtcTimeMs < decryptedUtcEndTime -> TrialState.ACTIVE_INTERNET_TIME_CONFIRMED
             decryptedUtcEndTime != null && currentUtcTimeMs >= decryptedUtcEndTime -> TrialState.EXPIRED_INTERNET_TIME_CONFIRMED
             else -> {
-                Log.e(TAG, "Unhandled case in getTrialState")
-                TrialState.NOT_YET_STARTED_AWAITING_INTERNET // Fallback, should be investigated
+                // This case should ideally not be reached if logic above is exhaustive.
+                // Could happen if decryptedUtcEndTime is null but isAwaitingFirstInternetTime is false (covered above)
+                // or some other unexpected combination.
+                Log.e(TAG, "Unhandled case in getTrialState. isAwaiting: $isAwaitingFirstInternetTime, endTime: $decryptedUtcEndTime. Defaulting to NOT_YET_STARTED_AWAITING_INTERNET.")
+                TrialState.NOT_YET_STARTED_AWAITING_INTERNET // Fallback, but should be investigated if hit.
             }
         }
     }
@@ -203,9 +199,10 @@ object TrialManager {
     fun markAsPurchased(context: Context) {
         val editor = getSharedPreferences(context).edit()
         editor.remove(KEY_ENCRYPTED_TRIAL_UTC_END_TIME)
+        editor.remove(KEY_ENCRYPTED_TRIAL_UTC_END_TIME + "_unencrypted_fallback")
         editor.remove(KEY_ENCRYPTION_IV)
         editor.remove(KEY_TRIAL_AWAITING_FIRST_INTERNET_TIME)
-        editor.putBoolean(KEY_PURCHASED_FLAG, true) // Add a clear purchased flag
+        editor.putBoolean(KEY_PURCHASED_FLAG, true)
         editor.apply()
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
@@ -225,12 +222,14 @@ object TrialManager {
     private fun isPurchased(context: Context): Boolean {
         return getSharedPreferences(context).getBoolean(KEY_PURCHASED_FLAG, false)
     }
-    
-    // Call this on app's first ever launch if needed to set the awaiting flag.
-    // Or, rely on the default value of the SharedPreferences boolean.
+
     fun initializeTrialStateFlagsIfNecessary(context: Context) {
         val prefs = getSharedPreferences(context)
-        if (!prefs.contains(KEY_TRIAL_AWAITING_FIRST_INTERNET_TIME) && !prefs.contains(KEY_PURCHASED_FLAG) && !prefs.contains(KEY_ENCRYPTED_TRIAL_UTC_END_TIME)) {
+        if (!prefs.contains(KEY_TRIAL_AWAITING_FIRST_INTERNET_TIME) &&
+            !prefs.contains(KEY_PURCHASED_FLAG) &&
+            !prefs.contains(KEY_ENCRYPTED_TRIAL_UTC_END_TIME) &&
+            !prefs.contains(KEY_ENCRYPTED_TRIAL_UTC_END_TIME + "_unencrypted_fallback")
+        ) {
             prefs.edit().putBoolean(KEY_TRIAL_AWAITING_FIRST_INTERNET_TIME, true).apply()
             Log.d(TAG, "Initialized KEY_TRIAL_AWAITING_FIRST_INTERNET_TIME to true for a fresh state.")
         }
