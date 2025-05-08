@@ -555,8 +555,8 @@ class MainActivity : ComponentActivity() {
     private val requiredPermissions = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
         arrayOf(
             Manifest.permission.READ_MEDIA_IMAGES,
-            Manifest.permission.READ_MEDIA_VIDEO,
-            Manifest.permission.POST_NOTIFICATIONS
+            Manifest.permission.READ_MEDIA_VIDEO
+            // Manifest.permission.POST_NOTIFICATIONS // Removed as per user request
         )
     } else {
         arrayOf(
@@ -570,13 +570,14 @@ class MainActivity : ComponentActivity() {
     ) { permissions ->
         val allGranted = permissions.entries.all { it.value }
         if (allGranted) {
-            Log.d(TAG, "All permissions granted")
-            updateStatusMessage("Alle Berechtigungen erteilt")
+            Log.d(TAG, "All required permissions granted")
+            updateStatusMessage("Alle erforderlichen Berechtigungen erteilt")
             startTrialServiceIfNeeded() // Start service after permissions granted
         } else {
-            Log.d(TAG, "Some permissions denied")
-            updateStatusMessage("Einige Berechtigungen wurden verweigert. Die App benötigt diese für volle Funktionalität.", true)
+            Log.d(TAG, "Some required permissions denied")
+            updateStatusMessage("Einige erforderliche Berechtigungen wurden verweigert. Die App benötigt diese für volle Funktionalität.", true)
             // Consider how to handle denied permissions regarding trial service start
+            // For now, the service won't start if not all *required* permissions are granted.
         }
     }
 
