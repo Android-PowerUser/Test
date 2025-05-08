@@ -147,39 +147,44 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    fun getPhotoReasoningViewModel(): com.google.ai.sample.feature.multimodal.PhotoReasoningViewModel? {
-        return photoReasoningViewModel
-    }
-
-    fun setPhotoReasoningViewModel(viewModel: com.google.ai.sample.feature.multimodal.PhotoReasoningViewModel) {
-        photoReasoningViewModel = viewModel
-    }
-
-    private val requiredPermissions = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-        arrayOf(
-            Manifest.permission.READ_MEDIA_IMAGES,
-            Manifest.permission.READ_MEDIA_VIDEO,
-            Manifest.permission.POST_NOTIFICATIONS // For foreground service notifications if used
-        )
-    } else {
-        arrayOf(
-            Manifest.permission.READ_EXTERNAL_STORAGE,
-            Manifest.permission.WRITE_EXTERNAL_STORAGE
-        )
-    }
-
-    private val requestPermissionLauncher = registerForActivityResult(
-        ActivityResultContracts.RequestMultiplePermissions()
-    ) { permissions ->
-        val allGranted = permissions.entries.all { it.value }
-        if (allGranted) {
-            Log.d(TAG, "All permissions granted")
-            Toast.makeText(this, "Alle Berechtigungen erteilt", Toast.LENGTH_SHORT).show()
-            startTrialServiceIfNeeded()
+    // Corrected: Made public to be accessible from ViewModels and other classes
+    fun getCurrentApiKey(): String? {
+        return if (::apiKeyManager.isInitialized) {
+            apiKeyManager.getCurrentApiKey()
         } else {
-            Log.d(TAG, "Some permissions denied")
-            Toast.makeText(this, "Einige Berechtigungen wurden verweigert. Die App benötigt diese für volle Funktionalität.", Toast.LENGTH_LONG).show()
-            // Handle specific permission denials if necessary
+            null
+        }
+    }
+
+    // Corrected: Made internal to be accessible from other classes in the same module
+    internal fun checkAccessibilityServiceEnabled(): Boolean {
+        // Dummy implementation - replace with actual check
+        Log.d(TAG, "Checking accessibility service (dummy check).")
+        val service = packageName + "/" + ScreenOperatorAccessibilityService::class.java.canonicalName
+        val enabledServices = Settings.Secure.getString(contentResolver, Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES)
+        val isEnabled = enabledServices?.contains(service, ignoreCase = true) == true
+        if (!isEnabled) {
+            Log.d(TAG, "Accessibility Service not enabled. Prompting user.")
+            // Optionally, prompt user to enable it here or show a persistent message
+        }
+        return isEnabled
+    }
+
+    // Corrected: Made internal to be accessible from other classes in the same module
+    internal fun requestManageExternalStoragePermission() {
+        // Dummy implementation - replace with actual request if needed for specific Android versions
+        Log.d(TAG, "Requesting manage external storage permission (dummy).")
+    }
+
+    // Corrected: Changed signature to accept a Boolean for error state
+    fun updateStatusMessage(message: String, isError: Boolean = false) {
+        // Displaying as a Toast for now, can be changed to Snackbar or other UI element
+        // You might want to change the Toast duration or appearance based on isError
+        Toast.makeText(this, message, if (isError) Toast.LENGTH_LONG else Toast.LENGTH_SHORT).show()
+        if (isError) {
+            Log.e(TAG, "Status Message (Error): $message")
+        } else {
+            Log.d(TAG, "Status Message: $message")
         }
     }
 
@@ -189,13 +194,13 @@ class MainActivity : ComponentActivity() {
         Log.d(TAG, "onCreate: Setting MainActivity instance")
 
         apiKeyManager = ApiKeyManager.getInstance(this)
-        val apiKey = apiKeyManager.getCurrentApiKey()
+        val apiKey = getCurrentApiKey() // Use the corrected public method
         if (apiKey.isNullOrEmpty()) {
             showApiKeyDialog = true
         }
 
         checkAndRequestPermissions()
-        checkAccessibilityServiceEnabled()
+        checkAccessibilityServiceEnabled() // Call the corrected internal method
         setupBillingClient()
 
         TrialManager.initializeTrialStateFlagsIfNecessary(this)
@@ -268,14 +273,14 @@ class MainActivity : ComponentActivity() {
                         if (isAppUsable) {
                             navController.navigate(routeId)
                         } else {
-                            Toast.makeText(this@MainActivity, trialInfoMessage, Toast.LENGTH_LONG).show()
+                            updateStatusMessage(trialInfoMessage, isError = true)
                         }
                     },
                     onApiKeyButtonClicked = {
                         if (isAppUsable) {
                             showApiKeyDialog = true
                         } else {
-                            Toast.makeText(this@MainActivity, trialInfoMessage, Toast.LENGTH_LONG).show()
+                            updateStatusMessage(trialInfoMessage, isError = true)
                         }
                     },
                     onDonationButtonClicked = { initiateDonationPurchase() },
@@ -290,7 +295,7 @@ class MainActivity : ComponentActivity() {
                 } else {
                     LaunchedEffect(Unit) {
                         navController.popBackStack()
-                        Toast.makeText(this@MainActivity, trialInfoMessage, Toast.LENGTH_LONG).show()
+                        updateStatusMessage(trialInfoMessage, isError = true)
                     }
                 }
             }
@@ -354,7 +359,7 @@ class MainActivity : ComponentActivity() {
     private fun initiateDonationPurchase() {
         if (!billingClient.isReady) {
             Log.e(TAG, "BillingClient not ready.")
-            Toast.makeText(this, "Bezahldienst nicht bereit. Bitte später versuchen.", Toast.LENGTH_SHORT).show()
+            updateStatusMessage("Bezahldienst nicht bereit. Bitte später versuchen.", true)
             if (billingClient.connectionState == BillingClient.ConnectionState.CLOSED || billingClient.connectionState == BillingClient.ConnectionState.DISCONNECTED){
                 setupBillingClient()
             }
@@ -362,7 +367,7 @@ class MainActivity : ComponentActivity() {
         }
         if (monthlyDonationProductDetails == null) {
             Log.e(TAG, "Product details not loaded yet.")
-            Toast.makeText(this, "Spendeninformationen werden geladen. Bitte kurz warten und erneut versuchen.", Toast.LENGTH_LONG).show()
+            updateStatusMessage("Spendeninformationen werden geladen. Bitte kurz warten und erneut versuchen.", true)
             queryProductDetails()
             return
         }
@@ -370,7 +375,7 @@ class MainActivity : ComponentActivity() {
             val offerToken = productDetails.subscriptionOfferDetails?.firstOrNull()?.offerToken
             if (offerToken == null) {
                 Log.e(TAG, "No offer token found for product: ${productDetails.productId}")
-                Toast.makeText(this, "Spendenangebot nicht gefunden.", Toast.LENGTH_LONG).show()
+                updateStatusMessage("Spendenangebot nicht gefunden.", true)
                 return@let
             }
             val productDetailsParamsList = listOf(
@@ -385,9 +390,11 @@ class MainActivity : ComponentActivity() {
             val billingResult = billingClient.launchBillingFlow(this, billingFlowParams)
             if (billingResult.responseCode != BillingClient.BillingResponseCode.OK) {
                 Log.e(TAG, "Failed to launch billing flow: ${billingResult.debugMessage}")
+                updateStatusMessage("Fehler beim Starten des Spendevorgangs: ${billingResult.debugMessage}", true)
             }
         } ?: run {
             Log.e(TAG, "Donation product details are null.")
+            updateStatusMessage("Spendenprodukt nicht verfügbar.", true)
         }
     }
 
@@ -401,7 +408,7 @@ class MainActivity : ComponentActivity() {
                     billingClient.acknowledgePurchase(acknowledgePurchaseParams) { ackBillingResult ->
                         if (ackBillingResult.responseCode == BillingClient.BillingResponseCode.OK) {
                             Log.d(TAG, "Subscription purchase acknowledged.")
-                            Toast.makeText(this, "Vielen Dank für Ihr Abonnement!", Toast.LENGTH_LONG).show()
+                            updateStatusMessage("Vielen Dank für Ihr Abonnement!")
                             TrialManager.markAsPurchased(this)
                             updateTrialState(TrialManager.TrialState.PURCHASED)
                             val stopIntent = Intent(this, TrialTimerService::class.java)
@@ -409,17 +416,18 @@ class MainActivity : ComponentActivity() {
                             startService(stopIntent) // Stop the service
                         } else {
                             Log.e(TAG, "Failed to acknowledge purchase: ${ackBillingResult.debugMessage}")
+                            updateStatusMessage("Fehler beim Bestätigen des Kaufs: ${ackBillingResult.debugMessage}", true)
                         }
                     }
                 } else {
                     Log.d(TAG, "Subscription already acknowledged.")
-                    Toast.makeText(this, "Abonnement bereits aktiv.", Toast.LENGTH_LONG).show()
+                    updateStatusMessage("Abonnement bereits aktiv.")
                     TrialManager.markAsPurchased(this) // Ensure state is correct
                     updateTrialState(TrialManager.TrialState.PURCHASED)
                 }
             }
         } else if (purchase.purchaseState == Purchase.PurchaseState.PENDING) {
-            Toast.makeText(this, "Ihre Zahlung ist in Bearbeitung.", Toast.LENGTH_LONG).show()
+            updateStatusMessage("Ihre Zahlung ist in Bearbeitung.")
         }
     }
 
@@ -461,6 +469,7 @@ class MainActivity : ComponentActivity() {
     override fun onResume() {
         super.onResume()
         instance = this
+        Log.d(TAG, "onResume: Setting MainActivity instance")
         checkAccessibilityServiceEnabled()
         if (::billingClient.isInitialized && billingClient.isReady) {
             queryActiveSubscriptions() // This will also trigger trial state updates
@@ -494,34 +503,32 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    // Made internal to be accessible from other classes in the same module
-    internal fun checkAccessibilityServiceEnabled() {
-        // Dummy implementation
-        Log.d(TAG, "Checking accessibility service (dummy check).")
-        // Consider providing a real implementation or a way for other classes to know the status
+    private val requiredPermissions = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+        arrayOf(
+            Manifest.permission.READ_MEDIA_IMAGES,
+            Manifest.permission.READ_MEDIA_VIDEO,
+            Manifest.permission.POST_NOTIFICATIONS // For foreground service notifications if used
+        )
+    } else {
+        arrayOf(
+            Manifest.permission.READ_EXTERNAL_STORAGE,
+            Manifest.permission.WRITE_EXTERNAL_STORAGE
+        )
     }
 
-    // Made internal to be accessible from other classes in the same module
-    internal fun requestManageExternalStoragePermission() {
-        // Dummy implementation
-        Log.d(TAG, "Requesting manage external storage permission (dummy).")
-        // Consider providing a real implementation
-    }
-
-    // Added to provide API key to other classes like ViewModels
-    fun getCurrentApiKey(): String? {
-        return if (::apiKeyManager.isInitialized) {
-            apiKeyManager.getCurrentApiKey()
+    private val requestPermissionLauncher = registerForActivityResult(
+        ActivityResultContracts.RequestMultiplePermissions()
+    ) { permissions ->
+        val allGranted = permissions.entries.all { it.value }
+        if (allGranted) {
+            Log.d(TAG, "All permissions granted")
+            updateStatusMessage("Alle Berechtigungen erteilt")
+            startTrialServiceIfNeeded()
         } else {
-            null
+            Log.d(TAG, "Some permissions denied")
+            updateStatusMessage("Einige Berechtigungen wurden verweigert. Die App benötigt diese für volle Funktionalität.", true)
+            // Handle specific permission denials if necessary
         }
-    }
-
-    // Added to allow other classes to show messages to the user via MainActivity
-    fun updateStatusMessage(message: String) {
-        // Displaying as a Toast for now, can be changed to Snackbar or other UI element
-        Toast.makeText(this, message, Toast.LENGTH_LONG).show()
-        Log.d(TAG, "Status Message Updated: $message")
     }
 
     companion object {
@@ -536,7 +543,7 @@ class MainActivity : ComponentActivity() {
 @Composable
 fun TrialExpiredDialog(
     onPurchaseClick: () -> Unit,
-    onDismiss: () -> Unit
+    onDismiss: () -> Unit // Usually, a persistent dialog isn't dismissed by user action other than purchase
 ) {
     Dialog(onDismissRequest = onDismiss) {
         Card(
