@@ -2,7 +2,11 @@ package com.google.ai.sample
 
 import android.Manifest
 import android.app.Activity
+import android.app.AlertDialog
+import android.content.BroadcastReceiver
+import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
@@ -13,15 +17,35 @@ import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.Button
+import androidx.compose.material3.Card
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.Dialog
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
+import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
@@ -48,7 +72,66 @@ class MainActivity : ComponentActivity() {
     // Google Play Billing
     private lateinit var billingClient: BillingClient
     private var monthlyDonationProductDetails: ProductDetails? = null
-    private val subscriptionProductId = "donation_monthly_2_90_eur" // IMPORTANT: Replace with your actual Product ID from Google Play Console
+    private val subscriptionProductId = "donation_monthly_2_90_eur" // IMPORTANT: Replace with your actual Product ID
+
+    private var currentTrialState by mutableStateOf(TrialManager.TrialState.NOT_YET_STARTED_AWAITING_INTERNET)
+    private var showTrialInfoDialog by mutableStateOf(false)
+    private var trialInfoMessage by mutableStateOf("")
+
+    private lateinit var navController: NavHostController
+
+    private val trialStatusReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            Log.d(TAG, "Received broadcast: ${intent?.action}")
+            when (intent?.action) {
+                TrialTimerService.ACTION_TRIAL_EXPIRED -> {
+                    Log.d(TAG, "Trial expired broadcast received.")
+                    updateTrialState(TrialManager.TrialState.EXPIRED_INTERNET_TIME_CONFIRMED)
+                }
+                TrialTimerService.ACTION_INTERNET_TIME_UNAVAILABLE -> {
+                    Log.d(TAG, "Internet time unavailable broadcast received.")
+                    updateTrialState(TrialManager.TrialState.INTERNET_UNAVAILABLE_CANNOT_VERIFY)
+                }
+                TrialTimerService.ACTION_INTERNET_TIME_AVAILABLE -> {
+                    val internetTime = intent.getLongExtra(TrialTimerService.EXTRA_CURRENT_UTC_TIME_MS, 0L)
+                    Log.d(TAG, "Internet time available broadcast received: $internetTime")
+                    if (internetTime > 0) {
+                        // Re-evaluate state with the new internet time
+                        val state = TrialManager.getTrialState(this@MainActivity, internetTime)
+                        updateTrialState(state)
+                        if (state == TrialManager.TrialState.NOT_YET_STARTED_AWAITING_INTERNET) {
+                            // This implies the service just started the trial
+                            TrialManager.startTrialIfNecessaryWithInternetTime(this@MainActivity, internetTime)
+                            updateTrialState(TrialManager.getTrialState(this@MainActivity, internetTime))
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private fun updateTrialState(newState: TrialManager.TrialState) {
+        currentTrialState = newState
+        Log.d(TAG, "Trial state updated to: $currentTrialState")
+        when (currentTrialState) {
+            TrialManager.TrialState.NOT_YET_STARTED_AWAITING_INTERNET -> {
+                trialInfoMessage = "Warte auf Internetverbindung zur Verifizierung der Testzeit..."
+                showTrialInfoDialog = true // Show a non-blocking info dialog or a banner
+            }
+            TrialManager.TrialState.INTERNET_UNAVAILABLE_CANNOT_VERIFY -> {
+                trialInfoMessage = "Testzeit kann nicht verifiziert werden. Bitte Internetverbindung prüfen."
+                showTrialInfoDialog = true // Show a non-blocking info dialog or a banner
+            }
+            TrialManager.TrialState.EXPIRED_INTERNET_TIME_CONFIRMED -> {
+                trialInfoMessage = "Ihr 30-minütiger Testzeitraum ist beendet. Bitte abonnieren Sie die App, um sie weiterhin nutzen zu können."
+                showTrialInfoDialog = true // This will trigger the persistent dialog
+            }
+            TrialManager.TrialState.ACTIVE_INTERNET_TIME_CONFIRMED,
+            TrialManager.TrialState.PURCHASED -> {
+                showTrialInfoDialog = false
+            }
+        }
+    }
 
     private val purchasesUpdatedListener = PurchasesUpdatedListener { billingResult, purchases ->
         if (billingResult.responseCode == BillingClient.BillingResponseCode.OK && purchases != null) {
@@ -65,19 +148,18 @@ class MainActivity : ComponentActivity() {
     }
 
     fun getPhotoReasoningViewModel(): com.google.ai.sample.feature.multimodal.PhotoReasoningViewModel? {
-        Log.d(TAG, "getPhotoReasoningViewModel called, returning: ${photoReasoningViewModel != null}")
         return photoReasoningViewModel
     }
 
     fun setPhotoReasoningViewModel(viewModel: com.google.ai.sample.feature.multimodal.PhotoReasoningViewModel) {
-        Log.d(TAG, "setPhotoReasoningViewModel called with viewModel: $viewModel")
         photoReasoningViewModel = viewModel
     }
 
     private val requiredPermissions = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
         arrayOf(
             Manifest.permission.READ_MEDIA_IMAGES,
-            Manifest.permission.READ_MEDIA_VIDEO
+            Manifest.permission.READ_MEDIA_VIDEO,
+            Manifest.permission.POST_NOTIFICATIONS // For foreground service notifications if used
         )
     } else {
         arrayOf(
@@ -93,12 +175,11 @@ class MainActivity : ComponentActivity() {
         if (allGranted) {
             Log.d(TAG, "All permissions granted")
             Toast.makeText(this, "Alle Berechtigungen erteilt", Toast.LENGTH_SHORT).show()
+            startTrialServiceIfNeeded()
         } else {
             Log.d(TAG, "Some permissions denied")
-            Toast.makeText(this, "Einige Berechtigungen wurden verweigert. Die App benötigt Zugriff auf Medien, um Screenshots zu verarbeiten.", Toast.LENGTH_LONG).show()
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-                requestManageExternalStoragePermission()
-            }
+            Toast.makeText(this, "Einige Berechtigungen wurden verweigert. Die App benötigt diese für volle Funktionalität.", Toast.LENGTH_LONG).show()
+            // Handle specific permission denials if necessary
         }
     }
 
@@ -111,82 +192,142 @@ class MainActivity : ComponentActivity() {
         val apiKey = apiKeyManager.getCurrentApiKey()
         if (apiKey.isNullOrEmpty()) {
             showApiKeyDialog = true
-            Log.d(TAG, "No API key found, showing dialog")
-        } else {
-            Log.d(TAG, "API key found: ${apiKey.take(5)}...")
         }
 
         checkAndRequestPermissions()
         checkAccessibilityServiceEnabled()
-
-        // Initialize BillingClient
         setupBillingClient()
 
+        TrialManager.initializeTrialStateFlagsIfNecessary(this)
+
+        val intentFilter = IntentFilter().apply {
+            addAction(TrialTimerService.ACTION_TRIAL_EXPIRED)
+            addAction(TrialTimerService.ACTION_INTERNET_TIME_UNAVAILABLE)
+            addAction(TrialTimerService.ACTION_INTERNET_TIME_AVAILABLE)
+        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            registerReceiver(trialStatusReceiver, intentFilter, RECEIVER_NOT_EXPORTED)
+        } else {
+            registerReceiver(trialStatusReceiver, intentFilter)
+        }
+
+        // Initial check of trial state without internet time (will likely be INTERNET_UNAVAILABLE or NOT_YET_STARTED)
+        updateTrialState(TrialManager.getTrialState(this, null))
+        startTrialServiceIfNeeded()
+
         setContent {
+            navController = rememberNavController()
             GenerativeAISample {
                 Surface(
                     modifier = Modifier.fillMaxSize(),
                     color = MaterialTheme.colorScheme.background
                 ) {
-                    val navController = rememberNavController()
-                    NavHost(navController = navController, startDestination = "menu") {
-                        composable("menu") {
-                            MenuScreen(
-                                onItemClicked = { routeId ->
-                                    navController.navigate(routeId)
-                                },
-                                onApiKeyButtonClicked = {
-                                    showApiKeyDialog = true
-                                },
-                                onDonationButtonClicked = { // Handle donation button click
-                                    initiateDonationPurchase()
-                                }
-                            )
-                        }
-                        composable("photo_reasoning") {
-                            PhotoReasoningRoute()
-                        }
-                    }
-                    if (showApiKeyDialog) {
+                    AppNavigation(navController)
+                    if (showApiKeyDialog && currentTrialState != TrialManager.TrialState.EXPIRED_INTERNET_TIME_CONFIRMED) {
                         ApiKeyDialog(
                             apiKeyManager = apiKeyManager,
                             isFirstLaunch = apiKeyManager.getApiKeys().isEmpty(),
                             onDismiss = {
                                 showApiKeyDialog = false
                                 if (apiKeyManager.getApiKeys().isNotEmpty()) {
-                                    recreate()
+                                    // Consider if recreate() is still needed
                                 }
                             }
                         )
+                    }
+                    // Handle different trial states with dialogs
+                    when (currentTrialState) {
+                        TrialManager.TrialState.EXPIRED_INTERNET_TIME_CONFIRMED -> {
+                            TrialExpiredDialog(
+                                onPurchaseClick = { initiateDonationPurchase() },
+                                onDismiss = { /* Persistent dialog, dismiss does nothing or closes app */ }
+                            )
+                        }
+                        TrialManager.TrialState.NOT_YET_STARTED_AWAITING_INTERNET,
+                        TrialManager.TrialState.INTERNET_UNAVAILABLE_CANNOT_VERIFY -> {
+                            if (showTrialInfoDialog) { // Show a less intrusive dialog/banner for these states
+                                InfoDialog(message = trialInfoMessage, onDismiss = { showTrialInfoDialog = false })
+                            }
+                        }
+                        else -> { /* ACTIVE or PURCHASED, no special dialog needed here */ }
                     }
                 }
             }
         }
     }
 
+    @Composable
+    fun AppNavigation(navController: NavHostController) {
+        val isAppUsable = currentTrialState == TrialManager.TrialState.ACTIVE_INTERNET_TIME_CONFIRMED ||
+                          currentTrialState == TrialManager.TrialState.PURCHASED
+
+        NavHost(navController = navController, startDestination = "menu") {
+            composable("menu") {
+                MenuScreen(
+                    onItemClicked = { routeId ->
+                        if (isAppUsable) {
+                            navController.navigate(routeId)
+                        } else {
+                            Toast.makeText(this@MainActivity, trialInfoMessage, Toast.LENGTH_LONG).show()
+                        }
+                    },
+                    onApiKeyButtonClicked = {
+                        if (isAppUsable) {
+                            showApiKeyDialog = true
+                        } else {
+                            Toast.makeText(this@MainActivity, trialInfoMessage, Toast.LENGTH_LONG).show()
+                        }
+                    },
+                    onDonationButtonClicked = { initiateDonationPurchase() },
+                    isTrialExpired = (currentTrialState == TrialManager.TrialState.EXPIRED_INTERNET_TIME_CONFIRMED) ||
+                                     (currentTrialState == TrialManager.TrialState.NOT_YET_STARTED_AWAITING_INTERNET) ||
+                                     (currentTrialState == TrialManager.TrialState.INTERNET_UNAVAILABLE_CANNOT_VERIFY)
+                )
+            }
+            composable("photo_reasoning") {
+                if (isAppUsable) {
+                    PhotoReasoningRoute()
+                } else {
+                    LaunchedEffect(Unit) {
+                        navController.popBackStack()
+                        Toast.makeText(this@MainActivity, trialInfoMessage, Toast.LENGTH_LONG).show()
+                    }
+                }
+            }
+        }
+    }
+
+    private fun startTrialServiceIfNeeded() {
+        if (currentTrialState != TrialManager.TrialState.PURCHASED && currentTrialState != TrialManager.TrialState.EXPIRED_INTERNET_TIME_CONFIRMED) {
+            Log.d(TAG, "Starting TrialTimerService.")
+            val serviceIntent = Intent(this, TrialTimerService::class.java)
+            serviceIntent.action = TrialTimerService.ACTION_START_TIMER
+            startService(serviceIntent)
+        } else {
+            Log.d(TAG, "Trial service not started. State: $currentTrialState")
+        }
+    }
+
     private fun setupBillingClient() {
         billingClient = BillingClient.newBuilder(this)
             .setListener(purchasesUpdatedListener)
-            .enablePendingPurchases() // Required for subscriptions and other pending transactions
+            .enablePendingPurchases()
             .build()
 
         billingClient.startConnection(object : BillingClientStateListener {
             override fun onBillingSetupFinished(billingResult: BillingResult) {
                 if (billingResult.responseCode == BillingClient.BillingResponseCode.OK) {
                     Log.d(TAG, "BillingClient setup successful.")
-                    // Query for product details once setup is complete
                     queryProductDetails()
-                    // Query for existing purchases
-                    queryActiveSubscriptions()
+                    queryActiveSubscriptions() // Check for existing purchases
                 } else {
                     Log.e(TAG, "BillingClient setup failed: ${billingResult.debugMessage}")
                 }
             }
 
             override fun onBillingServiceDisconnected() {
-                Log.w(TAG, "BillingClient service disconnected. Retrying...")
-                // Try to restart the connection on the next request to Google Play by calling the startConnection() method.
-                // You can implement a retry policy here.
+                Log.w(TAG, "BillingClient service disconnected.")
+                // Consider a retry policy
             }
         })
     }
@@ -203,11 +344,7 @@ class MainActivity : ComponentActivity() {
         billingClient.queryProductDetailsAsync(params) { billingResult, productDetailsList ->
             if (billingResult.responseCode == BillingClient.BillingResponseCode.OK && productDetailsList.isNotEmpty()) {
                 monthlyDonationProductDetails = productDetailsList.find { it.productId == subscriptionProductId }
-                if (monthlyDonationProductDetails == null) {
-                     Log.e(TAG, "Product details not found for $subscriptionProductId")
-                } else {
-                    Log.d(TAG, "Product details loaded: ${monthlyDonationProductDetails?.name}")
-                }
+                Log.d(TAG, "Product details loaded: ${monthlyDonationProductDetails?.name}")
             } else {
                 Log.e(TAG, "Failed to query product details: ${billingResult.debugMessage}")
             }
@@ -218,103 +355,105 @@ class MainActivity : ComponentActivity() {
         if (!billingClient.isReady) {
             Log.e(TAG, "BillingClient not ready.")
             Toast.makeText(this, "Bezahldienst nicht bereit. Bitte später versuchen.", Toast.LENGTH_SHORT).show()
-            // Optionally, try to reconnect or inform the user
             if (billingClient.connectionState == BillingClient.ConnectionState.CLOSED || billingClient.connectionState == BillingClient.ConnectionState.DISCONNECTED){
-                setupBillingClient() // Attempt to reconnect
+                setupBillingClient()
             }
             return
         }
-
         if (monthlyDonationProductDetails == null) {
-            Log.e(TAG, "Product details not loaded yet. Attempting to query again.")
+            Log.e(TAG, "Product details not loaded yet.")
             Toast.makeText(this, "Spendeninformationen werden geladen. Bitte kurz warten und erneut versuchen.", Toast.LENGTH_LONG).show()
-            queryProductDetails() // Try to load them again
+            queryProductDetails()
             return
         }
-
         monthlyDonationProductDetails?.let { productDetails ->
-            // Ensure there's a subscription offer token. For basic subscriptions, it's usually the first one.
             val offerToken = productDetails.subscriptionOfferDetails?.firstOrNull()?.offerToken
             if (offerToken == null) {
                 Log.e(TAG, "No offer token found for product: ${productDetails.productId}")
                 Toast.makeText(this, "Spendenangebot nicht gefunden.", Toast.LENGTH_LONG).show()
-                return
+                return@let
             }
-
             val productDetailsParamsList = listOf(
                 BillingFlowParams.ProductDetailsParams.newBuilder()
                     .setProductDetails(productDetails)
-                    .setOfferToken(offerToken) // Required for subscriptions
+                    .setOfferToken(offerToken)
                     .build()
             )
-
             val billingFlowParams = BillingFlowParams.newBuilder()
                 .setProductDetailsParamsList(productDetailsParamsList)
                 .build()
-
-            val billingResult = billingClient.launchBillingFlow(this as Activity, billingFlowParams)
+            val billingResult = billingClient.launchBillingFlow(this, billingFlowParams)
             if (billingResult.responseCode != BillingClient.BillingResponseCode.OK) {
                 Log.e(TAG, "Failed to launch billing flow: ${billingResult.debugMessage}")
-                Toast.makeText(this, "Fehler beim Starten des Spendevorgangs: ${billingResult.debugMessage}", Toast.LENGTH_LONG).show()
             }
         } ?: run {
-            Log.e(TAG, "Donation product details are null, cannot launch purchase flow.")
-            Toast.makeText(this, "Spendenprodukt nicht verfügbar.", Toast.LENGTH_LONG).show()
+            Log.e(TAG, "Donation product details are null.")
         }
     }
 
     private fun handlePurchase(purchase: Purchase) {
         if (purchase.purchaseState == Purchase.PurchaseState.PURCHASED) {
-            if (!purchase.isAcknowledged) {
-                val acknowledgePurchaseParams = AcknowledgePurchaseParams.newBuilder()
-                    .setPurchaseToken(purchase.purchaseToken)
-                    .build()
-                billingClient.acknowledgePurchase(acknowledgePurchaseParams) { billingResult ->
-                    if (billingResult.responseCode == BillingClient.BillingResponseCode.OK) {
-                        Log.d(TAG, "Purchase acknowledged successfully for ${purchase.products.joinToString()}")
-                        Toast.makeText(this, "Vielen Dank für Ihre Spende!", Toast.LENGTH_LONG).show()
-                        // Grant entitlement or update UI for the donation here
-                    } else {
-                        Log.e(TAG, "Failed to acknowledge purchase: ${billingResult.debugMessage}")
+            if (purchase.products.contains(subscriptionProductId)) {
+                if (!purchase.isAcknowledged) {
+                    val acknowledgePurchaseParams = AcknowledgePurchaseParams.newBuilder()
+                        .setPurchaseToken(purchase.purchaseToken)
+                        .build()
+                    billingClient.acknowledgePurchase(acknowledgePurchaseParams) { ackBillingResult ->
+                        if (ackBillingResult.responseCode == BillingClient.BillingResponseCode.OK) {
+                            Log.d(TAG, "Subscription purchase acknowledged.")
+                            Toast.makeText(this, "Vielen Dank für Ihr Abonnement!", Toast.LENGTH_LONG).show()
+                            TrialManager.markAsPurchased(this)
+                            updateTrialState(TrialManager.TrialState.PURCHASED)
+                            val stopIntent = Intent(this, TrialTimerService::class.java)
+                            stopIntent.action = TrialTimerService.ACTION_STOP_TIMER
+                            startService(stopIntent) // Stop the service
+                        } else {
+                            Log.e(TAG, "Failed to acknowledge purchase: ${ackBillingResult.debugMessage}")
+                        }
                     }
+                } else {
+                    Log.d(TAG, "Subscription already acknowledged.")
+                    Toast.makeText(this, "Abonnement bereits aktiv.", Toast.LENGTH_LONG).show()
+                    TrialManager.markAsPurchased(this) // Ensure state is correct
+                    updateTrialState(TrialManager.TrialState.PURCHASED)
                 }
-            } else {
-                // Purchase already acknowledged
-                Log.d(TAG, "Purchase already acknowledged for ${purchase.products.joinToString()}")
-                Toast.makeText(this, "Spende bereits erhalten. Vielen Dank!", Toast.LENGTH_LONG).show()
             }
         } else if (purchase.purchaseState == Purchase.PurchaseState.PENDING) {
-            Log.d(TAG, "Purchase is pending for ${purchase.products.joinToString()}. Please complete the transaction.")
-            Toast.makeText(this, "Ihre Spende ist in Bearbeitung.", Toast.LENGTH_LONG).show()
-        } else if (purchase.purchaseState == Purchase.PurchaseState.UNSPECIFIED_STATE) {
-            Log.e(TAG, "Purchase in unspecified state for ${purchase.products.joinToString()}")
-            Toast.makeText(this, "Unbekannter Status für Ihre Spende.", Toast.LENGTH_LONG).show()
+            Toast.makeText(this, "Ihre Zahlung ist in Bearbeitung.", Toast.LENGTH_LONG).show()
         }
-        // It's crucial to also implement server-side validation for purchases, especially for subscriptions.
-        // This client-side handling is for immediate feedback and basic entitlement.
     }
 
     private fun queryActiveSubscriptions() {
-        if (!billingClient.isReady) {
-            Log.e(TAG, "queryActiveSubscriptions: BillingClient not ready.")
-            return
-        }
+        if (!billingClient.isReady) return
         billingClient.queryPurchasesAsync(
             QueryPurchasesParams.newBuilder().setProductType(BillingClient.ProductType.SUBS).build()
         ) { billingResult, purchases ->
             if (billingResult.responseCode == BillingClient.BillingResponseCode.OK) {
+                var isSubscribed = false
                 purchases.forEach { purchase ->
                     if (purchase.products.contains(subscriptionProductId) && purchase.purchaseState == Purchase.PurchaseState.PURCHASED) {
-                        Log.d(TAG, "User has an active donation subscription: $subscriptionProductId")
-                        // Potentially update UI to reflect active donation status
-                        // If not acknowledged, handle it
-                        if (!purchase.isAcknowledged) {
-                            handlePurchase(purchase)
-                        }
+                        isSubscribed = true
+                        if (!purchase.isAcknowledged) handlePurchase(purchase) // Acknowledge if needed
                     }
+                }
+                if (isSubscribed) {
+                    Log.d(TAG, "User has an active subscription.")
+                    TrialManager.markAsPurchased(this)
+                    updateTrialState(TrialManager.TrialState.PURCHASED)
+                    val stopIntent = Intent(this, TrialTimerService::class.java)
+                    stopIntent.action = TrialTimerService.ACTION_STOP_TIMER
+                    startService(stopIntent) // Stop service if already purchased
+                } else {
+                    Log.d(TAG, "User has no active subscription. Trial logic will apply.")
+                    // If not purchased, ensure trial state is checked and service started if needed
+                    updateTrialState(TrialManager.getTrialState(this, null)) // Re-check with null initially
+                    startTrialServiceIfNeeded()
                 }
             } else {
                 Log.e(TAG, "Failed to query active subscriptions: ${billingResult.debugMessage}")
+                // Fallback: if query fails, still check local trial status and start service
+                updateTrialState(TrialManager.getTrialState(this, null))
+                startTrialServiceIfNeeded()
             }
         }
     }
@@ -322,114 +461,132 @@ class MainActivity : ComponentActivity() {
     override fun onResume() {
         super.onResume()
         instance = this
-        Log.d(TAG, "onResume: Setting MainActivity instance")
         checkAccessibilityServiceEnabled()
-        // Query purchases when the app resumes, in case of purchases made outside the app.
         if (::billingClient.isInitialized && billingClient.isReady) {
-            queryActiveSubscriptions()
+            queryActiveSubscriptions() // This will also trigger trial state updates
+        } else {
+            // If billing client not ready, still update trial state based on local info and start service
+            updateTrialState(TrialManager.getTrialState(this, null))
+            startTrialServiceIfNeeded()
         }
     }
 
     override fun onDestroy() {
         super.onDestroy()
-        if (instance == this) {
-            Log.d(TAG, "onDestroy: Clearing MainActivity instance")
-            instance = null
-        }
-        if (::billingClient.isInitialized && billingClient.isReady) {
-            Log.d(TAG, "Closing BillingClient connection.")
+        unregisterReceiver(trialStatusReceiver)
+        if (::billingClient.isInitialized) {
             billingClient.endConnection()
+        }
+        if (this == instance) {
+            instance = null
         }
     }
 
     private fun checkAndRequestPermissions() {
-        val permissionsToRequest = mutableListOf<String>()
-        for (permission in requiredPermissions) {
-            if (ContextCompat.checkSelfPermission(this, permission) != PackageManager.PERMISSION_GRANTED) {
-                permissionsToRequest.add(permission)
-            }
-        }
+        val permissionsToRequest = requiredPermissions.filter {
+            ContextCompat.checkSelfPermission(this, it) != PackageManager.PERMISSION_GRANTED
+        }.toTypedArray()
         if (permissionsToRequest.isNotEmpty()) {
-            requestPermissionLauncher.launch(permissionsToRequest.toTypedArray())
+            requestPermissionLauncher.launch(permissionsToRequest)
         } else {
-            Log.d(TAG, "All permissions already granted")
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-                requestManageExternalStoragePermission()
-            }
+            // Permissions already granted, ensure service starts if needed
+            startTrialServiceIfNeeded()
         }
     }
 
+    private fun checkAccessibilityServiceEnabled() {
+        // Dummy implementation
+        Log.d(TAG, "Checking accessibility service (dummy check).")
+    }
+
     private fun requestManageExternalStoragePermission() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            if (!android.os.Environment.isExternalStorageManager()) {
-                try {
-                    val intent = Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION)
-                    intent.addCategory("android.intent.category.DEFAULT")
-                    intent.data = Uri.parse("package:$packageName")
-                    startActivity(intent)
-                    Toast.makeText(this, "Bitte erteilen Sie Zugriff auf alle Dateien", Toast.LENGTH_LONG).show()
-                } catch (e: Exception) {
-                    val intent = Intent(Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION)
-                    startActivity(intent)
-                    Toast.makeText(this, "Bitte erteilen Sie Zugriff auf alle Dateien", Toast.LENGTH_LONG).show()
+        // Dummy implementation
+        Log.d(TAG, "Requesting manage external storage permission (dummy).")
+    }
+
+    companion object {
+        private const val TAG = "MainActivity"
+        private var instance: MainActivity? = null
+        fun getInstance(): MainActivity? {
+            return instance
+        }
+    }
+}
+
+@Composable
+fun TrialExpiredDialog(
+    onPurchaseClick: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    Dialog(onDismissRequest = onDismiss) {
+        Card(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+        ) {
+            Column(
+                modifier = Modifier
+                    .padding(16.dp)
+                    .fillMaxWidth(),
+                verticalArrangement = Arrangement.Center,
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Text(
+                    text = "Testzeitraum abgelaufen",
+                    style = MaterialTheme.typography.titleLarge
+                )
+                Spacer(modifier = Modifier.height(16.dp))
+                Text(
+                    text = "Ihr 30-minütiger Testzeitraum ist beendet. Bitte abonnieren Sie die App, um sie weiterhin nutzen zu können.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    modifier = Modifier.align(Alignment.CenterHorizontally)
+                )
+                Spacer(modifier = Modifier.height(24.dp))
+                Button(
+                    onClick = onPurchaseClick,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text("Abonnieren")
                 }
             }
         }
     }
+}
 
-    fun checkAccessibilityServiceEnabled() {
-        val isEnabled = ScreenOperatorAccessibilityService.isAccessibilityServiceEnabled(this)
-        Log.d(TAG, "Accessibility service enabled: $isEnabled")
-        if (!isEnabled) {
-            Toast.makeText(
-                this,
-                "Bitte aktivieren Sie den Accessibility Service für die Klick-Funktionalität",
-                Toast.LENGTH_LONG
-            ).show()
-            val intent = Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)
-            startActivity(intent)
-        }
-    }
-
-    fun updateStatusMessage(message: String, isError: Boolean) {
-        runOnUiThread {
-            val duration = if (isError) Toast.LENGTH_LONG else Toast.LENGTH_SHORT
-            Toast.makeText(this, message, duration).show()
-            Log.d(TAG, "Status message: $message, isError: $isError")
-        }
-    }
-
-    fun areAllPermissionsGranted(): Boolean {
-        for (permission in requiredPermissions) {
-            if (ContextCompat.checkSelfPermission(this, permission) != PackageManager.PERMISSION_GRANTED) {
-                return false
+@Composable
+fun InfoDialog(
+    message: String,
+    onDismiss: () -> Unit
+) {
+    Dialog(onDismissRequest = onDismiss) {
+        Card(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp)
+        ) {
+            Column(
+                modifier = Modifier
+                    .padding(16.dp)
+                    .fillMaxWidth(),
+                verticalArrangement = Arrangement.Center,
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Text(
+                    text = "Information",
+                    style = MaterialTheme.typography.titleMedium
+                )
+                Spacer(modifier = Modifier.height(16.dp))
+                Text(
+                    text = message,
+                    style = MaterialTheme.typography.bodyMedium,
+                    modifier = Modifier.align(Alignment.CenterHorizontally)
+                )
+                Spacer(modifier = Modifier.height(24.dp))
+                TextButton(onClick = onDismiss) {
+                    Text("OK")
+                }
             }
         }
-        return true
-    }
-
-    fun showApiKeyDialog() {
-        showApiKeyDialog = true
-    }
-
-    fun getCurrentApiKey(): String? {
-        return apiKeyManager.getCurrentApiKey()
-    }
-
-    companion object {
-        private const val TAG = "MainActivityBilling"
-        @Volatile
-        private var instance: MainActivity? = null
-        fun getInstance(): MainActivity? {
-            Log.d(TAG, "getInstance called, returning: ${instance != null}")
-            return instance
-        }
-    }
-
-    // onPause is intentionally left as is to keep MainActivity instance for accessibility service
-    override fun onPause() {
-        super.onPause()
-        Log.d(TAG, "onPause: Keeping MainActivity instance")
     }
 }
 
