@@ -571,7 +571,7 @@ class MainActivity : ComponentActivity() {
     private fun queryActiveSubscriptions() {
         Log.d(TAG, "queryActiveSubscriptions called.")
         if (!::billingClient.isInitialized || !billingClient.isReady) {
-            Log.w(TAG, "queryActiveSubscriptions: BillingClient not initialized or not ready. Cannot query. isInitialized: ${::billingClient.isInitialized}, isReady: ${if(::billingClient.isInitialized) billingClient.isReady else 'N/A'}")
+            Log.w(TAG, "queryActiveSubscriptions: BillingClient not initialized or not ready. Cannot query. isInitialized: ${::billingClient.isInitialized}, isReady: ${if(::billingClient.isInitialized) billingClient.isReady else "N/A"}")
             return
         }
         Log.d(TAG, "queryActiveSubscriptions: Querying for SUBS type purchases.")
