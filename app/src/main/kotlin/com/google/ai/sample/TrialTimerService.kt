@@ -42,149 +42,184 @@ class TrialTimerService : Service() {
         private val RETRY_DELAYS_MS = listOf(5000L, 15000L, 30000L) // 5s, 15s, 30s
     }
 
+    override fun onCreate() {
+        super.onCreate()
+        Log.d(TAG, "onCreate: Service creating.")
+    }
+
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        Log.d(TAG, "onStartCommand received action: ${intent?.action}")
+        Log.d(TAG, "onStartCommand received action: ${intent?.action}, flags: $flags, startId: $startId")
         when (intent?.action) {
             ACTION_START_TIMER -> {
+                Log.d(TAG, "onStartCommand: ACTION_START_TIMER received.")
                 if (!isTimerRunning) {
+                    Log.d(TAG, "onStartCommand: Timer not running, calling startTimerLogic().")
                     startTimerLogic()
+                } else {
+                    Log.d(TAG, "onStartCommand: Timer already running.")
                 }
             }
             ACTION_STOP_TIMER -> {
+                Log.d(TAG, "onStartCommand: ACTION_STOP_TIMER received, calling stopTimerLogic().")
                 stopTimerLogic()
+            }
+            else -> {
+                Log.w(TAG, "onStartCommand: Received unknown or null action: ${intent?.action}")
             }
         }
         return START_STICKY
     }
 
     private fun startTimerLogic() {
+        Log.d(TAG, "startTimerLogic: Entered. Setting isTimerRunning = true.")
         isTimerRunning = true
+        Log.d(TAG, "startTimerLogic: Launching coroutine on scope: $scope")
         scope.launch {
             var attempt = 0
+            Log.d(TAG, "startTimerLogic: Coroutine started. isTimerRunning: $isTimerRunning, isActive: $isActive")
             while (isTimerRunning && isActive) {
                 var success = false
+                Log.d(TAG, "startTimerLogic: Loop iteration. Attempt: ${attempt + 1}/$MAX_RETRIES. isTimerRunning: $isTimerRunning, isActive: $isActive")
                 try {
-                    Log.d(TAG, "Attempting to fetch internet time (attempt ${attempt + 1}/$MAX_RETRIES). URL: $TIME_API_URL")
+                    Log.i(TAG, "Attempting to fetch internet time (attempt ${attempt + 1}/$MAX_RETRIES). URL: $TIME_API_URL")
                     val url = URL(TIME_API_URL)
                     val connection = url.openConnection() as HttpURLConnection
                     connection.requestMethod = "GET"
                     connection.connectTimeout = CONNECTION_TIMEOUT_MS
                     connection.readTimeout = READ_TIMEOUT_MS
+                    Log.d(TAG, "startTimerLogic: Connection configured. Timeout: $CONNECTION_TIMEOUT_MS ms. About to connect.")
                     connection.connect() // Explicit connect call
+                    Log.d(TAG, "startTimerLogic: Connection established.")
 
                     val responseCode = connection.responseCode
-                    Log.d(TAG, "Time API response code: $responseCode")
+                    val responseMessage = connection.responseMessage // Get response message for logging
+                    Log.i(TAG, "Time API response code: $responseCode, Message: $responseMessage")
 
                     if (responseCode == HttpURLConnection.HTTP_OK) {
+                        Log.d(TAG, "startTimerLogic: HTTP_OK received. Reading input stream.")
                         val inputStream = connection.inputStream
                         val result = inputStream.bufferedReader().use { it.readText() }
                         inputStream.close()
+                        Log.d(TAG, "startTimerLogic: Input stream closed. Raw JSON result: $result")
                         connection.disconnect()
+                        Log.d(TAG, "startTimerLogic: Connection disconnected.")
 
                         val jsonObject = JSONObject(result)
                         val currentDateTimeStr = jsonObject.getString("currentDateTime")
+                        Log.d(TAG, "startTimerLogic: Parsed currentDateTime string: $currentDateTimeStr")
                         // Parse ISO 8601 string to milliseconds since epoch
                         val currentUtcTimeMs = OffsetDateTime.parse(currentDateTimeStr).toInstant().toEpochMilli()
 
-                        Log.d(TAG, "Successfully fetched and parsed internet time: $currentUtcTimeMs ($currentDateTimeStr)")
+                        Log.i(TAG, "Successfully fetched and parsed internet time. UTC Time MS: $currentUtcTimeMs (from string: $currentDateTimeStr)")
 
                         val trialState = TrialManager.getTrialState(applicationContext, currentUtcTimeMs)
-                        Log.d(TAG, "Current trial state from TrialManager: $trialState")
+                        Log.i(TAG, "Current trial state from TrialManager: $trialState (based on time $currentUtcTimeMs)")
                         when (trialState) {
                             TrialManager.TrialState.NOT_YET_STARTED_AWAITING_INTERNET -> {
+                                Log.d(TAG, "TrialState: NOT_YET_STARTED_AWAITING_INTERNET. Calling startTrialIfNecessaryWithInternetTime and broadcasting ACTION_INTERNET_TIME_AVAILABLE.")
                                 TrialManager.startTrialIfNecessaryWithInternetTime(applicationContext, currentUtcTimeMs)
                                 sendBroadcast(Intent(ACTION_INTERNET_TIME_AVAILABLE).putExtra(EXTRA_CURRENT_UTC_TIME_MS, currentUtcTimeMs))
                             }
                             TrialManager.TrialState.ACTIVE_INTERNET_TIME_CONFIRMED -> {
+                                Log.d(TAG, "TrialState: ACTIVE_INTERNET_TIME_CONFIRMED. Broadcasting ACTION_INTERNET_TIME_AVAILABLE.")
                                 sendBroadcast(Intent(ACTION_INTERNET_TIME_AVAILABLE).putExtra(EXTRA_CURRENT_UTC_TIME_MS, currentUtcTimeMs))
                             }
                             TrialManager.TrialState.EXPIRED_INTERNET_TIME_CONFIRMED -> {
-                                Log.d(TAG, "Trial expired based on internet time.")
+                                Log.i(TAG, "TrialState: EXPIRED_INTERNET_TIME_CONFIRMED. Trial expired based on internet time. Broadcasting ACTION_TRIAL_EXPIRED and stopping timer.")
                                 sendBroadcast(Intent(ACTION_TRIAL_EXPIRED))
                                 stopTimerLogic()
                             }
                             TrialManager.TrialState.PURCHASED -> {
-                                Log.d(TAG, "App is purchased. Stopping timer.")
+                                Log.i(TAG, "TrialState: PURCHASED. App is purchased. Stopping timer.")
                                 stopTimerLogic()
                             }
                             TrialManager.TrialState.INTERNET_UNAVAILABLE_CANNOT_VERIFY -> {
-                                // This case might occur if TrialManager was called with null time before, 
-                                // but now we have time. So we should re-broadcast available time.
-                                Log.w(TAG, "TrialManager reported INTERNET_UNAVAILABLE, but we just fetched time. Broadcasting available.")
+                                Log.w(TAG, "TrialState: INTERNET_UNAVAILABLE_CANNOT_VERIFY from TrialManager, but we just fetched time. This is unexpected. Broadcasting ACTION_INTERNET_TIME_AVAILABLE anyway.")
                                 sendBroadcast(Intent(ACTION_INTERNET_TIME_AVAILABLE).putExtra(EXTRA_CURRENT_UTC_TIME_MS, currentUtcTimeMs))
                             }
                         }
                         success = true
+                        Log.d(TAG, "startTimerLogic: Time fetch successful. success = true. Resetting attempt counter.")
                         attempt = 0 // Reset attempts on success
                     } else {
-                        Log.e(TAG, "Failed to fetch internet time. HTTP Response code: $responseCode - ${connection.responseMessage}")
+                        Log.e(TAG, "Failed to fetch internet time. HTTP Response code: $responseCode - $responseMessage")
                         connection.disconnect()
-                        // For server-side errors (5xx), retry is useful. For client errors (4xx), less so unless temporary.
-                        if (responseCode >= 500) { 
-                            // Retry for server errors
+                        Log.d(TAG, "startTimerLogic: Connection disconnected after error.")
+                        if (responseCode >= 500) {
+                            Log.d(TAG, "Server error ($responseCode). Will retry.")
                         } else {
-                            // For other errors (e.g. 404), might not be worth retrying indefinitely the same way
-                            // but we will follow the general retry logic for now.
+                            Log.d(TAG, "Client or other error ($responseCode). Will follow general retry logic.")
                         }
                     }
                 } catch (e: SocketTimeoutException) {
-                    Log.e(TAG, "Failed to fetch internet time: Socket Timeout", e)
+                    Log.e(TAG, "Failed to fetch internet time: Socket Timeout after $CONNECTION_TIMEOUT_MS ms (connect) or $READ_TIMEOUT_MS ms (read). Attempt ${attempt + 1}", e)
                 } catch (e: MalformedURLException) {
-                    Log.e(TAG, "Failed to fetch internet time: Malformed URL", e)
+                    Log.e(TAG, "Failed to fetch internet time: Malformed URL '$TIME_API_URL'. Stopping timer logic.", e)
                     stopTimerLogic() // URL is wrong, no point in retrying
                     return@launch
                 } catch (e: IOException) {
-                    Log.e(TAG, "Failed to fetch internet time: IO Exception (e.g., network issue)", e)
+                    Log.e(TAG, "Failed to fetch internet time: IO Exception (e.g., network issue, connection reset). Attempt ${attempt + 1}", e)
                 } catch (e: JSONException) {
-                    Log.e(TAG, "Failed to parse JSON response from time API", e)
-                    // API might have changed format or returned error HTML, don't retry indefinitely for this specific error on this attempt.
+                    Log.e(TAG, "Failed to parse JSON response from time API. Response might not be valid JSON. Attempt ${attempt + 1}", e)
                 } catch (e: DateTimeParseException) {
-                    Log.e(TAG, "Failed to parse date/time string from time API response", e)
+                    Log.e(TAG, "Failed to parse date/time string from time API response. API format might have changed. Attempt ${attempt + 1}", e)
                 } catch (e: Exception) {
-                    Log.e(TAG, "An unexpected error occurred while fetching or processing internet time", e)
+                    Log.e(TAG, "An unexpected error occurred while fetching or processing internet time. Attempt ${attempt + 1}", e)
                 }
 
-                if (!isTimerRunning || !isActive) break // Exit loop if timer stopped
+                if (!isTimerRunning || !isActive) {
+                    Log.d(TAG, "startTimerLogic: Loop condition check: isTimerRunning=$isTimerRunning, isActive=$isActive. Breaking loop.")
+                    break // Exit loop if timer stopped or coroutine cancelled
+                }
 
                 if (!success) {
                     attempt++
+                    Log.w(TAG, "startTimerLogic: Time fetch failed for attempt ${attempt} of $MAX_RETRIES.")
                     if (attempt < MAX_RETRIES) {
                         val delayMs = RETRY_DELAYS_MS.getOrElse(attempt -1) { RETRY_DELAYS_MS.last() }
-                        Log.d(TAG, "Time fetch failed. Retrying in ${delayMs / 1000}s...")
-                        sendBroadcast(Intent(ACTION_INTERNET_TIME_UNAVAILABLE)) // Notify UI about current unavailability before retry
+                        Log.i(TAG, "Time fetch failed. Retrying in ${delayMs / 1000}s... (Attempt ${attempt + 1}/$MAX_RETRIES)")
+                        Log.d(TAG, "Broadcasting ACTION_INTERNET_TIME_UNAVAILABLE before retry delay.")
+                        sendBroadcast(Intent(ACTION_INTERNET_TIME_UNAVAILABLE))
                         delay(delayMs)
                     } else {
-                        Log.e(TAG, "Failed to fetch internet time after $MAX_RETRIES attempts. Broadcasting unavailability.")
+                        Log.e(TAG, "Failed to fetch internet time after $MAX_RETRIES attempts. Broadcasting ACTION_INTERNET_TIME_UNAVAILABLE.")
                         sendBroadcast(Intent(ACTION_INTERNET_TIME_UNAVAILABLE))
+                        Log.d(TAG, "Resetting attempt counter to 0 and waiting for CHECK_INTERVAL_MS (${CHECK_INTERVAL_MS / 1000}s) before next cycle of attempts.")
                         attempt = 0 // Reset attempts for next full CHECK_INTERVAL_MS cycle
                         delay(CHECK_INTERVAL_MS) // Wait for the normal check interval after max retries failed
                     }
                 } else {
-                    // Success, wait for the normal check interval
+                    Log.d(TAG, "startTimerLogic: Time fetch was successful. Waiting for CHECK_INTERVAL_MS (${CHECK_INTERVAL_MS / 1000}s) before next check.")
                     delay(CHECK_INTERVAL_MS)
                 }
             }
-            Log.d(TAG, "Timer coroutine ended.")
+            Log.i(TAG, "Timer coroutine ended. isTimerRunning: $isTimerRunning, isActive: $isActive")
         }
     }
 
     private fun stopTimerLogic() {
+        Log.d(TAG, "stopTimerLogic: Entered. Current isTimerRunning: $isTimerRunning")
         if (isTimerRunning) {
-            Log.d(TAG, "Stopping timer logic...")
+            Log.i(TAG, "Stopping timer logic...")
             isTimerRunning = false
+            Log.d(TAG, "Cancelling job: $job")
             job.cancel() // Cancel all coroutines started by this scope
+            Log.d(TAG, "Calling stopSelf() to stop the service.")
             stopSelf() // Stop the service itself
-            Log.d(TAG, "Timer stopped and service is stopping.")
+            Log.i(TAG, "Timer stopped and service is stopping.")
+        } else {
+            Log.d(TAG, "stopTimerLogic: Timer was not running.")
         }
     }
 
     override fun onBind(intent: Intent?): IBinder? {
+        Log.d(TAG, "onBind called with intent: ${intent?.action}. Returning null.")
         return null
     }
 
     override fun onDestroy() {
         super.onDestroy()
-        Log.d(TAG, "Service Destroyed. Ensuring timer is stopped.")
+        Log.i(TAG, "onDestroy: Service Destroyed. Ensuring timer is stopped via stopTimerLogic().")
         stopTimerLogic()
     }
 }
