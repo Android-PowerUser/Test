@@ -22,6 +22,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
@@ -32,6 +33,7 @@ import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.unit.sp
+import android.widget.Toast
 
 data class MenuItem(
     val routeId: String,
@@ -43,17 +45,19 @@ data class MenuItem(
 fun MenuScreen(
     onItemClicked: (String) -> Unit = { },
     onApiKeyButtonClicked: () -> Unit = { },
-    onDonationButtonClicked: () -> Unit = { } // Added for donation button
+    onDonationButtonClicked: () -> Unit = { },
+    isTrialExpired: Boolean = false // New parameter to indicate trial status
 ) {
+    val context = LocalContext.current
     val menuItems = listOf(
         MenuItem("photo_reasoning", R.string.menu_reason_title, R.string.menu_reason_description)
     )
-    
+
     // Get current model
     val currentModel = GenerativeAiViewModelFactory.getCurrentModel()
     var selectedModel by remember { mutableStateOf(currentModel) }
     var expanded by remember { mutableStateOf(false) }
-    
+
     LazyColumn(
         Modifier
             .padding(top = 16.dp, bottom = 16.dp)
@@ -77,7 +81,14 @@ fun MenuScreen(
                         modifier = Modifier.weight(1f)
                     )
                     Button(
-                        onClick = onApiKeyButtonClicked,
+                        onClick = {
+                            if (isTrialExpired) {
+                                Toast.makeText(context, "Bitte abonnieren Sie die App, um fortzufahren.", Toast.LENGTH_LONG).show()
+                            } else {
+                                onApiKeyButtonClicked()
+                            }
+                        },
+                        enabled = !isTrialExpired, // Disable button if trial is expired
                         modifier = Modifier.padding(start = 8.dp)
                     ) {
                         Text(text = "Change API Key")
@@ -85,7 +96,7 @@ fun MenuScreen(
                 }
             }
         }
-        
+
         // Model Selection
         item {
             Card(
@@ -102,40 +113,46 @@ fun MenuScreen(
                         text = "Model Selection",
                         style = MaterialTheme.typography.titleMedium
                     )
-                    
+
                     Spacer(modifier = Modifier.height(8.dp))
-                    
+
                     Text(
                         text = "Current model: ${selectedModel.displayName}",
                         style = MaterialTheme.typography.bodyMedium
                     )
-                    
+
                     Spacer(modifier = Modifier.height(8.dp))
-                    
+
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Spacer(modifier = Modifier.weight(1f))
-                        
+
                         Button(
-                            onClick = { expanded = true }
+                            onClick = { 
+                                if (isTrialExpired) {
+                                    Toast.makeText(context, "Bitte abonnieren Sie die App, um fortzufahren.", Toast.LENGTH_LONG).show()
+                                } else {
+                                    expanded = true 
+                                }
+                            },
+                            enabled = !isTrialExpired // Disable button if trial is expired
                         ) {
                             Text("Change Model")
                         }
-                        
+
                         DropdownMenu(
-                            expanded = expanded,
+                            expanded = expanded && !isTrialExpired,
                             onDismissRequest = { expanded = false }
                         ) {
-                            // Zeige die Modelle in der gewünschten Reihenfolge an
                             val orderedModels = listOf(
                                 ModelOption.GEMINI_FLASH_LITE,
                                 ModelOption.GEMINI_FLASH,
                                 ModelOption.GEMINI_FLASH_PREVIEW,
                                 ModelOption.GEMINI_PRO
                             )
-                            
+
                             orderedModels.forEach { modelOption ->
                                 DropdownMenuItem(
                                     text = { Text(modelOption.displayName) },
@@ -143,7 +160,8 @@ fun MenuScreen(
                                         selectedModel = modelOption
                                         GenerativeAiViewModelFactory.setModel(modelOption)
                                         expanded = false
-                                    }
+                                    },
+                                    enabled = !isTrialExpired // Disable menu item if trial is expired
                                 )
                             }
                         }
@@ -151,7 +169,7 @@ fun MenuScreen(
                 }
             }
         }
-        
+
         // Menu Items
         items(menuItems) { menuItem ->
             Card(
@@ -175,8 +193,13 @@ fun MenuScreen(
                     )
                     TextButton(
                         onClick = {
-                            onItemClicked(menuItem.routeId)
+                            if (isTrialExpired) {
+                                Toast.makeText(context, "Bitte abonnieren Sie die App, um fortzufahren.", Toast.LENGTH_LONG).show()
+                            } else {
+                                onItemClicked(menuItem.routeId)
+                            }
                         },
+                        enabled = !isTrialExpired, // Disable button if trial is expired
                         modifier = Modifier.align(Alignment.End)
                     ) {
                         Text(text = stringResource(R.string.action_try))
@@ -185,7 +208,7 @@ fun MenuScreen(
             }
         }
 
-        // Donation Button Card
+        // Donation Button Card (Should always be enabled)
         item {
             Card(
                 modifier = Modifier
@@ -204,7 +227,7 @@ fun MenuScreen(
                         modifier = Modifier.weight(1f)
                     )
                     Button(
-                        onClick = onDonationButtonClicked, // Call the new handler
+                        onClick = onDonationButtonClicked, // This button should always be active
                         modifier = Modifier.padding(start = 8.dp)
                     ) {
                         Text(text = "Pro (2,90 €/Month)")
@@ -217,7 +240,7 @@ fun MenuScreen(
             Card(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 8.dp) // Ähnlich wie andere Cards
+                    .padding(horizontal = 16.dp, vertical = 8.dp)
             ) {
                 val annotatedText = buildAnnotatedString {
                     append("Screenshots are saved in Pictures/Screenshots and should be deleted afterwards. There are rate limits for free use of Gemini models. The less powerful the models are, the more you can use them. The limits range from a maximum of 5 to 30 calls per minute. After each screenshot (every 2-3 seconds) the LLM must respond again. More information is available at ")
@@ -235,12 +258,13 @@ fun MenuScreen(
                     text = annotatedText,
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(all = 16.dp), // Innenabstand für den Text innerhalb der Card
+                        .padding(all = 16.dp),
                     style = MaterialTheme.typography.bodyMedium.copy(
                         fontSize = 15.sp,
-                        color = MaterialTheme.colorScheme.onSurface // Stellt sicher, dass die Standardtextfarbe dem Thema entspricht
+                        color = MaterialTheme.colorScheme.onSurface
                     ),
                     onClick = { offset ->
+                        // Allow clicking links even if trial is expired
                         annotatedText.getStringAnnotations(tag = "URL", start = offset, end = offset)
                             .firstOrNull()?.let { annotation ->
                                 uriHandler.openUri(annotation.item)
@@ -255,6 +279,14 @@ fun MenuScreen(
 @Preview(showSystemUi = true)
 @Composable
 fun MenuScreenPreview() {
-    MenuScreen()
+    // Preview with trial not expired
+    MenuScreen(isTrialExpired = false)
+}
+
+@Preview(showSystemUi = true)
+@Composable
+fun MenuScreenTrialExpiredPreview() {
+    // Preview with trial expired
+    MenuScreen(isTrialExpired = true)
 }
 
