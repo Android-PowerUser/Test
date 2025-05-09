@@ -17,7 +17,9 @@ import java.net.HttpURLConnection
 import java.net.MalformedURLException
 import java.net.SocketTimeoutException
 import java.net.URL
+import java.time.LocalDateTime // Added
 import java.time.OffsetDateTime
+import java.time.ZoneOffset // Added
 import java.time.format.DateTimeParseException
 
 class TrialTimerService : Service() {
@@ -109,10 +111,11 @@ class TrialTimerService : Service() {
                         // Updated to parse "dateTime" field from timeapi.io
                         val currentDateTimeStr = jsonObject.getString("dateTime") 
                         Log.d(TAG, "startTimerLogic: Parsed dateTime string: $currentDateTimeStr")
+                        Log.d(TAG, "Attempting to parse dateTime string 	$currentDateTimeStr	 as LocalDateTime and applying UTC offset.") // New Log
                         // Parse ISO 8601 string to milliseconds since epoch
-                        val currentUtcTimeMs = OffsetDateTime.parse(currentDateTimeStr).toInstant().toEpochMilli()
+                        val currentUtcTimeMs = LocalDateTime.parse(currentDateTimeStr).atOffset(ZoneOffset.UTC).toInstant().toEpochMilli() // Modified Line
 
-                        Log.i(TAG, "Successfully fetched and parsed internet time. UTC Time MS: $currentUtcTimeMs (from string: $currentDateTimeStr)")
+                        Log.i(TAG, "Successfully parsed dateTime string 	$currentDateTimeStr	 to UTC milliseconds: $currentUtcTimeMs using LocalDateTime.parse().atOffset(ZoneOffset.UTC)") // Modified Log
 
                         val trialState = TrialManager.getTrialState(applicationContext, currentUtcTimeMs)
                         Log.i(TAG, "Current trial state from TrialManager: $trialState (based on time $currentUtcTimeMs)")
@@ -156,14 +159,14 @@ class TrialTimerService : Service() {
                 } catch (e: SocketTimeoutException) {
                     Log.e(TAG, "Failed to fetch internet time: Socket Timeout after $CONNECTION_TIMEOUT_MS ms (connect) or $READ_TIMEOUT_MS ms (read). Attempt ${attempt + 1}", e)
                 } catch (e: MalformedURLException) {
-                   Log.e(TAG, "Failed to fetch internet time: Malformed URL 	$TIME_API_URL	. Stopping timer logic.", e)
+                   Log.e(TAG, "Failed to fetch internet time: Malformed URL \t$TIME_API_URL\t. Stopping timer logic.", e)
                     stopTimerLogic() // URL is wrong, no point in retrying
                     return@launch
                 } catch (e: IOException) {
                     Log.e(TAG, "Failed to fetch internet time: IO Exception (e.g., network issue, connection reset). Attempt ${attempt + 1}", e)
                 } catch (e: JSONException) {
                     Log.e(TAG, "Failed to parse JSON response from time API. Response might not be valid JSON. Attempt ${attempt + 1}", e)
-                } catch (e: DateTimeParseException) {
+                } catch (e: DateTimeParseException) { // This catch block will now likely not be hit for this specific issue, but good to keep for other parsing issues.
                     Log.e(TAG, "Failed to parse date/time string from time API response. API format might have changed. Attempt ${attempt + 1}", e)
                 } catch (e: Exception) {
                     Log.e(TAG, "An unexpected error occurred while fetching or processing internet time. Attempt ${attempt + 1}", e)
