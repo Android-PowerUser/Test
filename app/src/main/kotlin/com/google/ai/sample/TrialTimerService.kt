@@ -35,7 +35,8 @@ class TrialTimerService : Service() {
         const val EXTRA_CURRENT_UTC_TIME_MS = "extra_current_utc_time_ms"
         private const val TAG = "TrialTimerService"
         private const val CHECK_INTERVAL_MS = 60 * 1000L // 1 minute
-        private const val TIME_API_URL = "http://worldclockapi.com/api/json/utc/now" // Changed API URL
+        // Changed API URL to timeapi.io for UTC time
+        private const val TIME_API_URL = "https://timeapi.io/api/time/current/zone?timeZone=Etc/UTC"
         private const val CONNECTION_TIMEOUT_MS = 15000 // 15 seconds
         private const val READ_TIMEOUT_MS = 15000 // 15 seconds
         private const val MAX_RETRIES = 3
@@ -105,8 +106,9 @@ class TrialTimerService : Service() {
                         Log.d(TAG, "startTimerLogic: Connection disconnected.")
 
                         val jsonObject = JSONObject(result)
-                        val currentDateTimeStr = jsonObject.getString("currentDateTime")
-                        Log.d(TAG, "startTimerLogic: Parsed currentDateTime string: $currentDateTimeStr")
+                        // Updated to parse "dateTime" field from timeapi.io
+                        val currentDateTimeStr = jsonObject.getString("dateTime") 
+                        Log.d(TAG, "startTimerLogic: Parsed dateTime string: $currentDateTimeStr")
                         // Parse ISO 8601 string to milliseconds since epoch
                         val currentUtcTimeMs = OffsetDateTime.parse(currentDateTimeStr).toInstant().toEpochMilli()
 
@@ -154,7 +156,8 @@ class TrialTimerService : Service() {
                 } catch (e: SocketTimeoutException) {
                     Log.e(TAG, "Failed to fetch internet time: Socket Timeout after $CONNECTION_TIMEOUT_MS ms (connect) or $READ_TIMEOUT_MS ms (read). Attempt ${attempt + 1}", e)
                 } catch (e: MalformedURLException) {
-                    Log.e(TAG, "Failed to fetch internet time: Malformed URL '$TIME_API_URL'. Stopping timer logic.", e)
+                    Log.e(TAG, "Failed to fetch internet time: Malformed URL neğinTIME_API_URL
+. Stopping timer logic.", e)
                     stopTimerLogic() // URL is wrong, no point in retrying
                     return@launch
                 } catch (e: IOException) {
