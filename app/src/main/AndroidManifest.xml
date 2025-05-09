@@ -51,6 +51,10 @@
                 android:name="android.accessibilityservice"
                 android:resource="@xml/accessibility_service_config" />
         </service>
+
+        <!-- Added TrialTimerService declaration -->
+        <service android:name=".TrialTimerService" />
+
     </application>
 </manifest>
 
