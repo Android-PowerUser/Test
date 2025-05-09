@@ -156,8 +156,7 @@ class TrialTimerService : Service() {
                 } catch (e: SocketTimeoutException) {
                     Log.e(TAG, "Failed to fetch internet time: Socket Timeout after $CONNECTION_TIMEOUT_MS ms (connect) or $READ_TIMEOUT_MS ms (read). Attempt ${attempt + 1}", e)
                 } catch (e: MalformedURLException) {
-                    Log.e(TAG, "Failed to fetch internet time: Malformed URL neğinTIME_API_URL
-. Stopping timer logic.", e)
+                   Log.e(TAG, "Failed to fetch internet time: Malformed URL 	$TIME_API_URL	. Stopping timer logic.", e)
                     stopTimerLogic() // URL is wrong, no point in retrying
                     return@launch
                 } catch (e: IOException) {
