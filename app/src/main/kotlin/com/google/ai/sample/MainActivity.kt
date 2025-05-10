@@ -60,26 +60,34 @@ import com.android.billingclient.api.PurchasesUpdatedListener
 import com.android.billingclient.api.QueryProductDetailsParams
 import com.android.billingclient.api.QueryPurchasesParams
 import com.google.ai.sample.feature.multimodal.PhotoReasoningRoute
-import com.google.ai.sample.feature.multimodal.PhotoReasoningViewModel // Added import
+import com.google.ai.sample.feature.multimodal.PhotoReasoningViewModel
 import com.google.ai.sample.ui.theme.GenerativeAISample
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
 
-    private var photoReasoningViewModel: PhotoReasoningViewModel? = null // Corrected type
+    private var photoReasoningViewModel: PhotoReasoningViewModel? = null
     private lateinit var apiKeyManager: ApiKeyManager
     private var showApiKeyDialog by mutableStateOf(false)
 
     // Google Play Billing
     private lateinit var billingClient: BillingClient
     private var monthlyDonationProductDetails: ProductDetails? = null
-    private val subscriptionProductId = "donation_monthly_2_90_eur" // IMPORTANT: Replace with your actual Product ID
+    private val subscriptionProductId = "donation_monthly_2_90_eur"
 
     private var currentTrialState by mutableStateOf(TrialManager.TrialState.NOT_YET_STARTED_AWAITING_INTERNET)
     private var showTrialInfoDialog by mutableStateOf(false)
     private var trialInfoMessage by mutableStateOf("")
 
     private lateinit var navController: NavHostController
+
+    // START: Added for Accessibility Service Status
+    private val _isAccessibilityServiceEnabled = MutableStateFlow(false)
+    val isAccessibilityServiceEnabledFlow: StateFlow<Boolean> = _isAccessibilityServiceEnabled.asStateFlow()
+    // END: Added for Accessibility Service Status
 
     private val trialStatusReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
@@ -123,7 +131,7 @@ class MainActivity : ComponentActivity() {
         Log.d(TAG, "updateTrialState called with newState: $newState. Current local state: $currentTrialState")
         if (currentTrialState == newState && newState != TrialManager.TrialState.NOT_YET_STARTED_AWAITING_INTERNET && newState != TrialManager.TrialState.INTERNET_UNAVAILABLE_CANNOT_VERIFY) {
             Log.d(TAG, "updateTrialState: Trial state is already $newState and not an 'awaiting' or 'unavailable' state. No UI message update needed.")
-            currentTrialState = newState // Still update currentTrialState for logic consistency
+            currentTrialState = newState
             if (newState == TrialManager.TrialState.ACTIVE_INTERNET_TIME_CONFIRMED || newState == TrialManager.TrialState.PURCHASED) {
                  Log.d(TAG, "updateTrialState: State is ACTIVE or PURCHASED, ensuring info dialog is hidden.")
                  showTrialInfoDialog = false
@@ -134,20 +142,16 @@ class MainActivity : ComponentActivity() {
         currentTrialState = newState
         Log.i(TAG, "updateTrialState: Trial state updated from $oldState to $currentTrialState")
 
-        // REMOVED DIALOG LOGIC FOR NOT_YET_STARTED_AWAITING_INTERNET and INTERNET_UNAVAILABLE_CANNOT_VERIFY
-        // The UI should remain as is, without showing specific 'waiting' or 'cannot verify' dialogs.
-        // The app will rely on the TrialExpiredDialog for the EXPIRED_INTERNET_TIME_CONFIRMED state.
-
         when (currentTrialState) {
             TrialManager.TrialState.EXPIRED_INTERNET_TIME_CONFIRMED -> {
                 trialInfoMessage = "Ihr 30-minütiger Testzeitraum ist beendet. Bitte abonnieren Sie die App, um sie weiterhin nutzen zu können."
-                showTrialInfoDialog = true // This will trigger the persistent dialog
+                showTrialInfoDialog = true
                 Log.d(TAG, "updateTrialState: Set message to \'$trialInfoMessage\', showTrialInfoDialog = true (EXPIRED)")
             }
             TrialManager.TrialState.ACTIVE_INTERNET_TIME_CONFIRMED,
             TrialManager.TrialState.PURCHASED,
-            TrialManager.TrialState.NOT_YET_STARTED_AWAITING_INTERNET, // No dialog for this state
-            TrialManager.TrialState.INTERNET_UNAVAILABLE_CANNOT_VERIFY -> { // No dialog for this state
+            TrialManager.TrialState.NOT_YET_STARTED_AWAITING_INTERNET,
+            TrialManager.TrialState.INTERNET_UNAVAILABLE_CANNOT_VERIFY -> {
                 trialInfoMessage = ""
                 showTrialInfoDialog = false
                 Log.d(TAG, "updateTrialState: Cleared message, showTrialInfoDialog = false (ACTIVE, PURCHASED, AWAITING, OR UNAVAILABLE)")
@@ -182,17 +186,21 @@ class MainActivity : ComponentActivity() {
         return key
     }
 
-    internal fun checkAccessibilityServiceEnabled(): Boolean {
-        Log.d(TAG, "checkAccessibilityServiceEnabled called.")
+    // Renamed to internal and updated to refresh the StateFlow
+    internal fun refreshAccessibilityServiceStatus() {
+        Log.d(TAG, "refreshAccessibilityServiceStatus called.")
         val service = packageName + "/" + ScreenOperatorAccessibilityService::class.java.canonicalName
         val enabledServices = Settings.Secure.getString(contentResolver, Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES)
         val isEnabled = enabledServices?.contains(service, ignoreCase = true) == true
-        Log.d(TAG, "Accessibility Service $service isEnabled: $isEnabled")
+        _isAccessibilityServiceEnabled.value = isEnabled // Update the flow
+        Log.d(TAG, "Accessibility Service $service isEnabled: $isEnabled. Flow updated.")
         if (!isEnabled) {
             Log.d(TAG, "Accessibility Service not enabled.")
         }
-        return isEnabled
+        // The return value is not strictly needed here anymore if primarily consumed via flow,
+        // but can be kept for direct synchronous checks if necessary.
     }
+
 
     internal fun requestManageExternalStoragePermission() {
         Log.d(TAG, "requestManageExternalStoragePermission (dummy) called.")
@@ -217,18 +225,14 @@ class MainActivity : ComponentActivity() {
         this.photoReasoningViewModel = viewModel
     }
 
-        fun openAccessibilitySettings() {
-        Log.d(TAG, "openAccessibilitySettings called. Opening accessibility settings.")
-        try {
-            val intent = Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)
-            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK) // Erforderlich, wenn von außerhalb einer Activity gestartet wird, obwohl wir hier innerhalb sind, ist es eine gute Praxis.
-            startActivity(intent)
-            updateStatusMessage("Bitte aktivieren Sie den Dienst für 'Generative AI Sample'.")
-        } catch (e: Exception) {
-            Log.e(TAG, "Error opening accessibility settings", e)
-            updateStatusMessage("Fehler beim Öffnen der Bedienungshilfen-Einstellungen.", true)
+    // This function now just returns the Intent. The launching is handled by the composable.
+    fun getAccessibilitySettingsIntent(): Intent {
+        Log.d(TAG, "getAccessibilitySettingsIntent called.")
+        return Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS).apply {
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         }
     }
+
 
     override fun onCreate(savedInstanceState: Bundle?) {
         Log.d(TAG, "onCreate: Activity creating.")
@@ -274,6 +278,10 @@ class MainActivity : ComponentActivity() {
         Log.d(TAG, "onCreate: Calling startTrialServiceIfNeeded based on initial state: $currentTrialState")
         startTrialServiceIfNeeded()
 
+        // Initial check for accessibility service status
+        refreshAccessibilityServiceStatus()
+
+
         Log.d(TAG, "onCreate: Calling setContent.")
         setContent {
             Log.d(TAG, "setContent: Composable content rendering. Current trial state: $currentTrialState")
@@ -301,9 +309,9 @@ class MainActivity : ComponentActivity() {
                         TrialManager.TrialState.EXPIRED_INTERNET_TIME_CONFIRMED -> {
                             Log.d(TAG, "setContent: Rendering TrialExpiredDialog.")
                             TrialExpiredDialog(
-                                onPurchaseClick = { 
+                                onPurchaseClick = {
                                     Log.d(TAG, "TrialExpiredDialog onPurchaseClick called.")
-                                    initiateDonationPurchase() 
+                                    initiateDonationPurchase()
                                 },
                                 onDismiss = { Log.d(TAG, "TrialExpiredDialog onDismiss called (should be persistent).") }
                             )
@@ -312,9 +320,9 @@ class MainActivity : ComponentActivity() {
                         TrialManager.TrialState.INTERNET_UNAVAILABLE_CANNOT_VERIFY -> {
                             if (showTrialInfoDialog) {
                                 Log.d(TAG, "setContent: Rendering InfoDialog for AWAITING/UNAVAILABLE. Message: $trialInfoMessage")
-                                InfoDialog(message = trialInfoMessage, onDismiss = { 
+                                InfoDialog(message = trialInfoMessage, onDismiss = {
                                     Log.d(TAG, "InfoDialog onDismiss called.")
-                                    showTrialInfoDialog = false 
+                                    showTrialInfoDialog = false
                                 })
                             }
                         }
@@ -359,14 +367,14 @@ class MainActivity : ComponentActivity() {
                         Log.d(TAG, "MenuScreen onApiKeyButtonClicked: Showing ApiKeyDialog.")
                         showApiKeyDialog = true
                     },
-                    onDonationButtonClicked = { 
+                    onDonationButtonClicked = {
                         Log.d(TAG, "MenuScreen onDonationButtonClicked: Initiating donation purchase.")
-                        initiateDonationPurchase() 
+                        initiateDonationPurchase()
                     },
                      isTrialExpired = currentTrialState == TrialManager.TrialState.EXPIRED_INTERNET_TIME_CONFIRMED
                 )
             }
-            composable("photo_reasoning") { 
+            composable("photo_reasoning") {
                 Log.d(TAG, "AppNavigation: Composing 'photo_reasoning' screen. isAppEffectivelyUsable=$isAppEffectivelyUsable")
                 if (isAppEffectivelyUsable) {
                     PhotoReasoningRoute()
@@ -481,7 +489,7 @@ class MainActivity : ComponentActivity() {
                         Log.i(TAG, "initiateDonationPurchase (reconnect): onBillingSetupFinished. ResponseCode: ${setupResult.responseCode}")
                         if (setupResult.responseCode == BillingClient.BillingResponseCode.OK) {
                             Log.d(TAG, "initiateDonationPurchase (reconnect): Reconnection successful, retrying purchase.")
-                            initiateDonationPurchase() // Retry purchase after successful reconnection
+                            initiateDonationPurchase()
                         } else {
                              Log.e(TAG, "initiateDonationPurchase (reconnect): BillingClient setup failed after disconnect: ${setupResult.debugMessage}")
                         }
@@ -560,7 +568,7 @@ class MainActivity : ComponentActivity() {
                 } else {
                     Log.i(TAG, "handlePurchase: Subscription already acknowledged.")
                     updateStatusMessage("Abonnement bereits aktiv.")
-                    TrialManager.markAsPurchased(this) // Ensure state is consistent
+                    TrialManager.markAsPurchased(this)
                     updateTrialState(TrialManager.TrialState.PURCHASED)
                 }
             } else {
@@ -594,29 +602,23 @@ class MainActivity : ComponentActivity() {
                         isSubscribed = true
                         if (!purchase.isAcknowledged) {
                             Log.d(TAG, "queryActiveSubscriptions: Found active, unacknowledged subscription. Handling purchase.")
-                            handlePurchase(purchase) // Acknowledge if not already
+                            handlePurchase(purchase)
                         } else {
                             Log.d(TAG, "queryActiveSubscriptions: Found active, acknowledged subscription.")
                         }
-                        // Once a valid, active subscription is found and handled (or confirmed handled), we can update state.
-                        // No need to iterate further for this specific product if already found and processed.
-                        // However, handlePurchase itself will update the state to PURCHASED.
-                        // If handlePurchase was called, it will set the state. If it was already acknowledged, we set it here.
                         if (isSubscribed && purchase.isAcknowledged) {
-                            TrialManager.markAsPurchased(this) // Ensure flag is set
+                            TrialManager.markAsPurchased(this)
                             updateTrialState(TrialManager.TrialState.PURCHASED)
                             Log.d(TAG, "queryActiveSubscriptions: Stopping TrialTimerService due to active acknowledged subscription.")
                             val stopIntent = Intent(this, TrialTimerService::class.java)
                             stopIntent.action = TrialTimerService.ACTION_STOP_TIMER
                             startService(stopIntent)
                         }
-                        return@forEach // Exit forEach loop once relevant subscription is processed
+                        return@forEach
                     }
                 }
                 if (isSubscribed) {
-                    // This log might be redundant if handlePurchase or the block above already logged it.
                     Log.i(TAG, "queryActiveSubscriptions: User has an active subscription (final check after loop).")
-                    // Ensure state is PURCHASED if isSubscribed is true, even if handlePurchase wasn't called in this path (e.g. already acked)
                     if (currentTrialState != TrialManager.TrialState.PURCHASED) {
                         TrialManager.markAsPurchased(this)
                         updateTrialState(TrialManager.TrialState.PURCHASED)
@@ -626,7 +628,7 @@ class MainActivity : ComponentActivity() {
                     }
                 } else {
                     Log.i(TAG, "queryActiveSubscriptions: User has no active subscription for $subscriptionProductId. Trial logic will apply.")
-                    if (TrialManager.getTrialState(this, null) != TrialManager.TrialState.PURCHASED) { // Double check not purchased by other means
+                    if (TrialManager.getTrialState(this, null) != TrialManager.TrialState.PURCHASED) {
                         Log.d(TAG, "queryActiveSubscriptions: Re-evaluating trial state and starting service if needed.")
                         updateTrialState(TrialManager.getTrialState(this, null))
                         startTrialServiceIfNeeded()
@@ -650,8 +652,8 @@ class MainActivity : ComponentActivity() {
         super.onResume()
         instance = this
         Log.d(TAG, "onResume: MainActivity instance set.")
-        Log.d(TAG, "onResume: Calling checkAccessibilityServiceEnabled.")
-        checkAccessibilityServiceEnabled()
+        Log.d(TAG, "onResume: Calling refreshAccessibilityServiceStatus.")
+        refreshAccessibilityServiceStatus() // This will update the flow
 
         Log.d(TAG, "onResume: Checking BillingClient status.")
         if (::billingClient.isInitialized && billingClient.isReady) {
@@ -665,9 +667,6 @@ class MainActivity : ComponentActivity() {
             setupBillingClient()
         } else {
             Log.d(TAG, "onResume: Billing client initializing or in an intermediate state (State: ${billingClient.connectionState}). Default trial logic will apply for now. QueryActiveSubs will be called by setup if it succeeds.")
-            // If billing client is connecting, let it finish. If it fails, setupBillingClient will log it.
-            // If it succeeds, it will call queryActiveSubscriptions.
-            // For now, ensure trial state is current and service is running if needed.
             Log.d(TAG, "onResume: Updating trial state and starting service if needed (pending billing client). Current state: $currentTrialState")
             updateTrialState(TrialManager.getTrialState(this, null))
             startTrialServiceIfNeeded()
@@ -707,8 +706,6 @@ class MainActivity : ComponentActivity() {
             requestPermissionLauncher.launch(permissionsToRequest)
         } else {
             Log.i(TAG, "All required permissions already granted.")
-            // Permissions already granted, ensure trial service is started if needed
-            // This was potentially missed if onCreate didn't have permissions yet
             Log.d(TAG, "checkAndRequestPermissions: Permissions granted, calling startTrialServiceIfNeeded. Current state: $currentTrialState")
             startTrialServiceIfNeeded()
         }
@@ -718,7 +715,6 @@ class MainActivity : ComponentActivity() {
         arrayOf(
             Manifest.permission.READ_MEDIA_IMAGES,
             Manifest.permission.READ_MEDIA_VIDEO
-            // Manifest.permission.POST_NOTIFICATIONS // Removed as per user request
         )
     } else {
         arrayOf(
@@ -757,7 +753,7 @@ class MainActivity : ComponentActivity() {
 @Composable
 fun TrialExpiredDialog(
     onPurchaseClick: () -> Unit,
-    onDismiss: () -> Unit // Kept for consistency, but dialog is persistent
+    onDismiss: () -> Unit
 ) {
     Log.d("TrialExpiredDialog", "Composing TrialExpiredDialog")
     Dialog(onDismissRequest = {
@@ -824,7 +820,7 @@ fun InfoDialog(
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
                 Text(
-                    text = "Information", // Or a more dynamic title
+                    text = "Information",
                     style = MaterialTheme.typography.titleMedium
                 )
                 Spacer(modifier = Modifier.height(16.dp))
@@ -844,4 +840,3 @@ fun InfoDialog(
         }
     }
 }
-
