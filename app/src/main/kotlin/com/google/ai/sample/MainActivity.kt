@@ -134,27 +134,23 @@ class MainActivity : ComponentActivity() {
         currentTrialState = newState
         Log.i(TAG, "updateTrialState: Trial state updated from $oldState to $currentTrialState")
 
+        // REMOVED DIALOG LOGIC FOR NOT_YET_STARTED_AWAITING_INTERNET and INTERNET_UNAVAILABLE_CANNOT_VERIFY
+        // The UI should remain as is, without showing specific 'waiting' or 'cannot verify' dialogs.
+        // The app will rely on the TrialExpiredDialog for the EXPIRED_INTERNET_TIME_CONFIRMED state.
+
         when (currentTrialState) {
-            TrialManager.TrialState.NOT_YET_STARTED_AWAITING_INTERNET -> {
-                trialInfoMessage = "Warte auf Internetverbindung zur Verifizierung der Testzeit..."
-                showTrialInfoDialog = true
-                Log.d(TAG, "updateTrialState: Set message to '$trialInfoMessage', showTrialInfoDialog = true")
-            }
-            TrialManager.TrialState.INTERNET_UNAVAILABLE_CANNOT_VERIFY -> {
-                trialInfoMessage = "Testzeit kann nicht verifiziert werden. Bitte Internetverbindung prüfen."
-                showTrialInfoDialog = true
-                Log.d(TAG, "updateTrialState: Set message to '$trialInfoMessage', showTrialInfoDialog = true")
-            }
             TrialManager.TrialState.EXPIRED_INTERNET_TIME_CONFIRMED -> {
                 trialInfoMessage = "Ihr 30-minütiger Testzeitraum ist beendet. Bitte abonnieren Sie die App, um sie weiterhin nutzen zu können."
                 showTrialInfoDialog = true // This will trigger the persistent dialog
-                Log.d(TAG, "updateTrialState: Set message to '$trialInfoMessage', showTrialInfoDialog = true (EXPIRED)")
+                Log.d(TAG, "updateTrialState: Set message to \'$trialInfoMessage\', showTrialInfoDialog = true (EXPIRED)")
             }
             TrialManager.TrialState.ACTIVE_INTERNET_TIME_CONFIRMED,
-            TrialManager.TrialState.PURCHASED -> {
+            TrialManager.TrialState.PURCHASED,
+            TrialManager.TrialState.NOT_YET_STARTED_AWAITING_INTERNET, // No dialog for this state
+            TrialManager.TrialState.INTERNET_UNAVAILABLE_CANNOT_VERIFY -> { // No dialog for this state
                 trialInfoMessage = ""
                 showTrialInfoDialog = false
-                Log.d(TAG, "updateTrialState: Cleared message, showTrialInfoDialog = false (ACTIVE or PURCHASED)")
+                Log.d(TAG, "updateTrialState: Cleared message, showTrialInfoDialog = false (ACTIVE, PURCHASED, AWAITING, OR UNAVAILABLE)")
             }
         }
     }
