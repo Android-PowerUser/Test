@@ -217,6 +217,21 @@ class MainActivity : ComponentActivity() {
         this.photoReasoningViewModel = viewModel
     }
 
+        fun openAccessibilitySettings() {
+        Log.d(TAG, "openAccessibilitySettings called. Opening accessibility settings.")
+        try {
+            val intent = Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)
+            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK) // Erforderlich, wenn von außerhalb einer Activity gestartet wird, obwohl wir hier innerhalb sind, ist es eine gute Praxis.
+            startActivity(intent)
+            updateStatusMessage("Bitte aktivieren Sie den Dienst für 'Generative AI Sample'.")
+        } catch (e: Exception) {
+            Log.e(TAG, "Error opening accessibility settings", e)
+            updateStatusMessage("Fehler beim Öffnen der Bedienungshilfen-Einstellungen.", true)
+        }
+    }
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+
     override fun onCreate(savedInstanceState: Bundle?) {
         Log.d(TAG, "onCreate: Activity creating.")
         super.onCreate(savedInstanceState)
