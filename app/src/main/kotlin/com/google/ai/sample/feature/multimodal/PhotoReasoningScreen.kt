@@ -144,11 +144,11 @@ internal fun PhotoReasoningRoute(
                 viewModel.reason(inputText, bitmaps)
             }
         },
-        isAccessibilityServiceEnabled = mainActivity?.let {
+         isAccessibilityServiceEnabled = mainActivity?.let {
             ScreenOperatorAccessibilityService.isAccessibilityServiceEnabled(it)
         } ?: false,
         onEnableAccessibilityService = {
-            mainActivity?.checkAccessibilityServiceEnabled()
+            mainActivity?.openAccessibilitySettings() // Geändert, um die Einstellungen zu öffnen
         },
         onClearChatHistory = {
             mainActivity?.let {
