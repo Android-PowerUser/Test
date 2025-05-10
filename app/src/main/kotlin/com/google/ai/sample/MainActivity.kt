@@ -318,8 +318,7 @@ class MainActivity : ComponentActivity() {
 
     @Composable
     fun AppNavigation(navController: NavHostController) {
-        val isAppEffectivelyUsable = currentTrialState == TrialManager.TrialState.ACTIVE_INTERNET_TIME_CONFIRMED ||
-                                   currentTrialState == TrialManager.TrialState.PURCHASED
+                val isAppEffectivelyUsable = currentTrialState != TrialManager.TrialState.EXPIRED_INTERNET_TIME_CONFIRMED
         Log.d(TAG, "AppNavigation: isAppEffectivelyUsable = $isAppEffectivelyUsable (currentTrialState: $currentTrialState)")
 
         val alwaysAvailableRoutes = listOf("ApiKeyDialog", "ChangeModel")
@@ -351,9 +350,7 @@ class MainActivity : ComponentActivity() {
                         Log.d(TAG, "MenuScreen onDonationButtonClicked: Initiating donation purchase.")
                         initiateDonationPurchase() 
                     },
-                    isTrialExpired = (currentTrialState == TrialManager.TrialState.EXPIRED_INTERNET_TIME_CONFIRMED) ||
-                                     (currentTrialState == TrialManager.TrialState.NOT_YET_STARTED_AWAITING_INTERNET) ||
-                                     (currentTrialState == TrialManager.TrialState.INTERNET_UNAVAILABLE_CANNOT_VERIFY)
+                     isTrialExpired = currentTrialState == TrialManager.TrialState.EXPIRED_INTERNET_TIME_CONFIRMED
                 )
             }
             composable("photo_reasoning") { 
