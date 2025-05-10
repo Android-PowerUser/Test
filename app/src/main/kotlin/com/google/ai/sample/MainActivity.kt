@@ -62,6 +62,7 @@ import com.android.billingclient.api.QueryPurchasesParams
 import com.google.ai.sample.feature.multimodal.PhotoReasoningRoute
 import com.google.ai.sample.feature.multimodal.PhotoReasoningViewModel
 import com.google.ai.sample.ui.theme.GenerativeAISample
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -81,8 +82,8 @@ class MainActivity : ComponentActivity() {
     // Core state variable for trial status. Compose UI reacts to changes in this.
     private var currentTrialState by mutableStateOf(TrialManager.TrialState.NOT_YET_STARTED_AWAITING_INTERNET)
     // State for a generic InfoDialog (e.g., for "awaiting first internet")
-    private var showTrialInfoDialog by mutableStateOf(false)
-    private var trialInfoMessage by mutableStateOf("")
+    private var showTrialInfoDialog by mutableStateOf(false) // Kept for potential future use
+    private var trialInfoMessage by mutableStateOf("") // Kept for potential future use
 
     private lateinit var navController: NavHostController
 
@@ -94,54 +95,52 @@ class MainActivity : ComponentActivity() {
             Log.i(TAG, "trialStatusReceiver: Received broadcast: ${intent?.action}")
             val action = intent?.action
 
-            when (action) {
-                TrialTimerService.ACTION_TRIAL_EXPIRED -> {
-                    Log.i(TAG, "trialStatusReceiver: ACTION_TRIAL_EXPIRED received. Updating trial state to EXPIRED.")
-                    updateTrialState(TrialManager.TrialState.EXPIRED_INTERNET_TIME_CONFIRMED)
-                }
-                TrialTimerService.ACTION_INTERNET_TIME_UNAVAILABLE -> {
-                    Log.i(TAG, "trialStatusReceiver: ACTION_INTERNET_TIME_UNAVAILABLE received. Current local state: $currentTrialState")
-                    // Only transition to UNAVAILABLE if not already permanently expired or purchased
-                    if (currentTrialState != TrialManager.TrialState.EXPIRED_INTERNET_TIME_CONFIRMED &&
-                        currentTrialState != TrialManager.TrialState.PURCHASED) {
-                        Log.d(TAG, "trialStatusReceiver: Updating state to INTERNET_UNAVAILABLE_CANNOT_VERIFY.")
-                        updateTrialState(TrialManager.TrialState.INTERNET_UNAVAILABLE_CANNOT_VERIFY)
-                        // --- MODIFICATION START: Dialog for internet unavailable removed ---
-                        // trialInfoMessage = "Keine Internetverbindung zur Überprüfung der Testversion."
-                        // showTrialInfoDialog = true
-                        // Log.d(TAG, "trialStatusReceiver: Set message and flag to show InfoDialog for internet unavailable.")
-                        Log.d(TAG, "trialStatusReceiver: Internet unavailable. No dialog will be shown. State updated to INTERNET_UNAVAILABLE_CANNOT_VERIFY.")
-                        // --- MODIFICATION END ---
-                    } else {
-                        Log.d(TAG, "trialStatusReceiver: State is already EXPIRED or PURCHASED, not changing to INTERNET_UNAVAILABLE_CANNOT_VERIFY.")
+            // Ensure UI state updates are on the main thread for immediate recomposition
+            lifecycleScope.launch(Dispatchers.Main) {
+                when (action) {
+                    TrialTimerService.ACTION_TRIAL_EXPIRED -> {
+                        Log.i(TAG, "trialStatusReceiver: ACTION_TRIAL_EXPIRED received. Updating trial state to EXPIRED.")
+                        updateTrialState(TrialManager.TrialState.EXPIRED_INTERNET_TIME_CONFIRMED)
                     }
-                }
-                TrialTimerService.ACTION_INTERNET_TIME_AVAILABLE -> {
-                    val internetTime = intent.getLongExtra(TrialTimerService.EXTRA_CURRENT_UTC_TIME_MS, 0L)
-                    Log.i(TAG, "trialStatusReceiver: ACTION_INTERNET_TIME_AVAILABLE received. InternetTime: $internetTime")
-                    if (internetTime > 0) {
-                        TrialManager.startTrialIfNecessaryWithInternetTime(this@MainActivity, internetTime)
-                        val newState = TrialManager.getTrialState(this@MainActivity, internetTime)
-                        Log.i(TAG, "trialStatusReceiver: State from TrialManager after internet time: $newState. Updating local state.")
-                        updateTrialState(newState)
-
-                        // If a generic InfoDialog was shown (e.g. for "awaiting internet"), hide it now.
-                        if (showTrialInfoDialog) {
-                            showTrialInfoDialog = false
-                            trialInfoMessage = ""
-                            Log.d(TAG, "trialStatusReceiver: Hid generic InfoDialog as internet is now available and state updated.")
+                    TrialTimerService.ACTION_INTERNET_TIME_UNAVAILABLE -> {
+                        Log.i(TAG, "trialStatusReceiver: ACTION_INTERNET_TIME_UNAVAILABLE received. Current local state: $currentTrialState")
+                        if (currentTrialState != TrialManager.TrialState.EXPIRED_INTERNET_TIME_CONFIRMED &&
+                            currentTrialState != TrialManager.TrialState.PURCHASED) {
+                            Log.d(TAG, "trialStatusReceiver: Updating state to INTERNET_UNAVAILABLE_CANNOT_VERIFY.")
+                            updateTrialState(TrialManager.TrialState.INTERNET_UNAVAILABLE_CANNOT_VERIFY)
+                            Log.d(TAG, "trialStatusReceiver: Internet unavailable. No dialog will be shown. State updated to INTERNET_UNAVAILABLE_CANNOT_VERIFY.")
+                        } else {
+                            Log.d(TAG, "trialStatusReceiver: State is already EXPIRED or PURCHASED, not changing to INTERNET_UNAVAILABLE_CANNOT_VERIFY.")
                         }
-                    } else {
-                        Log.w(TAG, "trialStatusReceiver: ACTION_INTERNET_TIME_AVAILABLE received, but internetTime is 0 or less. No action taken on state.")
                     }
-                }
-                else -> {
-                     Log.w(TAG, "trialStatusReceiver: Received unknown action: ${intent?.action}")
+                    TrialTimerService.ACTION_INTERNET_TIME_AVAILABLE -> {
+                        val internetTime = intent.getLongExtra(TrialTimerService.EXTRA_CURRENT_UTC_TIME_MS, 0L)
+                        Log.i(TAG, "trialStatusReceiver: ACTION_INTERNET_TIME_AVAILABLE received. InternetTime: $internetTime")
+                        if (internetTime > 0) {
+                            TrialManager.startTrialIfNecessaryWithInternetTime(this@MainActivity, internetTime)
+                            val newState = TrialManager.getTrialState(this@MainActivity, internetTime)
+                            Log.i(TAG, "trialStatusReceiver: State from TrialManager after internet time: $newState. Updating local state.")
+                            updateTrialState(newState)
+
+                            // If a generic InfoDialog was shown (e.g. for "awaiting internet"), hide it now.
+                            if (showTrialInfoDialog) { // This check remains in case InfoDialog is used for other purposes
+                                showTrialInfoDialog = false
+                                trialInfoMessage = ""
+                                Log.d(TAG, "trialStatusReceiver: Hid generic InfoDialog as internet is now available and state updated.")
+                            }
+                        } else {
+                            Log.w(TAG, "trialStatusReceiver: ACTION_INTERNET_TIME_AVAILABLE received, but internetTime is 0 or less. No action taken on state.")
+                        }
+                    }
+                    else -> {
+                         Log.w(TAG, "trialStatusReceiver: Received unknown action: ${intent?.action}")
+                    }
                 }
             }
         }
     }
 
+    // This function is now guaranteed to be called on the Main thread if invoked from trialStatusReceiver
     private fun updateTrialState(newState: TrialManager.TrialState) {
         val oldState = currentTrialState
         Log.d(TAG, "updateTrialState called. Attempting to transition from $oldState to $newState")
@@ -151,37 +150,35 @@ class MainActivity : ComponentActivity() {
             return
         }
 
-        currentTrialState = newState
+        currentTrialState = newState // This update should trigger recomposition
         Log.i(TAG, "updateTrialState: Trial state CHANGED from $oldState to $currentTrialState")
 
         // If the new state is definitive (ACTIVE, PURCHASED, EXPIRED),
-        // and an InfoDialog was shown for a transient state (e.g., AWAITING), hide it.
+        // and an InfoDialog was shown for a transient state, hide it.
         if (newState == TrialManager.TrialState.ACTIVE_INTERNET_TIME_CONFIRMED ||
             newState == TrialManager.TrialState.PURCHASED ||
             newState == TrialManager.TrialState.EXPIRED_INTERNET_TIME_CONFIRMED) {
-            if (showTrialInfoDialog && (oldState == TrialManager.TrialState.NOT_YET_STARTED_AWAITING_INTERNET)) { // Removed INTERNET_UNAVAILABLE from here
+            if (showTrialInfoDialog && (oldState == TrialManager.TrialState.NOT_YET_STARTED_AWAITING_INTERNET)) {
                 Log.d(TAG, "updateTrialState: Transitioned to $newState from AWAITING. Hiding generic InfoDialog.")
                 showTrialInfoDialog = false
                 trialInfoMessage = ""
             }
         }
-        // Logic for showing InfoDialog for NOT_YET_STARTED_AWAITING_INTERNET can be added here if needed,
-        // or handled directly in setContent based on currentTrialState.
-        // For now, we are not showing any InfoDialog for NOT_YET_STARTED_AWAITING_INTERNET either.
-        // If you want one, you could set showTrialInfoDialog = true and a message here.
     }
 
 
     private val purchasesUpdatedListener = PurchasesUpdatedListener { billingResult, purchases ->
-        Log.i(TAG, "purchasesUpdatedListener: BillingResponseCode: ${billingResult.responseCode}, Message: ${billingResult.debugMessage}")
-        if (billingResult.responseCode == BillingClient.BillingResponseCode.OK && purchases != null) {
-            for (purchase in purchases) {
-                handlePurchase(purchase)
+        lifecycleScope.launch(Dispatchers.Main) { // Ensure UI updates from billing are on main thread
+            Log.i(TAG, "purchasesUpdatedListener: BillingResponseCode: ${billingResult.responseCode}, Message: ${billingResult.debugMessage}")
+            if (billingResult.responseCode == BillingClient.BillingResponseCode.OK && purchases != null) {
+                for (purchase in purchases) {
+                    handlePurchase(purchase) // handlePurchase itself calls updateTrialState which is now main-thread safe
+                }
+            } else if (billingResult.responseCode == BillingClient.BillingResponseCode.USER_CANCELED) {
+                Toast.makeText(this@MainActivity, "Spendevorgang abgebrochen.", Toast.LENGTH_SHORT).show()
+            } else {
+                Toast.makeText(this@MainActivity, "Fehler beim Spendevorgang: ${billingResult.debugMessage}", Toast.LENGTH_LONG).show()
             }
-        } else if (billingResult.responseCode == BillingClient.BillingResponseCode.USER_CANCELED) {
-            Toast.makeText(this, "Spendevorgang abgebrochen.", Toast.LENGTH_SHORT).show()
-        } else {
-            Toast.makeText(this, "Fehler beim Spendevorgang: ${billingResult.debugMessage}", Toast.LENGTH_LONG).show()
         }
     }
 
@@ -198,7 +195,7 @@ class MainActivity : ComponentActivity() {
         val service = packageName + "/" + ScreenOperatorAccessibilityService::class.java.canonicalName
         val enabledServices = Settings.Secure.getString(contentResolver, Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES)
         val isEnabled = enabledServices?.contains(service, ignoreCase = true) == true
-        _isAccessibilityServiceEnabled.value = isEnabled
+        _isAccessibilityServiceEnabled.value = isEnabled // This updates a StateFlow, which is fine
     }
 
 
@@ -207,7 +204,10 @@ class MainActivity : ComponentActivity() {
     }
 
     fun updateStatusMessage(message: String, isError: Boolean = false) {
-        Toast.makeText(this, message, if (isError) Toast.LENGTH_LONG else Toast.LENGTH_SHORT).show()
+        // Toast can be called from any thread, but good practice to keep UI interactions on main
+        lifecycleScope.launch(Dispatchers.Main) {
+            Toast.makeText(this@MainActivity, message, if (isError) Toast.LENGTH_LONG else Toast.LENGTH_SHORT).show()
+        }
     }
 
     fun getPhotoReasoningViewModel(): PhotoReasoningViewModel? {
@@ -230,12 +230,13 @@ class MainActivity : ComponentActivity() {
         instance = this
 
         apiKeyManager = ApiKeyManager.getInstance(this)
+        // Initial state for showApiKeyDialog, ensure it's set before setContent if possible
         if (apiKeyManager.getCurrentApiKey().isNullOrEmpty()) {
              showApiKeyDialog = true
         }
 
         checkAndRequestPermissions()
-        setupBillingClient()
+        setupBillingClient() // This can lead to state updates via its callbacks
 
         TrialManager.initializeTrialStateFlagsIfNecessary(this)
 
@@ -250,10 +251,11 @@ class MainActivity : ComponentActivity() {
             registerReceiver(trialStatusReceiver, intentFilter)
         }
 
+        // Initial trial state check. updateTrialState is now main-thread safe.
         val initialTrialState = TrialManager.getTrialState(this, null)
-        updateTrialState(initialTrialState)
+        updateTrialState(initialTrialState) // Update local Compose state
 
-        startTrialServiceIfNeeded()
+        startTrialServiceIfNeeded() // Decision based on the initial state
 
         refreshAccessibilityServiceStatus()
 
@@ -264,36 +266,38 @@ class MainActivity : ComponentActivity() {
                     modifier = Modifier.fillMaxSize(),
                     color = MaterialTheme.colorScheme.background
                 ) {
-                    AppNavigation(navController)
+                    AppNavigation(navController) // Depends on currentTrialState
+
+                    // API Key Dialog
                     if (showApiKeyDialog && currentTrialState != TrialManager.TrialState.EXPIRED_INTERNET_TIME_CONFIRMED) {
                         ApiKeyDialog(
                             apiKeyManager = apiKeyManager,
                             isFirstLaunch = apiKeyManager.getApiKeys().isEmpty(),
                             onDismiss = {
-                                showApiKeyDialog = false
+                                lifecycleScope.launch(Dispatchers.Main) { // Ensure this state change is on main
+                                    showApiKeyDialog = false
+                                }
                             }
                         )
                     }
-                    // The TrialExpiredDialog is directly controlled by currentTrialState
+
+                    // Trial Expired Dialog - directly controlled by currentTrialState
                     if (currentTrialState == TrialManager.TrialState.EXPIRED_INTERNET_TIME_CONFIRMED) {
                         TrialExpiredDialog(
                             onPurchaseClick = {
-                                initiateDonationPurchase()
+                                initiateDonationPurchase() // Billing calls are handled
                             },
                             onDismiss = {
-                                // Dialog is persistent
+                                // Dialog is persistent as per previous logic
+                                Log.d(TAG, "TrialExpiredDialog onDismissRequest called (persistent dialog)")
                             }
                         )
                     }
-                    // --- MODIFICATION START: InfoDialog for INTERNET_UNAVAILABLE_CANNOT_VERIFY removed from here ---
-                    // else if (showTrialInfoDialog &&
-                    //          (currentTrialState == TrialManager.TrialState.NOT_YET_STARTED_AWAITING_INTERNET ||
-                    //           currentTrialState == TrialManager.TrialState.INTERNET_UNAVAILABLE_CANNOT_VERIFY)) {
-                    // --- MODIFICATION END ---
-                    // If you still want an InfoDialog for NOT_YET_STARTED_AWAITING_INTERNET, that logic would go here.
-                    // For example:
-                    // else if (currentTrialState == TrialManager.TrialState.NOT_YET_STARTED_AWAITING_INTERNET) {
-                    //    InfoDialog(message = "Warte auf Internetverbindung zur Aktivierung der Testversion...", onDismiss = { /* usually not dismissible or handled by state change */ })
+                    // Generic Info Dialog (if ever needed again, e.g., for NOT_YET_STARTED_AWAITING_INTERNET)
+                    // else if (showTrialInfoDialog && currentTrialState == TrialManager.TrialState.NOT_YET_STARTED_AWAITING_INTERNET) {
+                    //    InfoDialog(message = trialInfoMessage, onDismiss = {
+                    //        lifecycleScope.launch(Dispatchers.Main) { showTrialInfoDialog = false }
+                    //    })
                     // }
                 }
             }
@@ -302,7 +306,10 @@ class MainActivity : ComponentActivity() {
 
     @Composable
     fun AppNavigation(navController: NavHostController) {
+        // This composable reads currentTrialState. Recomposition should occur when it changes.
         val isAppEffectivelyUsable = currentTrialState != TrialManager.TrialState.EXPIRED_INTERNET_TIME_CONFIRMED
+        Log.d(TAG, "AppNavigation: Recomposing. isAppEffectivelyUsable = $isAppEffectivelyUsable (currentTrialState: $currentTrialState)")
+
         val alwaysAvailableRoutes = listOf("ApiKeyDialog", "ChangeModel")
 
         NavHost(navController = navController, startDestination = "menu") {
@@ -311,7 +318,7 @@ class MainActivity : ComponentActivity() {
                     onItemClicked = { routeId ->
                         if (alwaysAvailableRoutes.contains(routeId) || isAppEffectivelyUsable) {
                             if (routeId == "SHOW_API_KEY_DIALOG_ACTION") {
-                                showApiKeyDialog = true
+                                lifecycleScope.launch(Dispatchers.Main) { showApiKeyDialog = true }
                             } else {
                                 navController.navigate(routeId)
                             }
@@ -325,7 +332,7 @@ class MainActivity : ComponentActivity() {
                         }
                     },
                     onApiKeyButtonClicked = {
-                        showApiKeyDialog = true
+                        lifecycleScope.launch(Dispatchers.Main) { showApiKeyDialog = true }
                     },
                     onDonationButtonClicked = {
                         initiateDonationPurchase()
@@ -337,9 +344,11 @@ class MainActivity : ComponentActivity() {
                 if (isAppEffectivelyUsable) {
                     PhotoReasoningRoute()
                 } else {
-                    LaunchedEffect(Unit) {
-                        navController.popBackStack()
-                        updateStatusMessage("Testzeitraum abgelaufen. Zugriff auf Funktion gesperrt.", isError = true)
+                    LaunchedEffect(currentTrialState) { // React to currentTrialState changes
+                        if (!isAppEffectivelyUsable) { // Double check condition inside LaunchedEffect
+                           navController.popBackStack("menu", inclusive = false) // Go back to menu
+                           updateStatusMessage("Testzeitraum abgelaufen. Zugriff auf Funktion gesperrt.", isError = true)
+                        }
                     }
                 }
             }
@@ -355,8 +364,9 @@ class MainActivity : ComponentActivity() {
             serviceIntent.action = TrialTimerService.ACTION_START_TIMER
             try {
                 startService(serviceIntent)
-            } catch (e: Exception) {
+            } catch (e: Exception) { // Catch more general exceptions for startService
                 Log.e(TAG, "startTrialServiceIfNeeded: Failed to start TrialTimerService", e)
+                updateStatusMessage("Fehler beim Starten des Testversions-Dienstes.", true)
             }
         } else {
             Log.i(TAG, "TrialTimerService NOT started. Current local state: $currentTrialState.")
@@ -369,27 +379,33 @@ class MainActivity : ComponentActivity() {
         if (::billingClient.isInitialized && billingClient.connectionState == BillingClient.ConnectionState.CONNECTING) return
 
         billingClient = BillingClient.newBuilder(this)
-            .setListener(purchasesUpdatedListener)
+            .setListener(purchasesUpdatedListener) // purchasesUpdatedListener now dispatches to main
             .enablePendingPurchases()
             .build()
 
         billingClient.startConnection(object : BillingClientStateListener {
             override fun onBillingSetupFinished(billingResult: BillingResult) {
-                if (billingResult.responseCode == BillingClient.BillingResponseCode.OK) {
-                    queryProductDetails()
-                    queryActiveSubscriptions()
-                } else {
-                    Log.e(TAG, "BillingClient setup failed: ${billingResult.debugMessage}")
+                lifecycleScope.launch(Dispatchers.Main) { // Ensure callbacks are handled on main
+                    if (billingResult.responseCode == BillingClient.BillingResponseCode.OK) {
+                        Log.i(TAG, "BillingClient setup successful.")
+                        queryProductDetails()
+                        queryActiveSubscriptions() // This can also lead to state updates
+                    } else {
+                        Log.e(TAG, "BillingClient setup failed: ${billingResult.debugMessage}")
+                    }
                 }
             }
             override fun onBillingServiceDisconnected() {
-                Log.w(TAG, "onBillingServiceDisconnected.")
+                Log.w(TAG, "onBillingServiceDisconnected. Attempting to reconnect or notify user.")
+                // Consider retrying connection or informing user
             }
         })
     }
 
-    private fun queryProductDetails() {
-        if (!billingClient.isReady) return
+    private fun queryProductDetails() { // Should be called from main thread if it updates UI indirectly
+        if (!billingClient.isReady) {
+            Log.w(TAG, "queryProductDetails: BillingClient not ready."); return
+        }
         val productList = listOf(
             QueryProductDetailsParams.Product.newBuilder()
                 .setProductId(subscriptionProductId)
@@ -398,25 +414,28 @@ class MainActivity : ComponentActivity() {
         )
         val params = QueryProductDetailsParams.newBuilder().setProductList(productList).build()
         billingClient.queryProductDetailsAsync(params) { billingResult, productDetailsList ->
-            if (billingResult.responseCode == BillingClient.BillingResponseCode.OK && productDetailsList.isNotEmpty()) {
-                monthlyDonationProductDetails = productDetailsList.find { it.productId == subscriptionProductId }
-            } else {
-                Log.e(TAG, "Failed to query product details: ${billingResult.debugMessage}")
+            lifecycleScope.launch(Dispatchers.Main) { // Ensure callback updates state on main
+                if (billingResult.responseCode == BillingClient.BillingResponseCode.OK && productDetailsList.isNotEmpty()) {
+                    monthlyDonationProductDetails = productDetailsList.find { it.productId == subscriptionProductId }
+                    Log.i(TAG, "Product details loaded: ${monthlyDonationProductDetails?.name}")
+                } else {
+                    Log.e(TAG, "Failed to query product details: ${billingResult.debugMessage}")
+                }
             }
         }
     }
 
-    private fun initiateDonationPurchase() {
+    private fun initiateDonationPurchase() { // UI interaction, should be on main or lead to main thread updates
         if (!::billingClient.isInitialized || !billingClient.isReady) {
-            updateStatusMessage("Bezahldienst nicht bereit.", true)
+            updateStatusMessage("Bezahldienst nicht bereit. Bitte später versuchen.", true)
             if (::billingClient.isInitialized && (billingClient.connectionState == BillingClient.ConnectionState.CLOSED || billingClient.connectionState == BillingClient.ConnectionState.DISCONNECTED)){
-                setupBillingClient()
+                setupBillingClient() // Try to reconnect
             }
             return
         }
         if (monthlyDonationProductDetails == null) {
-            updateStatusMessage("Spendeninformationen werden geladen.", true)
-            queryProductDetails()
+            updateStatusMessage("Spendeninformationen werden geladen. Bitte erneut versuchen.", true)
+            queryProductDetails() // Try to reload
             return
         }
 
@@ -434,81 +453,91 @@ class MainActivity : ComponentActivity() {
             val billingFlowParams = BillingFlowParams.newBuilder()
                 .setProductDetailsParamsList(productDetailsParamsList)
                 .build()
-            val billingResult = billingClient.launchBillingFlow(this, billingFlowParams)
+            // launchBillingFlow is an Activity call, fine from main thread
+            val billingResult = billingClient.launchBillingFlow(this@MainActivity, billingFlowParams)
             if (billingResult.responseCode != BillingClient.BillingResponseCode.OK) {
                 updateStatusMessage("Fehler beim Starten des Spendevorgangs: ${billingResult.debugMessage}", true)
             }
         }
     }
 
+    // handlePurchase is called from purchasesUpdatedListener, which is now wrapped in main thread dispatch
     private fun handlePurchase(purchase: Purchase) {
+        Log.i(TAG, "handlePurchase called for purchase: OrderId: ${purchase.orderId}, State: ${purchase.purchaseState}, Ack: ${purchase.isAcknowledged}")
         if (purchase.purchaseState == Purchase.PurchaseState.PURCHASED) {
             if (purchase.products.any { it == subscriptionProductId }) {
                 if (!purchase.isAcknowledged) {
+                    Log.i(TAG, "Purchase not acknowledged. Acknowledging now.")
                     val acknowledgePurchaseParams = AcknowledgePurchaseParams.newBuilder()
                         .setPurchaseToken(purchase.purchaseToken)
                         .build()
                     billingClient.acknowledgePurchase(acknowledgePurchaseParams) { ackResult ->
-                        if (ackResult.responseCode == BillingClient.BillingResponseCode.OK) {
-                            updateStatusMessage("Vielen Dank für Ihr Abonnement!")
-                            TrialManager.markAsPurchased(this)
-                            updateTrialState(TrialManager.TrialState.PURCHASED)
-                            val stopIntent = Intent(this, TrialTimerService::class.java).apply { action = TrialTimerService.ACTION_STOP_TIMER }
-                            startService(stopIntent)
-                        } else {
-                            updateStatusMessage("Fehler beim Bestätigen des Kaufs: ${ackResult.debugMessage}", true)
+                        lifecycleScope.launch(Dispatchers.Main) { // Ensure ack callback updates state on main
+                            if (ackResult.responseCode == BillingClient.BillingResponseCode.OK) {
+                                Log.i(TAG, "Subscription purchase acknowledged successfully.")
+                                updateStatusMessage("Vielen Dank für Ihr Abonnement!")
+                                TrialManager.markAsPurchased(this@MainActivity)
+                                updateTrialState(TrialManager.TrialState.PURCHASED)
+                                val stopIntent = Intent(this@MainActivity, TrialTimerService::class.java).apply { action = TrialTimerService.ACTION_STOP_TIMER }
+                                startService(stopIntent)
+                            } else {
+                                updateStatusMessage("Fehler beim Bestätigen des Kaufs: ${ackResult.debugMessage}", true)
+                            }
                         }
                     }
                 } else {
+                    Log.i(TAG, "Subscription already acknowledged.")
                     updateStatusMessage("Abonnement bereits aktiv.")
-                    TrialManager.markAsPurchased(this)
-                    updateTrialState(TrialManager.TrialState.PURCHASED)
+                    TrialManager.markAsPurchased(this@MainActivity) // Ensure local state is marked
+                    updateTrialState(TrialManager.TrialState.PURCHASED) // Update Compose state
                 }
             }
         } else if (purchase.purchaseState == Purchase.PurchaseState.PENDING) {
+            Log.i(TAG, "Purchase is PENDING.")
             updateStatusMessage("Ihre Zahlung ist in Bearbeitung.")
         }
     }
 
+    // queryActiveSubscriptions is called from main thread contexts (onResume, setupBillingClient callback)
     private fun queryActiveSubscriptions() {
-        if (!::billingClient.isInitialized || !billingClient.isReady) return
-
+        if (!::billingClient.isInitialized || !billingClient.isReady) {
+            Log.w(TAG, "queryActiveSubscriptions: BillingClient not ready."); return
+        }
         billingClient.queryPurchasesAsync(
             QueryPurchasesParams.newBuilder().setProductType(BillingClient.ProductType.SUBS).build()
         ) { billingResult, purchases ->
-            if (billingResult.responseCode == BillingClient.BillingResponseCode.OK) {
-                var isSubscribed = false
-                purchases.forEach { purchase ->
-                    if (purchase.products.any { it == subscriptionProductId } && purchase.purchaseState == Purchase.PurchaseState.PURCHASED) {
-                        isSubscribed = true
-                        handlePurchase(purchase) // Handles acknowledgement and state update
-                        return@forEach
+            lifecycleScope.launch(Dispatchers.Main) { // Ensure callback updates state on main
+                Log.i(TAG, "queryActiveSubscriptions result: ${billingResult.responseCode}, Message: ${billingResult.debugMessage}, Purchases count: ${purchases.size}")
+                if (billingResult.responseCode == BillingClient.BillingResponseCode.OK) {
+                    var isSubscribed = false
+                    purchases.forEach { purchase ->
+                        if (purchase.products.any { it == subscriptionProductId } && purchase.purchaseState == Purchase.PurchaseState.PURCHASED) {
+                            Log.i(TAG, "Active subscription found for $subscriptionProductId.")
+                            isSubscribed = true
+                            handlePurchase(purchase) // This will update state to PURCHASED
+                            return@forEach
+                        }
                     }
-                }
-                if (!isSubscribed && currentTrialState == TrialManager.TrialState.PURCHASED) {
-                    // If Play Store says no active sub, but we thought it was purchased,
-                    // we need to revert. This is complex and ideally involves server-side validation.
-                    // For now, we'll re-evaluate local trial state.
-                    Log.w(TAG, "queryActiveSubscriptions: No active sub found in Play, but local state was PURCHASED. Re-evaluating trial state.")
-                    val freshState = TrialManager.getTrialState(this, null) // Get state without assuming purchase
-                    updateTrialState(freshState)
-                    startTrialServiceIfNeeded() // Restart trial service if appropriate based on freshState
-                } else if (!isSubscribed) {
-                    // No active subscription, ensure trial logic is active if not already expired/purchased locally
-                     val freshNonPurchaseState = TrialManager.getTrialState(this, null)
-                     if (freshNonPurchaseState != TrialManager.TrialState.PURCHASED) {
-                         updateTrialState(freshNonPurchaseState)
-                         startTrialServiceIfNeeded()
+                    if (!isSubscribed && currentTrialState == TrialManager.TrialState.PURCHASED) {
+                        Log.w(TAG, "queryActiveSubscriptions: No active sub found in Play, but local state was PURCHASED. Re-evaluating trial state.")
+                        val freshState = TrialManager.getTrialState(this@MainActivity, null)
+                        updateTrialState(freshState)
+                        startTrialServiceIfNeeded()
+                    } else if (!isSubscribed) {
+                         val freshNonPurchaseState = TrialManager.getTrialState(this@MainActivity, null)
+                         if (freshNonPurchaseState != TrialManager.TrialState.PURCHASED) { // Avoid redundant updates if already not purchased
+                             updateTrialState(freshNonPurchaseState)
+                             startTrialServiceIfNeeded()
+                         }
+                    }
+                } else {
+                    Log.e(TAG, "Failed to query active subscriptions: ${billingResult.debugMessage}")
+                     val freshState = TrialManager.getTrialState(this@MainActivity, null)
+                     if (freshState != TrialManager.TrialState.PURCHASED) { // Avoid redundant updates
+                        updateTrialState(freshState)
+                        startTrialServiceIfNeeded()
                      }
                 }
-                // If isSubscribed is true, handlePurchase should have set state to PURCHASED.
-            } else {
-                Log.e(TAG, "Failed to query active subscriptions: ${billingResult.debugMessage}")
-                 val freshState = TrialManager.getTrialState(this, null)
-                 if (freshState != TrialManager.TrialState.PURCHASED) {
-                    updateTrialState(freshState)
-                    startTrialServiceIfNeeded()
-                 }
             }
         }
     }
@@ -518,20 +547,24 @@ class MainActivity : ComponentActivity() {
         instance = this
         refreshAccessibilityServiceStatus()
 
-        if (::billingClient.isInitialized && billingClient.isReady) {
-            queryActiveSubscriptions()
-        } else if (::billingClient.isInitialized &&
-                   (billingClient.connectionState == BillingClient.ConnectionState.DISCONNECTED ||
-                    billingClient.connectionState == BillingClient.ConnectionState.CLOSED) ) {
-            setupBillingClient()
-        } else if (!::billingClient.isInitialized) {
-            setupBillingClient()
+        // Ensure billing client checks and state updates are coordinated on main thread
+        lifecycleScope.launch(Dispatchers.Main) {
+            if (::billingClient.isInitialized && billingClient.isReady) {
+                queryActiveSubscriptions()
+            } else if (::billingClient.isInitialized &&
+                       (billingClient.connectionState == BillingClient.ConnectionState.DISCONNECTED ||
+                        billingClient.connectionState == BillingClient.ConnectionState.CLOSED) ) {
+                setupBillingClient() // Will query subs if connection succeeds
+            } else if (!::billingClient.isInitialized) {
+                setupBillingClient() // Will query subs if connection succeeds
+            }
+
+            // Always refresh local trial state from TrialManager and manage service
+            val currentKnownState = TrialManager.getTrialState(this@MainActivity, null)
+            updateTrialState(currentKnownState)
+            startTrialServiceIfNeeded()
         }
-
-        val currentKnownState = TrialManager.getTrialState(this, null)
-        updateTrialState(currentKnownState) // Ensure state is fresh
-        startTrialServiceIfNeeded() // Manage service based on potentially updated state
-
+        Log.d(TAG, "onResume: Finished.")
     }
 
     override fun onDestroy() {
@@ -547,6 +580,7 @@ class MainActivity : ComponentActivity() {
         if (this == instance) {
             instance = null
         }
+        Log.d(TAG, "onDestroy: Finished.")
     }
 
     private fun checkAndRequestPermissions() {
@@ -557,7 +591,7 @@ class MainActivity : ComponentActivity() {
         if (permissionsToRequest.isNotEmpty()) {
             requestPermissionLauncher.launch(permissionsToRequest)
         } else {
-            // Permissions already granted, ensure trial service is managed
+            // Permissions already granted
             // startTrialServiceIfNeeded() // Already handled in onCreate/onResume
         }
     }
@@ -571,12 +605,14 @@ class MainActivity : ComponentActivity() {
     private val requestPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
     ) { permissions ->
-        val allGranted = permissions.entries.all { it.value }
-        if (allGranted) {
-            updateStatusMessage("Alle Berechtigungen erteilt.")
-            startTrialServiceIfNeeded() // Manage service after permissions granted
-        } else {
-            updateStatusMessage("Einige Berechtigungen verweigert.", true)
+        lifecycleScope.launch(Dispatchers.Main) { // Ensure UI updates from permission result are on main
+            val allGranted = permissions.entries.all { it.value }
+            if (allGranted) {
+                updateStatusMessage("Alle Berechtigungen erteilt.")
+                startTrialServiceIfNeeded()
+            } else {
+                updateStatusMessage("Einige Berechtigungen verweigert.", true)
+            }
         }
     }
 
@@ -589,15 +625,15 @@ class MainActivity : ComponentActivity() {
     }
 }
 
+// Dialog Composables remain the same
 @Composable
 fun TrialExpiredDialog(
     onPurchaseClick: () -> Unit,
     onDismiss: () -> Unit
 ) {
     Dialog(onDismissRequest = {
-        // This dialog should be persistent and not easily dismissible
-        // onDismiss() // Calling this would make it dismissible
         Log.d("TrialExpiredDialog", "onDismissRequest called (persistent dialog)")
+        // onDismiss() // Keep commented to make it persistent
     }) {
         Card(modifier = Modifier.fillMaxWidth().padding(16.dp)) {
             Column(
@@ -618,7 +654,7 @@ fun TrialExpiredDialog(
 }
 
 @Composable
-fun InfoDialog( // This dialog is now only for generic info, not internet status
+fun InfoDialog(
     message: String,
     onDismiss: () -> Unit
 ) {
