@@ -1,7 +1,10 @@
 package com.google.ai.sample.feature.multimodal
 
+import android.app.Activity
+import android.content.Intent
 import android.graphics.drawable.BitmapDrawable
 import android.net.Uri
+import android.provider.Settings
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
@@ -80,23 +83,29 @@ internal fun PhotoReasoningRoute(
     val imageRequestBuilder = ImageRequest.Builder(LocalContext.current)
     val imageLoader = ImageLoader.Builder(LocalContext.current).build()
     val context = LocalContext.current
-    
-    // Get the MainActivity instance from the context and share the ViewModel
     val mainActivity = context as? MainActivity
-    
-    // Share the ViewModel with MainActivity for AccessibilityService access
-    DisposableEffect(viewModel) {
-        // Set the ViewModel in MainActivity when the composable is first composed
+
+    // Observe the accessibility service status from MainActivity
+    val isAccessibilityServiceEffectivelyEnabled by mainActivity?.isAccessibilityServiceEnabledFlow?.collectAsState() ?: mutableStateOf(false)
+
+    // Launcher for opening accessibility settings
+    val accessibilitySettingsLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.StartActivityForResult()
+    ) {
+        // This block is called when the settings activity returns.
+        // Re-check the accessibility service status in MainActivity, which will update the flow.
+        Log.d("PhotoReasoningRoute", "Returned from Accessibility Settings. Refreshing status.")
+        mainActivity?.refreshAccessibilityServiceStatus()
+    }
+
+    DisposableEffect(viewModel, mainActivity) {
         mainActivity?.setPhotoReasoningViewModel(viewModel)
         Log.d("PhotoReasoningRoute", "ViewModel shared with MainActivity: ${mainActivity != null}")
-        
-        // Check if accessibility service is enabled
-        mainActivity?.checkAccessibilityServiceEnabled()
-        
-        // Load the saved system message
+
+        // Initial check of accessibility service status when the composable enters
+        mainActivity?.refreshAccessibilityServiceStatus()
         viewModel.loadSystemMessage(context)
-        
-        // When the composable is disposed, clear the reference if needed
+
         onDispose {
             // Optional: clear the reference when navigating away
             // mainActivity?.clearPhotoReasoningViewModel()
@@ -115,8 +124,6 @@ internal fun PhotoReasoningRoute(
         onReasonClicked = { inputText, selectedItems ->
             coroutineScope.launch {
                 Log.d("PhotoReasoningScreen", "Go button clicked, processing images")
-                
-                // Process all selected images
                 val bitmaps = selectedItems.mapNotNull {
                     Log.d("PhotoReasoningScreen", "Processing image: $it")
                     val imageRequest = imageRequestBuilder
@@ -137,23 +144,27 @@ internal fun PhotoReasoningRoute(
                         return@mapNotNull null
                     }
                 }
-                
                 Log.d("PhotoReasoningScreen", "Processed ${bitmaps.size} images")
-                
-                // Send to AI
                 viewModel.reason(inputText, bitmaps)
             }
         },
-         isAccessibilityServiceEnabled = mainActivity?.let {
-            ScreenOperatorAccessibilityService.isAccessibilityServiceEnabled(it)
-        } ?: false,
+        isAccessibilityServiceEnabled = isAccessibilityServiceEffectivelyEnabled, // Use the collected state
         onEnableAccessibilityService = {
-            mainActivity?.openAccessibilitySettings() // Geändert, um die Einstellungen zu öffnen
+            mainActivity?.let {
+                val intent = it.getAccessibilitySettingsIntent()
+                try {
+                    accessibilitySettingsLauncher.launch(intent)
+                    it.updateStatusMessage("Bitte aktivieren Sie den Dienst für 'Generative AI Sample'.")
+                } catch (e: Exception) {
+                    Log.e("PhotoReasoningRoute", "Error opening accessibility settings", e)
+                    it.updateStatusMessage("Fehler beim Öffnen der Bedienungshilfen-Einstellungen.", true)
+                }
+            }
         },
         onClearChatHistory = {
             mainActivity?.let {
-                val viewModel = it.getPhotoReasoningViewModel()
-                viewModel?.clearChatHistory(context)
+                val vm = it.getPhotoReasoningViewModel()
+                vm?.clearChatHistory(context)
             }
         }
     )
@@ -168,26 +179,21 @@ fun PhotoReasoningScreen(
     chatMessages: List<PhotoReasoningMessage> = emptyList(),
     onSystemMessageChanged: (String) -> Unit = {},
     onReasonClicked: (String, List<Uri>) -> Unit = { _, _ -> },
-    isAccessibilityServiceEnabled: Boolean = false,
+    isAccessibilityServiceEnabled: Boolean = false, // This will now be updated reactively
     onEnableAccessibilityService: () -> Unit = {},
     onClearChatHistory: () -> Unit = {}
 ) {
     var userQuestion by rememberSaveable { mutableStateOf("") }
     val imageUris = rememberSaveable(saver = UriSaver()) { mutableStateListOf() }
     val listState = rememberLazyListState()
-    val context = LocalContext.current
-    
-    // Get the MainActivity instance from the context
-    val mainActivity = context as? MainActivity
-    
-    // Media picker for adding images
+    // val context = LocalContext.current // Already available from Route
+
     val pickMedia = rememberLauncherForActivityResult(
         ActivityResultContracts.PickVisualMedia()
     ) { uri ->
         uri?.let { imageUris.add(it) }
     }
 
-    // Scroll to the bottom when new messages arrive
     LaunchedEffect(chatMessages.size) {
         if (chatMessages.isNotEmpty()) {
             listState.animateScrollToItem(chatMessages.size - 1)
@@ -198,7 +204,6 @@ fun PhotoReasoningScreen(
         modifier = Modifier
             .padding(all = 16.dp)
     ) {
-        // System Message Field
         Card(
             modifier = Modifier
                 .fillMaxWidth()
@@ -222,14 +227,14 @@ fun PhotoReasoningScreen(
                     placeholder = { Text("Geben Sie hier eine System-Nachricht ein, die bei jeder Anfrage mitgesendet wird") },
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(120.dp), // Height increased by 50% (from 80dp to 120dp)
-                    maxLines = 5, // Increased to accommodate more visible lines
+                        .height(120.dp),
+                    maxLines = 5,
                     minLines = 3
                 )
             }
         }
-        
-        // Accessibility Service Status Card
+
+        // Accessibility Service Status Card - visibility controlled by isAccessibilityServiceEnabled
         if (!isAccessibilityServiceEnabled) {
             Card(
                 modifier = Modifier
@@ -262,7 +267,6 @@ fun PhotoReasoningScreen(
             }
         }
 
-        // Chat History
         LazyColumn(
             state = listState,
             modifier = Modifier
@@ -293,20 +297,17 @@ fun PhotoReasoningScreen(
             }
         }
 
-        // Input Card
         Card(
             modifier = Modifier.fillMaxWidth()
         ) {
             Row(
                 modifier = Modifier.padding(top = 16.dp)
             ) {
-                // Column for the two buttons (+ and New)
                 Column(
                     modifier = Modifier
                         .padding(all = 4.dp)
                         .align(Alignment.CenterVertically)
                 ) {
-                    // Add image button (moved up)
                     IconButton(
                         onClick = {
                             pickMedia.launch(
@@ -321,17 +322,13 @@ fun PhotoReasoningScreen(
                             contentDescription = stringResource(R.string.add_image),
                         )
                     }
-                    
-                    // New button to clear chat history
                     IconButton(
                         onClick = {
-                            // Clear chat history directly without confirmation
                             onClearChatHistory()
                         },
                         modifier = Modifier
                             .padding(top = 4.dp)
                             .drawBehind {
-                                // Draw a thin black circular border
                                 drawCircle(
                                     color = Color.Black,
                                     radius = size.minDimension / 2,
@@ -348,7 +345,6 @@ fun PhotoReasoningScreen(
                         )
                     }
                 }
-                
                 OutlinedTextField(
                     value = userQuestion,
                     label = { Text(stringResource(R.string.reason_label)) },
@@ -390,8 +386,7 @@ fun PhotoReasoningScreen(
                 }
             }
         }
-        
-        // Command Execution Status
+
         if (commandExecutionStatus.isNotEmpty()) {
             Card(
                 modifier = Modifier
@@ -416,8 +411,7 @@ fun PhotoReasoningScreen(
                 }
             }
         }
-        
-        // Detected Commands
+
         if (detectedCommands.isNotEmpty()) {
             Card(
                 modifier = Modifier
@@ -435,12 +429,12 @@ fun PhotoReasoningScreen(
                         style = MaterialTheme.typography.titleMedium
                     )
                     Spacer(modifier = Modifier.height(4.dp))
-                    
                     detectedCommands.forEachIndexed { index, command ->
                         val commandText = when (command) {
                             is Command.ClickButton -> "Klick auf Button: \"${command.buttonText}\""
                             is Command.TapCoordinates -> "Tippen auf Koordinaten: (${command.x}, ${command.y})"
                             is Command.TakeScreenshot -> "Screenshot aufnehmen"
+                            // ... (other command types remain the same)
                             is Command.PressHomeButton -> "Home-Button drücken"
                             is Command.PressBackButton -> "Zurück-Button drücken"
                             is Command.ShowRecentApps -> "Übersicht der letzten Apps öffnen"
@@ -458,12 +452,10 @@ fun PhotoReasoningScreen(
                             is Command.UseLowReasoningModel -> "Wechsle zu schnellerem Modell (gemini-2.0-flash-lite)"
                             is Command.PressEnterKey -> "Enter command detected"
                         }
-                        
                         Text(
                             text = "${index + 1}. $commandText",
                             color = MaterialTheme.colorScheme.onTertiaryContainer
                         )
-                        
                         if (index < detectedCommands.size - 1) {
                             Divider(
                                 modifier = Modifier.padding(vertical = 4.dp),
@@ -504,8 +496,6 @@ fun UserChatBubble(
                     text = text,
                     color = MaterialTheme.colorScheme.onPrimaryContainer
                 )
-                
-                // Display images if any
                 if (imageUris.isNotEmpty()) {
                     LazyRow(
                         modifier = Modifier.padding(top = 8.dp)
@@ -521,7 +511,6 @@ fun UserChatBubble(
                         }
                     }
                 }
-                
                 if (isPending) {
                     CircularProgressIndicator(
                         modifier = Modifier
@@ -565,9 +554,9 @@ fun ModelChatBubble(
                         .drawBehind {
                             drawCircle(color = Color.White)
                         }
-                        .padding(end = 8.dp)
+                        .padding(end = 8.dp) // Added padding to separate icon from text
                 )
-                Column {
+                Column { // Wrap Text and CircularProgressIndicator in a Column
                     Text(
                         text = text,
                         color = MaterialTheme.colorScheme.onSecondaryContainer
@@ -641,3 +630,4 @@ fun PhotoReasoningScreenPreviewWithContent() {
 fun PhotoReasoningScreenPreviewEmpty() {
     PhotoReasoningScreen()
 }
+
