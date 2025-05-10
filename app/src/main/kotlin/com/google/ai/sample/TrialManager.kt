@@ -14,6 +14,7 @@ object TrialManager {
     private const val KEY_TRIAL_END_TIME_UNENCRYPTED = "trialUtcEndTimeUnencrypted"
     private const val KEY_TRIAL_AWAITING_FIRST_INTERNET_TIME = "trialAwaitingFirstInternetTime"
     private const val KEY_PURCHASED_FLAG = "appPurchased"
+    private const val KEY_TRIAL_CONFIRMED_EXPIRED = "trialConfirmedExpired" // Added for persisting confirmed expiry
 
     private const val TAG = "TrialManager"
 
@@ -90,7 +91,13 @@ object TrialManager {
         val prefs = getSharedPreferences(context)
         val isAwaitingFirstInternetTime = prefs.getBoolean(KEY_TRIAL_AWAITING_FIRST_INTERNET_TIME, true)
         val trialUtcEndTime = getTrialUtcEndTime(context)
-        Log.d(TAG, "getTrialState: isAwaitingFirstInternetTime: $isAwaitingFirstInternetTime, trialUtcEndTime: $trialUtcEndTime")
+        val confirmedExpired = prefs.getBoolean(KEY_TRIAL_CONFIRMED_EXPIRED, false)
+        Log.d(TAG, "getTrialState: isAwaitingFirstInternetTime: $isAwaitingFirstInternetTime, trialUtcEndTime: $trialUtcEndTime, confirmedExpired: $confirmedExpired")
+
+        if (confirmedExpired) {
+            Log.d(TAG, "getTrialState: Trial previously confirmed expired. Returning EXPIRED_INTERNET_TIME_CONFIRMED.")
+            return TrialState.EXPIRED_INTERNET_TIME_CONFIRMED
+        }
 
         if (currentUtcTimeMs == null) {
             Log.d(TAG, "getTrialState: currentUtcTimeMs is null.")

@@ -39,8 +39,8 @@ class TrialTimerService : Service() {
         private const val CHECK_INTERVAL_MS = 60 * 1000L // 1 minute
         // Changed API URL to timeapi.io for UTC time
         private const val TIME_API_URL = "https://timeapi.io/api/time/current/zone?timeZone=Etc/UTC"
-        private const val CONNECTION_TIMEOUT_MS = 15000 // 15 seconds
-        private const val READ_TIMEOUT_MS = 15000 // 15 seconds
+        private const val CONNECTION_TIMEOUT_MS = 30000 // 30 seconds
+        private const val READ_TIMEOUT_MS = 30000 // 30 seconds
         private const val MAX_RETRIES = 3
         private val RETRY_DELAYS_MS = listOf(5000L, 15000L, 30000L) // 5s, 15s, 30s
     }
