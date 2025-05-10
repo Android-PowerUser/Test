@@ -5,6 +5,7 @@ import android.content.Intent
 import android.graphics.drawable.BitmapDrawable
 import android.net.Uri
 import android.provider.Settings
+import android.widget.Toast // Added for Toast message
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
@@ -148,13 +149,14 @@ internal fun PhotoReasoningRoute(
                 viewModel.reason(inputText, bitmaps)
             }
         },
-        isAccessibilityServiceEnabled = isAccessibilityServiceEffectivelyEnabled, // Use the collected state
+        isAccessibilityServiceEnabled = isAccessibilityServiceEffectivelyEnabled,
         onEnableAccessibilityService = {
             mainActivity?.let {
                 val intent = it.getAccessibilitySettingsIntent()
                 try {
                     accessibilitySettingsLauncher.launch(intent)
-                    it.updateStatusMessage("Bitte aktivieren Sie den Dienst für 'Generative AI Sample'.")
+                    // Removed the toast from here as it's now handled by the send button
+                    // and the dedicated "activate" button on the warning card.
                 } catch (e: Exception) {
                     Log.e("PhotoReasoningRoute", "Error opening accessibility settings", e)
                     it.updateStatusMessage("Fehler beim Öffnen der Bedienungshilfen-Einstellungen.", true)
@@ -179,14 +181,14 @@ fun PhotoReasoningScreen(
     chatMessages: List<PhotoReasoningMessage> = emptyList(),
     onSystemMessageChanged: (String) -> Unit = {},
     onReasonClicked: (String, List<Uri>) -> Unit = { _, _ -> },
-    isAccessibilityServiceEnabled: Boolean = false, // This will now be updated reactively
+    isAccessibilityServiceEnabled: Boolean = false,
     onEnableAccessibilityService: () -> Unit = {},
     onClearChatHistory: () -> Unit = {}
 ) {
     var userQuestion by rememberSaveable { mutableStateOf("") }
     val imageUris = rememberSaveable(saver = UriSaver()) { mutableStateListOf() }
     val listState = rememberLazyListState()
-    // val context = LocalContext.current // Already available from Route
+    val context = LocalContext.current // Get context for Toast
 
     val pickMedia = rememberLauncherForActivityResult(
         ActivityResultContracts.PickVisualMedia()
@@ -234,7 +236,6 @@ fun PhotoReasoningScreen(
             }
         }
 
-        // Accessibility Service Status Card - visibility controlled by isAccessibilityServiceEnabled
         if (!isAccessibilityServiceEnabled) {
             Card(
                 modifier = Modifier
@@ -259,7 +260,11 @@ fun PhotoReasoningScreen(
                     )
                     Spacer(modifier = Modifier.height(8.dp))
                     TextButton(
-                        onClick = onEnableAccessibilityService
+                        onClick = {
+                            onEnableAccessibilityService()
+                            // Optionally, show a toast here as well if the user clicks this specific button
+                            Toast.makeText(context, "Öffne Bedienungshilfen-Einstellungen...", Toast.LENGTH_SHORT).show()
+                        }
                     ) {
                         Text("Accessibility Service aktivieren")
                     }
@@ -356,10 +361,18 @@ fun PhotoReasoningScreen(
                 )
                 IconButton(
                     onClick = {
-                        if (userQuestion.isNotBlank()) {
-                            onReasonClicked(userQuestion, imageUris.toList())
-                            userQuestion = ""
+                        // START: Updated Send button logic
+                        if (isAccessibilityServiceEnabled) {
+                            if (userQuestion.isNotBlank()) {
+                                onReasonClicked(userQuestion, imageUris.toList())
+                                userQuestion = "" // Clear input after sending
+                            }
+                        } else {
+                            // Accessibility service is not enabled
+                            onEnableAccessibilityService() // Open settings
+                            Toast.makeText(context, "Enable the Accessibility service for Screen Operator", Toast.LENGTH_LONG).show()
                         }
+                        // END: Updated Send button logic
                     },
                     modifier = Modifier
                         .padding(all = 4.dp)
@@ -434,7 +447,6 @@ fun PhotoReasoningScreen(
                             is Command.ClickButton -> "Klick auf Button: \"${command.buttonText}\""
                             is Command.TapCoordinates -> "Tippen auf Koordinaten: (${command.x}, ${command.y})"
                             is Command.TakeScreenshot -> "Screenshot aufnehmen"
-                            // ... (other command types remain the same)
                             is Command.PressHomeButton -> "Home-Button drücken"
                             is Command.PressBackButton -> "Zurück-Button drücken"
                             is Command.ShowRecentApps -> "Übersicht der letzten Apps öffnen"
@@ -554,9 +566,9 @@ fun ModelChatBubble(
                         .drawBehind {
                             drawCircle(color = Color.White)
                         }
-                        .padding(end = 8.dp) // Added padding to separate icon from text
+                        .padding(end = 8.dp)
                 )
-                Column { // Wrap Text and CircularProgressIndicator in a Column
+                Column {
                     Text(
                         text = text,
                         color = MaterialTheme.colorScheme.onSecondaryContainer
