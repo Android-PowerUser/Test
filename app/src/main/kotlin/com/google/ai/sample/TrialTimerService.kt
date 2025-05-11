@@ -17,9 +17,8 @@ import java.net.HttpURLConnection
 import java.net.MalformedURLException
 import java.net.SocketTimeoutException
 import java.net.URL
-import java.time.LocalDateTime // Added
-import java.time.OffsetDateTime
-import java.time.ZoneOffset // Added
+import java.time.LocalDateTime 
+import java.time.ZoneOffset 
 import java.time.format.DateTimeParseException
 
 class TrialTimerService : Service() {
@@ -37,12 +36,11 @@ class TrialTimerService : Service() {
         const val EXTRA_CURRENT_UTC_TIME_MS = "extra_current_utc_time_ms"
         private const val TAG = "TrialTimerService"
         private const val CHECK_INTERVAL_MS = 60 * 1000L // 1 minute
-        // Changed API URL to timeapi.io for UTC time
         private const val TIME_API_URL = "https://timeapi.io/api/time/current/zone?timeZone=Etc/UTC"
-        private const val CONNECTION_TIMEOUT_MS = 30000 // 30 seconds
-        private const val READ_TIMEOUT_MS = 30000 // 30 seconds
+        private const val CONNECTION_TIMEOUT_MS = 30000 
+        private const val READ_TIMEOUT_MS = 30000 
         private const val MAX_RETRIES = 3
-        private val RETRY_DELAYS_MS = listOf(5000L, 15000L, 30000L) // 5s, 15s, 30s
+        private val RETRY_DELAYS_MS = listOf(5000L, 15000L, 30000L) 
     }
 
     override fun onCreate() {
@@ -91,11 +89,11 @@ class TrialTimerService : Service() {
                     connection.connectTimeout = CONNECTION_TIMEOUT_MS
                     connection.readTimeout = READ_TIMEOUT_MS
                     Log.d(TAG, "startTimerLogic: Connection configured. Timeout: $CONNECTION_TIMEOUT_MS ms. About to connect.")
-                    connection.connect() // Explicit connect call
+                    connection.connect() 
                     Log.d(TAG, "startTimerLogic: Connection established.")
 
                     val responseCode = connection.responseCode
-                    val responseMessage = connection.responseMessage // Get response message for logging
+                    val responseMessage = connection.responseMessage 
                     Log.i(TAG, "Time API response code: $responseCode, Message: $responseMessage")
 
                     if (responseCode == HttpURLConnection.HTTP_OK) {
@@ -108,14 +106,12 @@ class TrialTimerService : Service() {
                         Log.d(TAG, "startTimerLogic: Connection disconnected.")
 
                         val jsonObject = JSONObject(result)
-                        // Updated to parse "dateTime" field from timeapi.io
                         val currentDateTimeStr = jsonObject.getString("dateTime") 
                         Log.d(TAG, "startTimerLogic: Parsed dateTime string: $currentDateTimeStr")
-                        Log.d(TAG, "Attempting to parse dateTime string 	$currentDateTimeStr	 as LocalDateTime and applying UTC offset.") // New Log
-                        // Parse ISO 8601 string to milliseconds since epoch
-                        val currentUtcTimeMs = LocalDateTime.parse(currentDateTimeStr).atOffset(ZoneOffset.UTC).toInstant().toEpochMilli() // Modified Line
+                        Log.d(TAG, "Attempting to parse dateTime string $currentDateTimeStr as LocalDateTime and applying UTC offset.") 
+                        val currentUtcTimeMs = LocalDateTime.parse(currentDateTimeStr).atOffset(ZoneOffset.UTC).toInstant().toEpochMilli() 
 
-                        Log.i(TAG, "Successfully parsed dateTime string 	$currentDateTimeStr	 to UTC milliseconds: $currentUtcTimeMs using LocalDateTime.parse().atOffset(ZoneOffset.UTC)") // Modified Log
+                        Log.i(TAG, "Successfully parsed dateTime string $currentDateTimeStr to UTC milliseconds: $currentUtcTimeMs using LocalDateTime.parse().atOffset(ZoneOffset.UTC)") 
 
                         val trialState = TrialManager.getTrialState(applicationContext, currentUtcTimeMs)
                         Log.i(TAG, "Current trial state from TrialManager: $trialState (based on time $currentUtcTimeMs)")
@@ -132,20 +128,22 @@ class TrialTimerService : Service() {
                             TrialManager.TrialState.EXPIRED_INTERNET_TIME_CONFIRMED -> {
                                 Log.i(TAG, "TrialState: EXPIRED_INTERNET_TIME_CONFIRMED. Trial expired based on internet time. Broadcasting ACTION_TRIAL_EXPIRED and stopping timer.")
                                 sendBroadcast(Intent(ACTION_TRIAL_EXPIRED))
-                                stopTimerLogic()
+                                stopTimerLogic() // MODIFIED: Stop the service after confirming expiry
                             }
                             TrialManager.TrialState.PURCHASED -> {
                                 Log.i(TAG, "TrialState: PURCHASED. App is purchased. Stopping timer.")
                                 stopTimerLogic()
                             }
                             TrialManager.TrialState.INTERNET_UNAVAILABLE_CANNOT_VERIFY -> {
+                                // This case should ideally not be returned by TrialManager if currentUtcTimeMs is available.
+                                // However, if it does occur, it implies an issue. We broadcast available time.
                                 Log.w(TAG, "TrialState: INTERNET_UNAVAILABLE_CANNOT_VERIFY from TrialManager, but we just fetched time. This is unexpected. Broadcasting ACTION_INTERNET_TIME_AVAILABLE anyway.")
                                 sendBroadcast(Intent(ACTION_INTERNET_TIME_AVAILABLE).putExtra(EXTRA_CURRENT_UTC_TIME_MS, currentUtcTimeMs))
                             }
                         }
                         success = true
                         Log.d(TAG, "startTimerLogic: Time fetch successful. success = true. Resetting attempt counter.")
-                        attempt = 0 // Reset attempts on success
+                        attempt = 0 
                     } else {
                         Log.e(TAG, "Failed to fetch internet time. HTTP Response code: $responseCode - $responseMessage")
                         connection.disconnect()
@@ -159,14 +157,14 @@ class TrialTimerService : Service() {
                 } catch (e: SocketTimeoutException) {
                     Log.e(TAG, "Failed to fetch internet time: Socket Timeout after $CONNECTION_TIMEOUT_MS ms (connect) or $READ_TIMEOUT_MS ms (read). Attempt ${attempt + 1}", e)
                 } catch (e: MalformedURLException) {
-                   Log.e(TAG, "Failed to fetch internet time: Malformed URL \t$TIME_API_URL\t. Stopping timer logic.", e)
-                    stopTimerLogic() // URL is wrong, no point in retrying
+                   Log.e(TAG, "Failed to fetch internet time: Malformed URL $TIME_API_URL. Stopping timer logic.", e)
+                    stopTimerLogic() 
                     return@launch
                 } catch (e: IOException) {
                     Log.e(TAG, "Failed to fetch internet time: IO Exception (e.g., network issue, connection reset). Attempt ${attempt + 1}", e)
                 } catch (e: JSONException) {
                     Log.e(TAG, "Failed to parse JSON response from time API. Response might not be valid JSON. Attempt ${attempt + 1}", e)
-                } catch (e: DateTimeParseException) { // This catch block will now likely not be hit for this specific issue, but good to keep for other parsing issues.
+                } catch (e: DateTimeParseException) { 
                     Log.e(TAG, "Failed to parse date/time string from time API response. API format might have changed. Attempt ${attempt + 1}", e)
                 } catch (e: Exception) {
                     Log.e(TAG, "An unexpected error occurred while fetching or processing internet time. Attempt ${attempt + 1}", e)
@@ -174,7 +172,7 @@ class TrialTimerService : Service() {
 
                 if (!isTimerRunning || !isActive) {
                     Log.d(TAG, "startTimerLogic: Loop condition check: isTimerRunning=$isTimerRunning, isActive=$isActive. Breaking loop.")
-                    break // Exit loop if timer stopped or coroutine cancelled
+                    break 
                 }
 
                 if (!success) {
@@ -190,15 +188,24 @@ class TrialTimerService : Service() {
                         Log.e(TAG, "Failed to fetch internet time after $MAX_RETRIES attempts. Broadcasting ACTION_INTERNET_TIME_UNAVAILABLE.")
                         sendBroadcast(Intent(ACTION_INTERNET_TIME_UNAVAILABLE))
                         Log.d(TAG, "Resetting attempt counter to 0 and waiting for CHECK_INTERVAL_MS (${CHECK_INTERVAL_MS / 1000}s) before next cycle of attempts.")
-                        attempt = 0 // Reset attempts for next full CHECK_INTERVAL_MS cycle
-                        delay(CHECK_INTERVAL_MS) // Wait for the normal check interval after max retries failed
+                        attempt = 0 
+                        delay(CHECK_INTERVAL_MS) 
                     }
                 } else {
-                    Log.d(TAG, "startTimerLogic: Time fetch was successful. Waiting for CHECK_INTERVAL_MS (${CHECK_INTERVAL_MS / 1000}s) before next check.")
-                    delay(CHECK_INTERVAL_MS)
+                    // Check if timer is still supposed to be running after a successful fetch (e.g. not expired/purchased)
+                    if (isTimerRunning && isActive) {
+                         Log.d(TAG, "startTimerLogic: Time fetch was successful. Waiting for CHECK_INTERVAL_MS (${CHECK_INTERVAL_MS / 1000}s) before next check.")
+                         delay(CHECK_INTERVAL_MS)
+                    } else {
+                        Log.d(TAG, "startTimerLogic: Time fetch was successful, but timer is no longer running (e.g., expired/purchased). Exiting loop.")
+                        break // Exit if stopTimerLogic was called during the process
+                    }
                 }
             }
             Log.i(TAG, "Timer coroutine ended. isTimerRunning: $isTimerRunning, isActive: $isActive")
+            // If the loop exited because isTimerRunning became false (e.g., due to stopTimerLogic),
+            // the service should already be in the process of stopping.
+            // If it exited due to job cancellation (!isActive), it's also handled.
         }
     }
 
@@ -208,9 +215,9 @@ class TrialTimerService : Service() {
             Log.i(TAG, "Stopping timer logic...")
             isTimerRunning = false
             Log.d(TAG, "Cancelling job: $job")
-            job.cancel() // Cancel all coroutines started by this scope
+            job.cancel() 
             Log.d(TAG, "Calling stopSelf() to stop the service.")
-            stopSelf() // Stop the service itself
+            stopSelf() 
             Log.i(TAG, "Timer stopped and service is stopping.")
         } else {
             Log.d(TAG, "stopTimerLogic: Timer was not running.")
@@ -225,7 +232,10 @@ class TrialTimerService : Service() {
     override fun onDestroy() {
         super.onDestroy()
         Log.i(TAG, "onDestroy: Service Destroyed. Ensuring timer is stopped via stopTimerLogic().")
-        stopTimerLogic()
+        // Call stopTimerLogic again to ensure job is cancelled if onDestroy is called unexpectedly.
+        // If stopSelf() was called, isTimerRunning would be false, and job.cancel() is idempotent.
+        isTimerRunning = false // Explicitly set to ensure job cancellation logic runs if needed
+        job.cancel()
+        Log.d(TAG, "onDestroy: Job cancelled explicitly in onDestroy.")
     }
 }
-
