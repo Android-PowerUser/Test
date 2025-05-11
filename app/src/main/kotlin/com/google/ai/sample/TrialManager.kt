@@ -2,7 +2,6 @@ package com.google.ai.sample
 
 import android.content.Context
 import android.content.SharedPreferences
-import android.os.Build
 import android.util.Log
 
 object TrialManager {
@@ -10,11 +9,11 @@ object TrialManager {
     private const val PREFS_NAME = "TrialPrefs"
     const val TRIAL_DURATION_MS = 30 * 60 * 1000L // 30 minutes in milliseconds
 
-    // Key for storing the trial end time as a plain Long (unencrypted)
-    private const val KEY_TRIAL_END_TIME_UNENCRYPTED = "trialUtcEndTimeUnencrypted"
+    // SharedPreferences keys for flags. The actual timestamp is managed via Keystore aliases.
+    // private const val KEY_TRIAL_END_TIME_UNENCRYPTED = "trialUtcEndTimeUnencrypted" // REMOVED
     private const val KEY_TRIAL_AWAITING_FIRST_INTERNET_TIME = "trialAwaitingFirstInternetTime"
     private const val KEY_PURCHASED_FLAG = "appPurchased"
-    private const val KEY_TRIAL_CONFIRMED_EXPIRED = "trialConfirmedExpired" // Added for persisting confirmed expiry
+    private const val KEY_TRIAL_CONFIRMED_EXPIRED = "trialConfirmedExpired" 
 
     private const val TAG = "TrialManager"
 
@@ -27,35 +26,28 @@ object TrialManager {
     }
 
     private fun getSharedPreferences(context: Context): SharedPreferences {
-        Log.d(TAG, "getSharedPreferences called")
         return context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
     }
 
-    private fun saveTrialUtcEndTime(context: Context, utcEndTimeMs: Long) {
-        Log.d(TAG, "saveTrialUtcEndTime called with utcEndTimeMs: $utcEndTimeMs")
-        val editor = getSharedPreferences(context).edit()
-        editor.putLong(KEY_TRIAL_END_TIME_UNENCRYPTED, utcEndTimeMs)
-        Log.d(TAG, "Saving KEY_TRIAL_END_TIME_UNENCRYPTED: $utcEndTimeMs")
-        editor.apply()
-        Log.d(TAG, "Saved unencrypted UTC end time: $utcEndTimeMs")
+    // Stores the trial end time by creating a Keystore alias.
+    private fun recordTrialEndTimeInKeystore(context: Context, utcEndTimeMs: Long) {
+        Log.d(TAG, "recordTrialEndTimeInKeystore called with utcEndTimeMs: $utcEndTimeMs")
+        KeystoreHelper.storeTimestampAlias(context, utcEndTimeMs) // Context is needed for KeystoreHelper
+        Log.d(TAG, "Requested storage of trial end time alias for $utcEndTimeMs in Keystore.")
     }
 
-    private fun getTrialUtcEndTime(context: Context): Long? {
-        Log.d(TAG, "getTrialUtcEndTime called")
-        val prefs = getSharedPreferences(context)
-        if (!prefs.contains(KEY_TRIAL_END_TIME_UNENCRYPTED)) {
-            Log.d(TAG, "No unencrypted trial end time found (KEY_TRIAL_END_TIME_UNENCRYPTED does not exist).")
-            return null
-        }
-        val endTime = prefs.getLong(KEY_TRIAL_END_TIME_UNENCRYPTED, -1L)
-        Log.d(TAG, "Raw value for KEY_TRIAL_END_TIME_UNENCRYPTED: $endTime")
-        return if (endTime == -1L) {
-            Log.w(TAG, "Found unencrypted end time key, but value was -1L, treating as not found.")
-            null
+    // Retrieves the trial end time by parsing a Keystore alias.
+    private fun getTrialEndTimeFromKeystore(context: Context): Long? {
+        Log.d(TAG, "getTrialEndTimeFromKeystore called")
+        // Context is not strictly needed by KeystoreHelper.getStoredTimestampFromAlias current impl,
+        // but passed for consistency or future KeystoreHelper changes.
+        val endTime = KeystoreHelper.getStoredTimestampFromAlias()
+        if (endTime == null) {
+            Log.d(TAG, "No trial end time alias found in Keystore.")
         } else {
-            Log.d(TAG, "Retrieved unencrypted UTC end time: $endTime")
-            endTime
+            Log.d(TAG, "Retrieved trial end time from Keystore alias: $endTime")
         }
+        return endTime
     }
 
     fun startTrialIfNecessaryWithInternetTime(context: Context, currentUtcTimeMs: Long) {
@@ -65,35 +57,49 @@ object TrialManager {
             Log.d(TAG, "App is purchased, no trial needed. Skipping trial start.")
             return
         }
-        val existingEndTime = getTrialUtcEndTime(context)
+        
+        val existingEndTimeInKeystore = getTrialEndTimeFromKeystore(context)
         val isAwaitingFirstInternet = prefs.getBoolean(KEY_TRIAL_AWAITING_FIRST_INTERNET_TIME, true)
-        Log.d(TAG, "Checking conditions to start trial: existingEndTime: $existingEndTime, isAwaitingFirstInternet: $isAwaitingFirstInternet")
+        Log.d(TAG, "Checking conditions to start trial: existingEndTimeInKeystore: $existingEndTimeInKeystore, isAwaitingFirstInternet: $isAwaitingFirstInternet")
 
-        if (existingEndTime == null && isAwaitingFirstInternet) {
+        if (existingEndTimeInKeystore == null && isAwaitingFirstInternet) {
             val utcEndTimeMs = currentUtcTimeMs + TRIAL_DURATION_MS
             Log.d(TAG, "Conditions met to start trial. Calculated utcEndTimeMs: $utcEndTimeMs")
-            saveTrialUtcEndTime(context, utcEndTimeMs)
+            recordTrialEndTimeInKeystore(context, utcEndTimeMs) // Store in Keystore
+            
+            // After successfully requesting to store in Keystore, update SharedPreferences
             Log.d(TAG, "Setting KEY_TRIAL_AWAITING_FIRST_INTERNET_TIME to false.")
             prefs.edit().putBoolean(KEY_TRIAL_AWAITING_FIRST_INTERNET_TIME, false).apply()
-            Log.i(TAG, "Trial started with internet time (unencrypted). Ends at UTC: $utcEndTimeMs. Awaiting flag set to false.")
+            Log.i(TAG, "Trial started with internet time (Keystore alias). Ends at UTC: $utcEndTimeMs. Awaiting flag set to false.")
         } else {
-            Log.d(TAG, "Trial not started. Conditions not met. Existing EndTime: $existingEndTime, AwaitingInternet: $isAwaitingFirstInternet")
+            if (existingEndTimeInKeystore != null) {
+                Log.d(TAG, "Trial not started: End time already exists in Keystore ($existingEndTimeInKeystore).")
+                // If Keystore has data, ensure 'isAwaitingFirstInternet' is false for consistency.
+                if (isAwaitingFirstInternet) {
+                     Log.w(TAG, "Inconsistency: Trial end time found in Keystore, but KEY_TRIAL_AWAITING_FIRST_INTERNET_TIME is true. Setting to false.")
+                     prefs.edit().putBoolean(KEY_TRIAL_AWAITING_FIRST_INTERNET_TIME, false).apply()
+                }
+            } else { // existingEndTimeInKeystore is null but isAwaitingFirstInternet is false
+                 Log.d(TAG, "Trial not started: Not awaiting first internet, but no Keystore alias found. This might mean Keystore was cleared or failed to save previously.")
+                 // This state implies something went wrong. It might be best to revert to awaiting state
+                 // if we expect a trial to be possible. For now, just logging.
+            }
         }
     }
 
     fun getTrialState(context: Context, currentUtcTimeMs: Long?): TrialState {
         Log.d(TAG, "getTrialState called with currentUtcTimeMs: $currentUtcTimeMs")
-        val prefs = getSharedPreferences(context) // Get prefs instance early
+        val prefs = getSharedPreferences(context) 
 
-        if (isPurchased(context)) { // isPurchased uses its own prefs instance, which is fine
+        if (isPurchased(context)) {
             Log.d(TAG, "getTrialState: App is purchased. Returning TrialState.PURCHASED")
             return TrialState.PURCHASED
         }
 
         val isAwaitingFirstInternetTime = prefs.getBoolean(KEY_TRIAL_AWAITING_FIRST_INTERNET_TIME, true)
-        val trialUtcEndTime = getTrialUtcEndTime(context) // getTrialUtcEndTime uses its own prefs instance
+        val trialUtcEndTime = getTrialEndTimeFromKeystore(context) // Retrieve from Keystore
         val confirmedExpired = prefs.getBoolean(KEY_TRIAL_CONFIRMED_EXPIRED, false)
-        Log.d(TAG, "getTrialState: isAwaitingFirstInternetTime: $isAwaitingFirstInternetTime, trialUtcEndTime: $trialUtcEndTime, confirmedExpired: $confirmedExpired")
+        Log.d(TAG, "getTrialState: isAwaitingFirstInternetTime: $isAwaitingFirstInternetTime, trialUtcEndTime (from Keystore): $trialUtcEndTime, confirmedExpired: $confirmedExpired")
 
         if (confirmedExpired) {
             Log.d(TAG, "getTrialState: Trial previously confirmed expired (flag was true). Returning EXPIRED_INTERNET_TIME_CONFIRMED.")
@@ -102,15 +108,12 @@ object TrialManager {
 
         if (currentUtcTimeMs == null) {
             Log.d(TAG, "getTrialState: currentUtcTimeMs is null.")
-            // If confirmedExpired was false, and currentUtcTimeMs is null, we cannot confirm expiry.
-            // We rely on isAwaitingFirstInternetTime and trialUtcEndTime to determine initial/pending states.
             return if (trialUtcEndTime == null && isAwaitingFirstInternetTime) {
-                Log.d(TAG, "getTrialState: Returning NOT_YET_STARTED_AWAITING_INTERNET (no end time, awaiting internet, not confirmed expired)")
+                Log.d(TAG, "getTrialState: Returning NOT_YET_STARTED_AWAITING_INTERNET (no Keystore alias, awaiting internet, not confirmed expired)")
                 TrialState.NOT_YET_STARTED_AWAITING_INTERNET
             } else {
-                // This path means either trial has started (endTime exists) or it's not awaiting first internet,
-                // but we don't have current time to check. Or, endTime is null but we are not awaiting (inconsistent state).
-                Log.d(TAG, "getTrialState: Returning INTERNET_UNAVAILABLE_CANNOT_VERIFY (end time might exist or not awaiting, but no current time, not confirmed expired)")
+                // If trialUtcEndTime exists OR not awaiting, but no current time to verify.
+                Log.d(TAG, "getTrialState: Returning INTERNET_UNAVAILABLE_CANNOT_VERIFY (Keystore alias might exist or not awaiting, but no current time, not confirmed expired)")
                 TrialState.INTERNET_UNAVAILABLE_CANNOT_VERIFY
             }
         }
@@ -119,34 +122,34 @@ object TrialManager {
         Log.d(TAG, "getTrialState: currentUtcTimeMs is $currentUtcTimeMs. Evaluating state based on time.")
         return when {
             trialUtcEndTime == null && isAwaitingFirstInternetTime -> {
-                // This case implies startTrialIfNecessaryWithInternetTime hasn't run yet with a valid internet time.
-                // Since currentUtcTimeMs is available now, TrialTimerService should call startTrialIfNecessaryWithInternetTime.
-                // For now, we report it as NOT_YET_STARTED.
-                Log.d(TAG, "getTrialState: Case 1: trialUtcEndTime is null AND isAwaitingFirstInternetTime is true. Returning NOT_YET_STARTED_AWAITING_INTERNET")
+                Log.d(TAG, "getTrialState: Case A: trialUtcEndTime (Keystore) is null AND isAwaitingFirstInternetTime is true. Returning NOT_YET_STARTED_AWAITING_INTERNET")
                 TrialState.NOT_YET_STARTED_AWAITING_INTERNET
             }
             trialUtcEndTime == null && !isAwaitingFirstInternetTime -> {
-                // This is an inconsistent state: trial supposedly started (not awaiting), but no end time.
-                // This might happen if saveTrialUtcEndTime failed or was cleared erroneously.
-                Log.e(TAG, "CRITICAL INCONSISTENCY: Trial marked as started (not awaiting internet), but no trial end time found. Check save/load logic. Returning INTERNET_UNAVAILABLE_CANNOT_VERIFY.")
-                // Cannot confirm active or expired without an end time.
-                TrialState.INTERNET_UNAVAILABLE_CANNOT_VERIFY
+                // This implies prefs say trial started (not awaiting), but Keystore has no record.
+                // This could happen if Keystore entry was cleared or failed to save.
+                Log.e(TAG, "INCONSISTENCY: Trial marked as started (not awaiting internet in prefs), but no trial end time alias found in Keystore. Resetting to await internet.")
+                prefs.edit().putBoolean(KEY_TRIAL_AWAITING_FIRST_INTERNET_TIME, true).apply()
+                TrialState.NOT_YET_STARTED_AWAITING_INTERNET // Treat as if trial never properly started or Keystore was wiped.
             }
-            trialUtcEndTime != null && currentUtcTimeMs < trialUtcEndTime -> {
-                Log.d(TAG, "getTrialState: Case 2: trialUtcEndTime ($trialUtcEndTime) > currentUtcTimeMs ($currentUtcTimeMs). Returning ACTIVE_INTERNET_TIME_CONFIRMED")
-                TrialState.ACTIVE_INTERNET_TIME_CONFIRMED
-            }
-            trialUtcEndTime != null && currentUtcTimeMs >= trialUtcEndTime -> {
-                Log.i(TAG, "getTrialState: Case 3: trialUtcEndTime ($trialUtcEndTime) <= currentUtcTimeMs ($currentUtcTimeMs). Trial EXPIRED. Setting KEY_TRIAL_CONFIRMED_EXPIRED=true.")
-                // --- MODIFICATION START ---
-                // Persist that the trial has been confirmed expired with internet time.
-                prefs.edit().putBoolean(KEY_TRIAL_CONFIRMED_EXPIRED, true).apply()
-                // --- MODIFICATION END ---
-                TrialState.EXPIRED_INTERNET_TIME_CONFIRMED
+            trialUtcEndTime != null -> { // Keystore has a trial end time
+                // Ensure 'isAwaitingFirstInternetTime' is false if we have Keystore data.
+                if(isAwaitingFirstInternetTime) {
+                    Log.w(TAG, "Inconsistency: Active trial (Keystore data exists), but KEY_TRIAL_AWAITING_FIRST_INTERNET_TIME is true. Setting to false.")
+                    prefs.edit().putBoolean(KEY_TRIAL_AWAITING_FIRST_INTERNET_TIME, false).apply()
+                }
+                if (currentUtcTimeMs < trialUtcEndTime) {
+                    Log.d(TAG, "getTrialState: Case B: trialUtcEndTime (Keystore: $trialUtcEndTime) > currentUtcTimeMs ($currentUtcTimeMs). Returning ACTIVE_INTERNET_TIME_CONFIRMED")
+                    TrialState.ACTIVE_INTERNET_TIME_CONFIRMED
+                } else { // currentUtcTimeMs >= trialUtcEndTime
+                    Log.i(TAG, "getTrialState: Case C: trialUtcEndTime (Keystore: $trialUtcEndTime) <= currentUtcTimeMs ($currentUtcTimeMs). Trial EXPIRED. Setting KEY_TRIAL_CONFIRMED_EXPIRED=true.")
+                    prefs.edit().putBoolean(KEY_TRIAL_CONFIRMED_EXPIRED, true).apply()
+                    TrialState.EXPIRED_INTERNET_TIME_CONFIRMED
+                }
             }
             else -> {
-                // Fallback for any unhandled scenarios, though ideally all paths should be covered.
-                Log.e(TAG, "Unhandled case in getTrialState. isAwaiting: $isAwaitingFirstInternetTime, endTime: $trialUtcEndTime, currentTime: $currentUtcTimeMs. Defaulting to NOT_YET_STARTED_AWAITING_INTERNET.")
+                // Should not be reached if logic above is exhaustive.
+                Log.e(TAG, "Unhandled case in getTrialState. isAwaiting: $isAwaitingFirstInternetTime, endTimeFromKeystore: $trialUtcEndTime, currentTime: $currentUtcTimeMs. Defaulting to NOT_YET_STARTED_AWAITING_INTERNET.")
                 TrialState.NOT_YET_STARTED_AWAITING_INTERNET
             }
         }
@@ -155,42 +158,69 @@ object TrialManager {
     fun markAsPurchased(context: Context) {
         Log.d(TAG, "markAsPurchased called")
         val editor = getSharedPreferences(context).edit()
-        Log.d(TAG, "Removing trial-related keys: KEY_TRIAL_END_TIME_UNENCRYPTED, KEY_TRIAL_AWAITING_FIRST_INTERNET_TIME, KEY_TRIAL_CONFIRMED_EXPIRED")
-        editor.remove(KEY_TRIAL_END_TIME_UNENCRYPTED)
+        
+        Log.d(TAG, "Deleting trial timestamp alias(es) from Keystore.")
+        KeystoreHelper.deleteAllTimestampAliases() // Delete Keystore entry/entries
+
+        Log.d(TAG, "Removing SharedPreferences keys: KEY_TRIAL_AWAITING_FIRST_INTERNET_TIME, KEY_TRIAL_CONFIRMED_EXPIRED")
         editor.remove(KEY_TRIAL_AWAITING_FIRST_INTERNET_TIME)
-        // --- MODIFICATION START ---
-        editor.remove(KEY_TRIAL_CONFIRMED_EXPIRED) // Ensure this flag is cleared on purchase
-        // --- MODIFICATION END ---
+        editor.remove(KEY_TRIAL_CONFIRMED_EXPIRED) 
+        
         Log.d(TAG, "Setting KEY_PURCHASED_FLAG to true")
         editor.putBoolean(KEY_PURCHASED_FLAG, true)
         editor.apply()
-        Log.i(TAG, "App marked as purchased. Trial data (including unencrypted end time and confirmed expired flag) cleared.")
+        Log.i(TAG, "App marked as purchased. Trial data (Keystore alias and relevant prefs) cleared.")
     }
 
     private fun isPurchased(context: Context): Boolean {
-        Log.d(TAG, "isPurchased called")
         val purchased = getSharedPreferences(context).getBoolean(KEY_PURCHASED_FLAG, false)
-        Log.d(TAG, "isPurchased returning: $purchased")
         return purchased
     }
 
     fun initializeTrialStateFlagsIfNecessary(context: Context) {
         Log.d(TAG, "initializeTrialStateFlagsIfNecessary called")
         val prefs = getSharedPreferences(context)
-        val awaitingFlagExists = prefs.contains(KEY_TRIAL_AWAITING_FIRST_INTERNET_TIME)
-        val purchasedFlagExists = prefs.contains(KEY_PURCHASED_FLAG)
-        val endTimeExists = prefs.contains(KEY_TRIAL_END_TIME_UNENCRYPTED)
-        // We don't need to check for KEY_TRIAL_CONFIRMED_EXPIRED here, as it's set only after expiry.
-        // Its absence is normal for a new or active trial.
-        Log.d(TAG, "Checking for existing flags: awaitingFlagExists=$awaitingFlagExists, purchasedFlagExists=$purchasedFlagExists, endTimeExists=$endTimeExists")
+        
+        if (isPurchased(context)) {
+            Log.d(TAG, "App is purchased. No trial initialization needed.")
+            // Ensure no lingering trial aliases if purchased
+            KeystoreHelper.deleteAllTimestampAliases()
+            // Ensure awaiting flag is false if purchased
+            if (prefs.contains(KEY_TRIAL_AWAITING_FIRST_INTERNET_TIME)) {
+                prefs.edit().remove(KEY_TRIAL_AWAITING_FIRST_INTERNET_TIME).apply()
+            }
+            return
+        }
 
-        if (!awaitingFlagExists && !purchasedFlagExists && !endTimeExists) {
-            Log.d(TAG, "No core trial-related flags found. Initializing KEY_TRIAL_AWAITING_FIRST_INTERNET_TIME to true.")
-            prefs.edit().putBoolean(KEY_TRIAL_AWAITING_FIRST_INTERNET_TIME, true).apply()
-            Log.d(TAG, "Initialized KEY_TRIAL_AWAITING_FIRST_INTERNET_TIME to true for a fresh state (unencrypted storage)." )
+        val awaitingFlagExists = prefs.contains(KEY_TRIAL_AWAITING_FIRST_INTERNET_TIME)
+        val trialEndTimeInKeystore = getTrialEndTimeFromKeystore(context)
+
+        Log.d(TAG, "Checking for existing flags/state: awaitingFlagExists=$awaitingFlagExists, trialEndTimeInKeystore=$trialEndTimeInKeystore")
+
+        if (trialEndTimeInKeystore == null) {
+            // No trial started in Keystore.
+            if (!awaitingFlagExists) {
+                // And no awaiting flag in prefs, means fresh install or data cleared.
+                Log.d(TAG, "No Keystore trial data and no awaiting flag. Initializing KEY_TRIAL_AWAITING_FIRST_INTERNET_TIME to true.")
+                prefs.edit().putBoolean(KEY_TRIAL_AWAITING_FIRST_INTERNET_TIME, true).apply()
+            } else {
+                // Awaiting flag exists. If it's false, this is an inconsistent state (not awaiting but no Keystore data).
+                // Revert to awaiting true for safety.
+                val isAwaiting = prefs.getBoolean(KEY_TRIAL_AWAITING_FIRST_INTERNET_TIME, true)
+                if (!isAwaiting) {
+                    Log.w(TAG, "Inconsistency: No Keystore trial data, but KEY_TRIAL_AWAITING_FIRST_INTERNET_TIME is false. Resetting to true.")
+                    prefs.edit().putBoolean(KEY_TRIAL_AWAITING_FIRST_INTERNET_TIME, true).apply()
+                } else {
+                    Log.d(TAG, "No Keystore trial data, and KEY_TRIAL_AWAITING_FIRST_INTERNET_TIME is true. State is consistent for pre-trial.")
+                }
+            }
         } else {
-            Log.d(TAG, "One or more core trial-related flags already exist. No initialization needed for KEY_TRIAL_AWAITING_FIRST_INTERNET_TIME.")
+            // Trial has started (Keystore has data). Ensure awaiting flag is false.
+            Log.d(TAG, "Keystore has trial data (ends at $trialEndTimeInKeystore). Ensuring KEY_TRIAL_AWAITING_FIRST_INTERNET_TIME is false.")
+            if (!awaitingFlagExists || prefs.getBoolean(KEY_TRIAL_AWAITING_FIRST_INTERNET_TIME, false)) {
+                prefs.edit().putBoolean(KEY_TRIAL_AWAITING_FIRST_INTERNET_TIME, false).apply()
+                Log.d(TAG, "Set KEY_TRIAL_AWAITING_FIRST_INTERNET_TIME to false as Keystore has trial data.")
+            }
         }
     }
 }
-
