@@ -371,7 +371,7 @@ class MainActivity : ComponentActivity() {
                         showApiKeyDialog = true
                     },
                     onDonationButtonClicked = {
-                        Log.d(TAG, "MenuScreen onDonationButtonClicked: Initiating donation purchase.")
+                        Log.d(TAG, "MenuScreen onDonationButtonClicked: Initiating subscription purchase.")
                         initiateDonationPurchase()
                     },
                      isTrialExpired = currentTrialState == TrialManager.TrialState.EXPIRED_INTERNET_TIME_CONFIRMED
@@ -505,7 +505,7 @@ class MainActivity : ComponentActivity() {
         }
         if (monthlyDonationProductDetails == null) {
             Log.e(TAG, "initiateDonationPurchase: Product details not loaded yet.")
-            updateStatusMessage("Donation information is loading. Please wait a moment and try again.", true)
+            updateStatusMessage("Subscription information is loading. Please wait a moment and try again.", true)
             Log.d(TAG, "initiateDonationPurchase: Attempting to reload product details.")
             queryProductDetails()
             return
@@ -516,7 +516,7 @@ class MainActivity : ComponentActivity() {
             val offerToken = productDetails.subscriptionOfferDetails?.firstOrNull()?.offerToken
             if (offerToken == null) {
                 Log.e(TAG, "No offer token found for product: ${productDetails.productId}. SubscriptionOfferDetails size: ${productDetails.subscriptionOfferDetails?.size}")
-                updateStatusMessage("Donation offer not found.", true)
+                updateStatusMessage("subscription offer not found.", true)
                 return@let
             }
             Log.d(TAG, "initiateDonationPurchase: Offer token found: $offerToken")
@@ -537,8 +537,8 @@ class MainActivity : ComponentActivity() {
                 updateStatusMessage("Fehler beim Starten des Spendevorgangs: ${billingResult.debugMessage}", true)
             }
         } ?: run {
-            Log.e(TAG, "initiateDonationPurchase: Donation product details are null even after check. This shouldn't happen.")
-            updateStatusMessage("Donation product not available.", true)
+            Log.e(TAG, "initiateDonationPurchase: Subscription product details are null even after check. This shouldn't happen.")
+            updateStatusMessage("subscription product not available.", true)
         }
     }
 
