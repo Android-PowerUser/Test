@@ -810,7 +810,7 @@ fun TrialExpiredDialog(
                     },
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    Text("Abonnieren")
+                    Text("Subscribe")
                 }
                 // Es gibt keinen "Dismiss"-Button, da der Dialog bei Ablauf persistent sein soll.
                 // Der Nutzer muss abonnieren, um fortzufahren.
