@@ -272,15 +272,15 @@ class PhotoReasoningViewModel(
                 // Only one key available or all keys have failed after multiple attempts
                 withContext(Dispatchers.Main) {
                     _uiState.value = PhotoReasoningUiState.Error(
-                        "API-Kontingent überschritten. Bitte warten Sie oder fügen Sie weitere API-Schlüssel hinzu."
+                        "API quota exceeded. Please wait or add more API keys."
                     )
-                    _commandExecutionStatus.value = "Alle API-Schlüssel haben ihr Kontingent überschritten. Bitte warten Sie oder fügen Sie weitere API-Schlüssel hinzu."
+                    _commandExecutionStatus.value = "All API keys have exceeded their quota. Please wait or add more API keys."
                     
                     // Update chat with error message
                     _chatState.replaceLastPendingMessage()
                     _chatState.addMessage(
                         PhotoReasoningMessage(
-                            text = "API-Kontingent überschritten. Bitte warten Sie oder fügen Sie weitere API-Schlüssel hinzu.",
+                            text = "API quota exceeded. Please wait or add more API keys.",
                             participant = PhotoParticipant.ERROR
                         )
                     )
@@ -291,7 +291,7 @@ class PhotoReasoningViewModel(
                     
                     // Show toast
                     MainActivity.getInstance()?.updateStatusMessage(
-                        "Alle API-Schlüssel haben ihr Kontingent überschritten. Bitte warten Sie oder fügen Sie weitere API-Schlüssel hinzu.",
+                        "All API keys have exceeded their quota. Please wait or add more API keys.",
                         true
                     )
                     
@@ -303,11 +303,11 @@ class PhotoReasoningViewModel(
                 val nextKey = apiKeyManager.switchToNextAvailableKey()
                 if (nextKey != null) {
                     withContext(Dispatchers.Main) {
-                        _commandExecutionStatus.value = "API-Kontingent überschritten. Wechsle zu nächstem Schlüssel..."
+                        _commandExecutionStatus.value = "API quota exceeded. Switch to next key..."
                         
                         // Show toast
                         MainActivity.getInstance()?.updateStatusMessage(
-                            "API-Kontingent überschritten. Wechsle zu nächstem Schlüssel...",
+                            "API quota exceeded. Switch to next key...",
                             false
                         )
                     }
