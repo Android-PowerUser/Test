@@ -249,13 +249,13 @@ fun PhotoReasoningScreen(
                     modifier = Modifier.padding(16.dp)
                 ) {
                     Text(
-                        text = "Accessibility Service ist nicht aktiviert",
+                        text = "Accessibility Service is not enabled",
                         color = MaterialTheme.colorScheme.error,
                         style = MaterialTheme.typography.titleMedium
                     )
                     Spacer(modifier = Modifier.height(8.dp))
                     Text(
-                        text = "Die Klick-Funktionalität benötigt den Accessibility Service. Bitte aktivieren Sie ihn in den Einstellungen.",
+                        text = "The click functionality requires the Accessibility Service. Please enable it in the settings.",
                         color = MaterialTheme.colorScheme.error
                     )
                     Spacer(modifier = Modifier.height(8.dp))
@@ -263,10 +263,10 @@ fun PhotoReasoningScreen(
                         onClick = {
                             onEnableAccessibilityService()
                             // Optionally, show a toast here as well if the user clicks this specific button
-                            Toast.makeText(context, "Öffne Bedienungshilfen-Einstellungen...", Toast.LENGTH_SHORT).show()
+                            Toast.makeText(context, "Open Accessibility Settings...", Toast.LENGTH_SHORT).show()
                         }
                     ) {
-                        Text("Accessibility Service aktivieren")
+                        Text("Activate Accessibility Service")
                     }
                 }
             }
