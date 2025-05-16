@@ -231,7 +231,7 @@ fun MenuScreen(
                     .padding(horizontal = 16.dp, vertical = 8.dp)
             ) {
                 val annotatedText = buildAnnotatedString {
-                    append("Screenshots are saved in Pictures/Screenshots and should be deleted afterwards. There are rate limits for free use of Gemini models. The less powerful the models are, the more you can use them. The limits range from a maximum of 5 to 30 calls per minute. After each screenshot (every 2-3 seconds) the LLM must respond again. More information is available at ")
+                    append("Screenshots are saved in Pictures/Screenshots and you should delete them afterwards. Google has discontinued free API access to Gemini 2.5 Pro without a deposited billing account. There are rate limits for free use of Gemini models. The less powerful the models are, the more you can use them. The limits range from a maximum of 10 to 30 calls per minute. After each screenshot (every 2-3 seconds) the LLM must respond again. More information is available at ")
 
                     pushStringAnnotation(tag = "URL", annotation = "https://ai.google.dev/gemini-api/docs/rate-limits")
                     withStyle(style = SpanStyle(color = MaterialTheme.colorScheme.primary, textDecoration = TextDecoration.Underline)) {
