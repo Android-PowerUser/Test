@@ -356,15 +356,15 @@ class PhotoReasoningViewModel(
                 // Only one key available or all keys have failed after multiple attempts
                 withContext(Dispatchers.Main) {
                     _uiState.value = PhotoReasoningUiState.Error(
-                        "Server überlastet (503). Bitte warten Sie 45 Sekunden oder fügen Sie weitere API-Schlüssel hinzu."
+                        "Server overloaded (503). Please wait 45 seconds or add more API keys."
                     )
-                    _commandExecutionStatus.value = "Alle API-Schlüssel erschöpft. Bitte warten Sie 45 Sekunden oder fügen Sie weitere API-Schlüssel hinzu."
+                    _commandExecutionStatus.value = "All API keys exhausted. Please wait 45 seconds or add more API keys."
                     
                     // Update chat with error message
                     _chatState.replaceLastPendingMessage()
                     _chatState.addMessage(
                         PhotoReasoningMessage(
-                            text = "Server überlastet (503). Bitte warten Sie 45 Sekunden oder fügen Sie weitere API-Schlüssel hinzu.",
+                            text = "Server overloaded (503). Please wait 45 seconds or add more API keys.",
                             participant = PhotoParticipant.ERROR
                         )
                     )
@@ -375,7 +375,7 @@ class PhotoReasoningViewModel(
                     
                     // Show toast
                     MainActivity.getInstance()?.updateStatusMessage(
-                        "Alle API-Schlüssel erschöpft. Bitte warten Sie 45 Sekunden oder fügen Sie weitere API-Schlüssel hinzu.",
+                        "All API keys exhausted. Please wait 45 seconds or add more API keys.",
                         true
                     )
                     
@@ -387,11 +387,11 @@ class PhotoReasoningViewModel(
                 val nextKey = apiKeyManager.switchToNextAvailableKey()
                 if (nextKey != null) {
                     withContext(Dispatchers.Main) {
-                        _commandExecutionStatus.value = "API-Schlüssel erschöpft. Wechsle zu nächstem Schlüssel..."
+                        _commandExecutionStatus.value = "API key exhausted. Switch to next key..."
                         
                         // Show toast
                         MainActivity.getInstance()?.updateStatusMessage(
-                            "API-Schlüssel erschöpft (503). Wechsle zu nächstem Schlüssel...",
+                            "API key exhausted (503). Switch to next key...",
                             false
                         )
                     }
