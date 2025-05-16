@@ -95,16 +95,14 @@ class MainActivity : ComponentActivity() {
             when (intent?.action) {
                 TrialTimerService.ACTION_TRIAL_EXPIRED -> {
                     Log.i(TAG, "trialStatusReceiver: ACTION_TRIAL_EXPIRED received. Updating trial state.")
-                    updateTrialState(TrialManager.TrialState.EXPIRED_INTERNET_TIME_CONFIRMED)
+                    // Hier currentLocalUtcTimeMs übergeben, da die Internetzeit in diesem Moment nicht unbedingt aktuell ist
+                    // oder der Intent von einem lokalen Ablauf stammen könnte.
+                    updateTrialState(TrialManager.getTrialState(this@MainActivity, null))
                 }
                 TrialTimerService.ACTION_INTERNET_TIME_UNAVAILABLE -> {
                     Log.i(TAG, "trialStatusReceiver: ACTION_INTERNET_TIME_UNAVAILABLE received. Current state: $currentTrialState")
-                    if (currentTrialState != TrialManager.TrialState.EXPIRED_INTERNET_TIME_CONFIRMED && currentTrialState != TrialManager.TrialState.PURCHASED) {
-                        Log.d(TAG, "trialStatusReceiver: Updating state to INTERNET_UNAVAILABLE_CANNOT_VERIFY.")
-                        updateTrialState(TrialManager.TrialState.INTERNET_UNAVAILABLE_CANNOT_VERIFY)
-                    } else {
-                        Log.d(TAG, "trialStatusReceiver: State is EXPIRED or PURCHASED, not updating to INTERNET_UNAVAILABLE_CANNOT_VERIFY.")
-                    }
+                     // Wenn Internet nicht verfügbar ist, Zustand basierend auf lokaler Zeit prüfen
+                    updateTrialState(TrialManager.getTrialState(this@MainActivity, null))
                 }
                 TrialTimerService.ACTION_INTERNET_TIME_AVAILABLE -> {
                     val internetTime = intent.getLongExtra(TrialTimerService.EXTRA_CURRENT_UTC_TIME_MS, 0L)
@@ -112,12 +110,13 @@ class MainActivity : ComponentActivity() {
                     if (internetTime > 0) {
                         Log.d(TAG, "trialStatusReceiver: Valid internet time received. Calling TrialManager.startTrialIfNecessaryWithInternetTime.")
                         TrialManager.startTrialIfNecessaryWithInternetTime(this@MainActivity, internetTime)
-                        Log.d(TAG, "trialStatusReceiver: Calling TrialManager.getTrialState.")
+                        Log.d(TAG, "trialStatusReceiver: Calling TrialManager.getTrialState with received internet time.")
                         val newState = TrialManager.getTrialState(this@MainActivity, internetTime)
                         Log.i(TAG, "trialStatusReceiver: State from TrialManager after internet time: $newState. Updating local state.")
                         updateTrialState(newState)
                     } else {
-                        Log.w(TAG, "trialStatusReceiver: ACTION_INTERNET_TIME_AVAILABLE received, but internetTime is 0 or less. No action taken.")
+                        Log.w(TAG, "trialStatusReceiver: ACTION_INTERNET_TIME_AVAILABLE received, but internetTime is 0 or less. Checking state with null time.")
+                        updateTrialState(TrialManager.getTrialState(this@MainActivity, null))
                     }
                 }
                 else -> {
@@ -129,6 +128,9 @@ class MainActivity : ComponentActivity() {
 
     private fun updateTrialState(newState: TrialManager.TrialState) {
         Log.d(TAG, "updateTrialState called with newState: $newState. Current local state: $currentTrialState")
+        // Die folgende Bedingung wird auskommentiert, damit der when-Block immer durchlaufen
+        // und showTrialInfoDialog korrekt gesetzt wird, auch wenn sich der Status nicht ändert.
+        /*
         if (currentTrialState == newState && newState != TrialManager.TrialState.NOT_YET_STARTED_AWAITING_INTERNET && newState != TrialManager.TrialState.INTERNET_UNAVAILABLE_CANNOT_VERIFY) {
             Log.d(TAG, "updateTrialState: Trial state is already $newState and not an 'awaiting' or 'unavailable' state. No UI message update needed.")
             currentTrialState = newState
@@ -138,6 +140,7 @@ class MainActivity : ComponentActivity() {
             }
             return
         }
+        */
         val oldState = currentTrialState
         currentTrialState = newState
         Log.i(TAG, "updateTrialState: Trial state updated from $oldState to $currentTrialState")
@@ -145,7 +148,7 @@ class MainActivity : ComponentActivity() {
         when (currentTrialState) {
             TrialManager.TrialState.EXPIRED_INTERNET_TIME_CONFIRMED -> {
                 trialInfoMessage = "Ihr 30-minütiger Testzeitraum ist beendet. Bitte abonnieren Sie die App, um sie weiterhin nutzen zu können."
-                showTrialInfoDialog = true
+                showTrialInfoDialog = true // Dieser Dialog ist bei Ablauf erwünscht
                 Log.d(TAG, "updateTrialState: Set message to \'$trialInfoMessage\', showTrialInfoDialog = true (EXPIRED)")
             }
             TrialManager.TrialState.ACTIVE_INTERNET_TIME_CONFIRMED,
@@ -153,7 +156,7 @@ class MainActivity : ComponentActivity() {
             TrialManager.TrialState.NOT_YET_STARTED_AWAITING_INTERNET,
             TrialManager.TrialState.INTERNET_UNAVAILABLE_CANNOT_VERIFY -> {
                 trialInfoMessage = ""
-                showTrialInfoDialog = false
+                showTrialInfoDialog = false // Explizit auf false setzen für diese Zustände
                 Log.d(TAG, "updateTrialState: Cleared message, showTrialInfoDialog = false (ACTIVE, PURCHASED, AWAITING, OR UNAVAILABLE)")
             }
         }
@@ -186,7 +189,6 @@ class MainActivity : ComponentActivity() {
         return key
     }
 
-    // Renamed to internal and updated to refresh the StateFlow
     internal fun refreshAccessibilityServiceStatus() {
         Log.d(TAG, "refreshAccessibilityServiceStatus called.")
         val service = packageName + "/" + ScreenOperatorAccessibilityService::class.java.canonicalName
@@ -197,8 +199,6 @@ class MainActivity : ComponentActivity() {
         if (!isEnabled) {
             Log.d(TAG, "Accessibility Service not enabled.")
         }
-        // The return value is not strictly needed here anymore if primarily consumed via flow,
-        // but can be kept for direct synchronous checks if necessary.
     }
 
 
@@ -225,7 +225,6 @@ class MainActivity : ComponentActivity() {
         this.photoReasoningViewModel = viewModel
     }
 
-    // This function now just returns the Intent. The launching is handled by the composable.
     fun getAccessibilitySettingsIntent(): Intent {
         Log.d(TAG, "getAccessibilitySettingsIntent called.")
         return Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS).apply {
@@ -271,10 +270,10 @@ class MainActivity : ComponentActivity() {
         }
         Log.d(TAG, "onCreate: trialStatusReceiver registered.")
 
-        Log.d(TAG, "onCreate: Performing initial trial state check. Calling TrialManager.getTrialState with null time.")
+        Log.d(TAG, "onCreate: Performing initial trial state check. Calling TrialManager.getTrialState with null time (will use local time).")
         val initialTrialState = TrialManager.getTrialState(this, null)
         Log.i(TAG, "onCreate: Initial trial state from TrialManager: $initialTrialState. Updating local state.")
-        updateTrialState(initialTrialState)
+        updateTrialState(initialTrialState) // updateTrialState wird nun den Dialogstatus korrekt setzen
         Log.d(TAG, "onCreate: Calling startTrialServiceIfNeeded based on initial state: $currentTrialState")
         startTrialServiceIfNeeded()
 
@@ -318,12 +317,15 @@ class MainActivity : ComponentActivity() {
                         }
                         TrialManager.TrialState.NOT_YET_STARTED_AWAITING_INTERNET,
                         TrialManager.TrialState.INTERNET_UNAVAILABLE_CANNOT_VERIFY -> {
+                            // Der InfoDialog wird hier NICHT mehr angezeigt, da showTrialInfoDialog in updateTrialState auf false gesetzt wird.
                             if (showTrialInfoDialog) {
-                                Log.d(TAG, "setContent: Rendering InfoDialog for AWAITING/UNAVAILABLE. Message: $trialInfoMessage")
+                                Log.d(TAG, "setContent: Rendering InfoDialog for AWAITING/UNAVAILABLE (This should ideally not happen). Message: $trialInfoMessage")
                                 InfoDialog(message = trialInfoMessage, onDismiss = {
                                     Log.d(TAG, "InfoDialog onDismiss called.")
                                     showTrialInfoDialog = false
                                 })
+                            } else {
+                                Log.d(TAG, "setContent: Not rendering InfoDialog for AWAITING/UNAVAILABLE because showTrialInfoDialog is false (as expected).")
                             }
                         }
                         TrialManager.TrialState.ACTIVE_INTERNET_TIME_CONFIRMED,
@@ -339,7 +341,7 @@ class MainActivity : ComponentActivity() {
 
     @Composable
     fun AppNavigation(navController: NavHostController) {
-                val isAppEffectivelyUsable = currentTrialState != TrialManager.TrialState.EXPIRED_INTERNET_TIME_CONFIRMED
+        val isAppEffectivelyUsable = currentTrialState != TrialManager.TrialState.EXPIRED_INTERNET_TIME_CONFIRMED
         Log.d(TAG, "AppNavigation: isAppEffectivelyUsable = $isAppEffectivelyUsable (currentTrialState: $currentTrialState)")
 
         val alwaysAvailableRoutes = listOf("ApiKeyDialog", "ChangeModel")
@@ -359,8 +361,9 @@ class MainActivity : ComponentActivity() {
                                 navController.navigate(routeId)
                             }
                         } else {
-                            Log.w(TAG, "MenuScreen: Navigation to '$routeId' blocked due to trial state. Message: $trialInfoMessage")
-                            updateStatusMessage(trialInfoMessage, isError = true)
+                            Log.w(TAG, "MenuScreen: Navigation to '$routeId' blocked due to trial state.")
+                            // Die Nachricht wird bereits durch den TrialExpiredDialog angezeigt, wenn der Status EXPIRED ist.
+                            // updateStatusMessage(trialInfoMessage, isError = true) // Diese Zeile kann ggf. entfernt werden, wenn der Dialog ausreicht.
                         }
                     },
                     onApiKeyButtonClicked = {
@@ -382,10 +385,11 @@ class MainActivity : ComponentActivity() {
                     Log.w(TAG, "AppNavigation: 'photo_reasoning' blocked. Popping back stack.")
                     LaunchedEffect(Unit) {
                         navController.popBackStack()
-                        updateStatusMessage(trialInfoMessage, isError = true)
+                        // updateStatusMessage(trialInfoMessage, isError = true) // Ggf. anpassen, da TrialExpiredDialog bereits angezeigt wird.
                     }
                 }
             }
+            // Weitere Routen hier...
         }
     }
 
@@ -555,7 +559,7 @@ class MainActivity : ComponentActivity() {
                             Log.i(TAG, "Subscription purchase acknowledged successfully.")
                             updateStatusMessage("Vielen Dank für Ihr Abonnement!")
                             TrialManager.markAsPurchased(this)
-                            updateTrialState(TrialManager.TrialState.PURCHASED)
+                            updateTrialState(TrialManager.getTrialState(this, null)) // Aktualisiere Zustand nach Kauf
                             Log.d(TAG, "handlePurchase: Stopping TrialTimerService as app is purchased.")
                             val stopIntent = Intent(this, TrialTimerService::class.java)
                             stopIntent.action = TrialTimerService.ACTION_STOP_TIMER
@@ -569,7 +573,7 @@ class MainActivity : ComponentActivity() {
                     Log.i(TAG, "handlePurchase: Subscription already acknowledged.")
                     updateStatusMessage("Abonnement bereits aktiv.")
                     TrialManager.markAsPurchased(this)
-                    updateTrialState(TrialManager.TrialState.PURCHASED)
+                    updateTrialState(TrialManager.getTrialState(this, null)) // Aktualisiere Zustand nach Kauf
                 }
             } else {
                 Log.w(TAG, "handlePurchase: Purchase is PURCHASED but does not contain the target product ID ($subscriptionProductId). Products: ${purchase.products}")
@@ -593,52 +597,60 @@ class MainActivity : ComponentActivity() {
             QueryPurchasesParams.newBuilder().setProductType(BillingClient.ProductType.SUBS).build()
         ) { billingResult, purchases ->
             Log.i(TAG, "queryActiveSubscriptions result: ResponseCode: ${billingResult.responseCode}, Message: ${billingResult.debugMessage}, Purchases count: ${purchases.size}")
+            var isSubscribedLocally = false // Lokale Variable für diese Abfrage
             if (billingResult.responseCode == BillingClient.BillingResponseCode.OK) {
-                var isSubscribed = false
                 purchases.forEach { purchase ->
                     Log.d(TAG, "queryActiveSubscriptions: Checking purchase - Products: ${purchase.products}, State: ${purchase.purchaseState}")
                     if (purchase.products.any { it == subscriptionProductId } && purchase.purchaseState == Purchase.PurchaseState.PURCHASED) {
                         Log.i(TAG, "queryActiveSubscriptions: Active subscription found for $subscriptionProductId.")
-                        isSubscribed = true
+                        isSubscribedLocally = true
                         if (!purchase.isAcknowledged) {
                             Log.d(TAG, "queryActiveSubscriptions: Found active, unacknowledged subscription. Handling purchase.")
-                            handlePurchase(purchase)
+                            handlePurchase(purchase) // Dies wird TrialManager.markAsPurchased und updateTrialState aufrufen
                         } else {
                             Log.d(TAG, "queryActiveSubscriptions: Found active, acknowledged subscription.")
-                        }
-                        if (isSubscribed && purchase.isAcknowledged) {
-                            TrialManager.markAsPurchased(this)
-                            updateTrialState(TrialManager.TrialState.PURCHASED)
+                            // Auch hier sicherstellen, dass der Zustand PURCHASED ist
+                            if (currentTrialState != TrialManager.TrialState.PURCHASED) {
+                                TrialManager.markAsPurchased(this)
+                                updateTrialState(TrialManager.getTrialState(this, null))
+                            }
                             Log.d(TAG, "queryActiveSubscriptions: Stopping TrialTimerService due to active acknowledged subscription.")
                             val stopIntent = Intent(this, TrialTimerService::class.java)
                             stopIntent.action = TrialTimerService.ACTION_STOP_TIMER
                             startService(stopIntent)
                         }
-                        return@forEach
+                        return@forEach // Breche die Schleife ab, da wir ein aktives Abo gefunden haben
                     }
                 }
-                if (isSubscribed) {
-                    Log.i(TAG, "queryActiveSubscriptions: User has an active subscription (final check after loop).")
+                if (isSubscribedLocally) {
+                    Log.i(TAG, "queryActiveSubscriptions: User has an active subscription (final check after loop). Ensuring state is PURCHASED.")
                     if (currentTrialState != TrialManager.TrialState.PURCHASED) {
-                        TrialManager.markAsPurchased(this)
-                        updateTrialState(TrialManager.TrialState.PURCHASED)
-                        val stopIntent = Intent(this, TrialTimerService::class.java)
-                        stopIntent.action = TrialTimerService.ACTION_STOP_TIMER
-                        startService(stopIntent)
+                         TrialManager.markAsPurchased(this)
+                         updateTrialState(TrialManager.getTrialState(this, null))
+                         val stopIntent = Intent(this, TrialTimerService::class.java)
+                         stopIntent.action = TrialTimerService.ACTION_STOP_TIMER
+                         startService(stopIntent)
                     }
                 } else {
-                    Log.i(TAG, "queryActiveSubscriptions: User has no active subscription for $subscriptionProductId. Trial logic will apply.")
+                    Log.i(TAG, "queryActiveSubscriptions: User has no active subscription for $subscriptionProductId. Re-evaluating trial logic.")
+                    // Wenn kein aktives Abo gefunden wurde UND der Zustand in TrialManager nicht PURCHASED ist
+                    // (was nach einem Uninstall/Reinstall passieren kann, wenn SharedPreferences gelöscht wurden)
+                    // dann den normalen Trial-Flow starten.
                     if (TrialManager.getTrialState(this, null) != TrialManager.TrialState.PURCHASED) {
-                        Log.d(TAG, "queryActiveSubscriptions: Re-evaluating trial state and starting service if needed.")
+                        Log.d(TAG, "queryActiveSubscriptions: No active sub, and TrialManager confirms not purchased. Re-evaluating trial state and starting service if needed.")
                         updateTrialState(TrialManager.getTrialState(this, null))
                         startTrialServiceIfNeeded()
                     } else {
-                        Log.w(TAG, "queryActiveSubscriptions: No active sub, but TrialManager says PURCHASED. This is inconsistent.")
+                         Log.w(TAG, "queryActiveSubscriptions: No active sub from Google, but TrialManager says PURCHASED. This could be due to restored SharedPreferences without active subscription. Re-evaluating trial logic based on no internet time.")
+                         // Hier könnte man entscheiden, KEY_PURCHASED_FLAG zu löschen, wenn keine aktive Subscription gefunden wird,
+                         // aber das kann riskant sein, wenn die Google-Abfrage fehlschlägt. Vorsichtshalber Trial starten.
+                         updateTrialState(TrialManager.getTrialState(this, null)) // Wird ggf. auf EXPIRED gehen
+                         startTrialServiceIfNeeded()
                     }
                 }
             } else {
                 Log.e(TAG, "Failed to query active subscriptions: ${billingResult.debugMessage}")
-                Log.d(TAG, "queryActiveSubscriptions: Query failed. Re-evaluating trial state and starting service if needed.")
+                Log.d(TAG, "queryActiveSubscriptions: Query failed. Re-evaluating trial state based on no internet time and starting service if needed.")
                 if (TrialManager.getTrialState(this, null) != TrialManager.TrialState.PURCHASED) {
                     updateTrialState(TrialManager.getTrialState(this, null))
                     startTrialServiceIfNeeded()
@@ -658,16 +670,17 @@ class MainActivity : ComponentActivity() {
         Log.d(TAG, "onResume: Checking BillingClient status.")
         if (::billingClient.isInitialized && billingClient.isReady) {
             Log.d(TAG, "onResume: BillingClient is initialized and ready. Querying active subscriptions.")
-            queryActiveSubscriptions()
+            queryActiveSubscriptions() // Dies wird den Trial-Status ggf. aktualisieren.
         } else if (::billingClient.isInitialized && (billingClient.connectionState == BillingClient.ConnectionState.DISCONNECTED || billingClient.connectionState == BillingClient.ConnectionState.CLOSED) ) {
             Log.w(TAG, "onResume: Billing client initialized but disconnected/closed (State: ${billingClient.connectionState}). Attempting to reconnect via setupBillingClient.")
-            setupBillingClient()
+            setupBillingClient() // Wird queryActiveSubscriptions aufrufen, wenn erfolgreich
         } else if (!::billingClient.isInitialized) {
             Log.w(TAG, "onResume: Billing client not initialized. Calling setupBillingClient.")
-            setupBillingClient()
+            setupBillingClient() // Wird queryActiveSubscriptions aufrufen, wenn erfolgreich
         } else {
             Log.d(TAG, "onResume: Billing client initializing or in an intermediate state (State: ${billingClient.connectionState}). Default trial logic will apply for now. QueryActiveSubs will be called by setup if it succeeds.")
             Log.d(TAG, "onResume: Updating trial state and starting service if needed (pending billing client). Current state: $currentTrialState")
+            // In diesem Fall verlassen wir uns auf den lokalen Trial-Status, bis BillingClient bereit ist
             updateTrialState(TrialManager.getTrialState(this, null))
             startTrialServiceIfNeeded()
         }
@@ -707,7 +720,10 @@ class MainActivity : ComponentActivity() {
         } else {
             Log.i(TAG, "All required permissions already granted.")
             Log.d(TAG, "checkAndRequestPermissions: Permissions granted, calling startTrialServiceIfNeeded. Current state: $currentTrialState")
-            startTrialServiceIfNeeded()
+            // Der Service wird nun durch onResume oder onCreate (via updateTrialState) gestartet,
+            // wenn die Trial-Logik dies erfordert. Ein direkter Aufruf hier ist nicht unbedingt nötig,
+            // da der Trial-Status ohnehin geprüft wird.
+            // startTrialServiceIfNeeded() // Kann hier belassen oder entfernt werden, da die Trial-Logik ohnehin anspringt
         }
     }
 
@@ -719,7 +735,7 @@ class MainActivity : ComponentActivity() {
     } else {
         arrayOf(
             Manifest.permission.READ_EXTERNAL_STORAGE,
-            Manifest.permission.WRITE_EXTERNAL_STORAGE
+            Manifest.permission.WRITE_EXTERNAL_STORAGE // WRITE_EXTERNAL_STORAGE ist für API < 29 (Q) relevant
         )
     }
 
@@ -731,12 +747,13 @@ class MainActivity : ComponentActivity() {
         if (allGranted) {
             Log.i(TAG, "All required permissions granted by user.")
             updateStatusMessage("Alle erforderlichen Berechtigungen erteilt")
-            Log.d(TAG, "requestPermissionLauncher: All permissions granted, calling startTrialServiceIfNeeded. Current state: $currentTrialState")
-            startTrialServiceIfNeeded()
+            // Der Service wird nun durch onResume oder onCreate (via updateTrialState) gestartet.
+            // startTrialServiceIfNeeded() // Siehe Kommentar in checkAndRequestPermissions
         } else {
             val deniedPermissions = permissions.entries.filter { !it.value }.map { it.key }
             Log.w(TAG, "Some required permissions denied by user: $deniedPermissions")
             updateStatusMessage("Einige erforderliche Berechtigungen wurden verweigert. Die App benötigt diese für volle Funktionalität.", true)
+            // Auch hier: Der Trial-Status wird ohnehin regelmäßig geprüft.
         }
     }
 
@@ -753,12 +770,15 @@ class MainActivity : ComponentActivity() {
 @Composable
 fun TrialExpiredDialog(
     onPurchaseClick: () -> Unit,
-    onDismiss: () -> Unit
+    onDismiss: () -> Unit // onDismissRequest wird von Dialog aufgerufen, wenn außerhalb geklickt wird oder Zurück-Taste.
+                         // Für einen persistenten Dialog wird onDismiss hier nicht viel tun, außer loggen.
 ) {
     Log.d("TrialExpiredDialog", "Composing TrialExpiredDialog")
     Dialog(onDismissRequest = {
-        Log.d("TrialExpiredDialog", "onDismissRequest called (persistent dialog)")
-        onDismiss()
+        Log.d("TrialExpiredDialog", "onDismissRequest called (persistent dialog - user tried to dismiss)")
+        // Da der Dialog persistent sein soll, rufen wir onDismiss hier nicht auf,
+        // um showTrialInfoDialog nicht fälschlicherweise auf false zu setzen.
+        // onDismiss() // Diese Zeile sollte entfernt werden, wenn der Dialog wirklich nicht durch Klick außerhalb geschlossen werden soll.
     }) {
         Card(
             modifier = Modifier
@@ -792,13 +812,15 @@ fun TrialExpiredDialog(
                 ) {
                     Text("Abonnieren")
                 }
+                // Es gibt keinen "Dismiss"-Button, da der Dialog bei Ablauf persistent sein soll.
+                // Der Nutzer muss abonnieren, um fortzufahren.
             }
         }
     }
 }
 
 @Composable
-fun InfoDialog(
+fun InfoDialog( // Dieser Dialog wird nun nicht mehr für Internet-Fehler angezeigt.
     message: String,
     onDismiss: () -> Unit
 ) {
