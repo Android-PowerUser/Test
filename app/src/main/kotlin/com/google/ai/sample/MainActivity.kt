@@ -147,7 +147,7 @@ class MainActivity : ComponentActivity() {
 
         when (currentTrialState) {
             TrialManager.TrialState.EXPIRED_INTERNET_TIME_CONFIRMED -> {
-                trialInfoMessage = "Ihr 30-minütiger Testzeitraum ist beendet. Bitte abonnieren Sie die App, um sie weiterhin nutzen zu können."
+                trialInfoMessage = "Your 30-minute trial period has ended. Please subscribe to the app to continue using it."
                 showTrialInfoDialog = true // Dieser Dialog ist bei Ablauf erwünscht
                 Log.d(TAG, "updateTrialState: Set message to \'$trialInfoMessage\', showTrialInfoDialog = true (EXPIRED)")
             }
@@ -505,7 +505,7 @@ class MainActivity : ComponentActivity() {
         }
         if (monthlyDonationProductDetails == null) {
             Log.e(TAG, "initiateDonationPurchase: Product details not loaded yet.")
-            updateStatusMessage("Spendeninformationen werden geladen. Bitte kurz warten und erneut versuchen.", true)
+            updateStatusMessage("Donation information is loading. Please wait a moment and try again.", true)
             Log.d(TAG, "initiateDonationPurchase: Attempting to reload product details.")
             queryProductDetails()
             return
@@ -516,7 +516,7 @@ class MainActivity : ComponentActivity() {
             val offerToken = productDetails.subscriptionOfferDetails?.firstOrNull()?.offerToken
             if (offerToken == null) {
                 Log.e(TAG, "No offer token found for product: ${productDetails.productId}. SubscriptionOfferDetails size: ${productDetails.subscriptionOfferDetails?.size}")
-                updateStatusMessage("Spendenangebot nicht gefunden.", true)
+                updateStatusMessage("Donation offer not found.", true)
                 return@let
             }
             Log.d(TAG, "initiateDonationPurchase: Offer token found: $offerToken")
@@ -538,7 +538,7 @@ class MainActivity : ComponentActivity() {
             }
         } ?: run {
             Log.e(TAG, "initiateDonationPurchase: Donation product details are null even after check. This shouldn't happen.")
-            updateStatusMessage("Spendenprodukt nicht verfügbar.", true)
+            updateStatusMessage("Donation product not available.", true)
         }
     }
 
@@ -793,12 +793,12 @@ fun TrialExpiredDialog(
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
                 Text(
-                    text = "Testzeitraum abgelaufen",
+                    text = "Trial period expired",
                     style = MaterialTheme.typography.titleLarge
                 )
                 Spacer(modifier = Modifier.height(16.dp))
                 Text(
-                    text = "Ihr 30-minütiger Testzeitraum ist beendet. Bitte abonnieren Sie die App, um sie weiterhin nutzen zu können.",
+                    text = "Your 30-minute trial period has ended. Please subscribe to the app to continue using it.",
                     style = MaterialTheme.typography.bodyMedium,
                     modifier = Modifier.align(Alignment.CenterHorizontally)
                 )
