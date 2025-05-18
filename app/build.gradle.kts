@@ -7,11 +7,11 @@ plugins {
 }
 
 android {
-    namespace = "io.github.Android-PowerUser"
+    namespace = "com.google.ai.sample"
     compileSdk = 34
 
     defaultConfig {
-        applicationId = "io.github.Android-PowerUser"
+        applicationId = "com.google.ai.sample"
         minSdk = 26
         targetSdk = 34
         versionCode = 1
