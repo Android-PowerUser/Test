@@ -1,4 +1,4 @@
-package com.google.ai.sample.feature.multimodal
+package io.github.Android-PowerUser.feature.multimodal
 
 import android.app.Activity
 import android.content.Intent
