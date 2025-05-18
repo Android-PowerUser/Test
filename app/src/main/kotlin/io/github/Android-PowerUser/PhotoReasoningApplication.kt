@@ -1,4 +1,4 @@
-package com.google.ai.sample
+package io.github.Android-PowerUser
 
 import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
