@@ -1,4 +1,4 @@
-package com.google.ai.sample.feature.multimodal
+package io.github.Android-PowerUser.feature.multimodal
 
 import java.util.UUID
 
