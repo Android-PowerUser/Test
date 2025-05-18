@@ -1,4 +1,4 @@
-package com.google.ai.sample.util
+package io.github.Android-PowerUser.util
 
 import android.util.Log
 
