@@ -7,11 +7,11 @@ plugins {
 }
 
 android {
-    namespace = "io.github.Android-PowerUser"
+    namespace = "io.github.android_poweruser"
     compileSdk = 34
 
     defaultConfig {
-        applicationId = "io.github.Android-PowerUser"
+        applicationId = "io.github.android_poweruser"
         minSdk = 26
         targetSdk = 34
         versionCode = 1
