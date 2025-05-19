@@ -1,4 +1,4 @@
-package com.google.ai.sample.util
+package io.github.android_poweruser.util
 
 import android.content.Context
 import android.content.SharedPreferences
