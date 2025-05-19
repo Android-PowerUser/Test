@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-package com.google.ai.sample.feature.multimodal
+package io.github.android_poweruser.feature.multimodal
 
 /**
  * A sealed hierarchy describing the state of the text generation.
