@@ -1,4 +1,4 @@
-package com.google.ai.sample
+package io.github.android_poweruser
 
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
