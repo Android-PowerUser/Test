@@ -1,4 +1,4 @@
-package com.google.ai.sample.feature.multimodal
+package io.github.android_poweruser.feature.multimodal
 
 import androidx.compose.runtime.toMutableStateList
 
