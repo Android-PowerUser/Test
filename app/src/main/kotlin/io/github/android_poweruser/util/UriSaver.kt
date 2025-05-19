@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-package com.google.ai.sample.util
+package io.github.android_poweruser.util
 
 import android.net.Uri
 import androidx.compose.runtime.saveable.Saver
