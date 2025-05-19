@@ -1,4 +1,4 @@
-package com.google.ai.sample
+package io.github.android_poweruser
 
 import android.content.Context
 import androidx.lifecycle.ViewModel
