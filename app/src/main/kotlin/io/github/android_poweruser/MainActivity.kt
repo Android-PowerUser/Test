@@ -1,4 +1,4 @@
-package com.google.ai.sample
+package io.github.android_poweruser
 
 import android.Manifest
 import android.app.Activity
