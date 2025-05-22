@@ -3,7 +3,7 @@
 This Android app operates the screen with commands from vision LLMs.
 
 ### Become a Tester
-In early test state I must all E-Mails enter in the list of the Google Play Console. https://docs.google.com/forms/d/1wQiKmP9R2PTmZQe_1ZAp3KCv9M8_d9nlqoLsLot2M-I/edit You get a notification when it starts.
+In early test state I must all E-Mails enter in the list of the Google Play Console. https://docs.google.com/forms/d/1wQiKmP9R2PTmZQe_1ZAp3KCv9M8_d9nlqoLsLot2M-I/edit You get a notification when I enter it.
 
 ### Video
 
