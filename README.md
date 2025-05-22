@@ -11,7 +11,7 @@ https://m.youtube.com/watch?v=o095RSFXJuc
 
 ### Google Crawler Bug
 
-Due to a bug in the Google crawler that occurs when a repo is switched from private to public, you cannot find Screen Operator via Google search, but only via Bing and Yahoo.
+Due to a bug in the Google crawler that occurs when a repo is switched from private to public, you cannot find Screen Operator via Google search, but via Bing and Yahoo.
 
 ### Help with development
 
