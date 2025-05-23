@@ -17,6 +17,6 @@ Due to a bug in the Google crawler that occurs when a repo is switched from priv
 
 Current development step:
 
-Fix a bug that prevents some apps from being launched by Screen Operator (branch open_apps_attempt_2).
+Fix a bug that prevents some apps from being launched by Screen Operator (branch Better_text).
 
 Correct implementation of MediaProjection (Create screenshots for Gemini). Almost finished code in the screenshot branch. The current workaround is to trigger a screenshot via the accessibility service. However, this leads to the thumbnail.
