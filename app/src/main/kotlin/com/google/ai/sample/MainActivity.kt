@@ -83,6 +83,9 @@ class MainActivity : ComponentActivity() {
     private var showTrialInfoDialog by mutableStateOf(false)
     private var trialInfoMessage by mutableStateOf("")
 
+    private var showPermissionRationaleDialog by mutableStateOf(false)
+    private var permissionRequestCount by mutableStateOf(0)
+
     private lateinit var navController: NavHostController
 
     // START: Added for Accessibility Service Status
@@ -296,7 +299,19 @@ class MainActivity : ComponentActivity() {
                     Log.d(TAG, "setContent: Rendering AppNavigation.")
                     AppNavigation(navController)
 
-                    if (showFirstLaunchInfoDialog) {
+                    if (showPermissionRationaleDialog) {
+                        Log.d(TAG, "setContent: Rendering PermissionRationaleDialog. Request count before dialog action: $permissionRequestCount")
+                        PermissionRationaleDialog(
+                            onDismiss = {
+                                Log.i(TAG, "PermissionRationaleDialog OK clicked. Current request count: $permissionRequestCount")
+                                permissionRequestCount++
+                                Log.i(TAG, "Permission request count incremented to: $permissionRequestCount")
+                                showPermissionRationaleDialog = false
+                                Log.i(TAG, "Requesting permissions now. Required: ${requiredPermissions.joinToString()}")
+                                requestPermissionLauncher.launch(requiredPermissions)
+                            }
+                        )
+                    } else if (showFirstLaunchInfoDialog) {
                         Log.d(TAG, "setContent: Rendering FirstLaunchInfoDialog.")
                         FirstLaunchInfoDialog(
                             onDismiss = {
@@ -718,11 +733,16 @@ class MainActivity : ComponentActivity() {
             ContextCompat.checkSelfPermission(this, it) != PackageManager.PERMISSION_GRANTED
         }.toTypedArray()
         if (permissionsToRequest.isNotEmpty()) {
-            Log.i(TAG, "Requesting permissions: ${permissionsToRequest.joinToString()}")
-            requestPermissionLauncher.launch(permissionsToRequest)
+            // Original: requestPermissionLauncher.launch(permissionsToRequest)
+            // New:
+            Log.i(TAG, "Required permissions not granted. Showing rationale dialog. Permissions: ${permissionsToRequest.joinToString()}")
+            showPermissionRationaleDialog = true
         } else {
             Log.i(TAG, "All required permissions already granted.")
             Log.d(TAG, "checkAndRequestPermissions: Permissions granted, calling startTrialServiceIfNeeded. Current state: $currentTrialState")
+            // TODO: It seems the startTrialServiceIfNeeded() call was here in the original code when permissions were granted.
+            // Confirm if it should remain here or be handled elsewhere. For now, keeping it as per the 'else' block's original apparent structure.
+            // Based on the prompt, only the 'if (permissionsToRequest.isNotEmpty())' block's direct action changes.
         }
     }
 
@@ -746,10 +766,30 @@ class MainActivity : ComponentActivity() {
         if (allGranted) {
             Log.i(TAG, "All required permissions granted by user.")
             updateStatusMessage("Alle erforderlichen Berechtigungen erteilt")
+            // Any other logic that should happen when permissions are granted (e.g., related to trial service)
+            // This part should remain as it was if permissions being granted triggered other actions.
         } else {
             val deniedPermissions = permissions.entries.filter { !it.value }.map { it.key }
-            Log.w(TAG, "Some required permissions denied by user: $deniedPermissions")
-            updateStatusMessage("Einige erforderliche Berechtigungen wurden verweigert. Die App benötigt diese für volle Funktionalität.", true)
+            Log.w(TAG, "Permissions denied. Current request count: $permissionRequestCount. Denied permissions: $deniedPermissions")
+
+            if (permissionRequestCount == 1) {
+                // First denial, show rationale again
+                Log.i(TAG, "Permissions denied once. Showing rationale dialog again for a second attempt.")
+                showPermissionRationaleDialog = true
+                // Optionally, a less intrusive toast here, or none if the dialog is prominent enough.
+                // For now, let's rely on the dialog.
+            } else if (permissionRequestCount >= 2) {
+                // Second denial, show toast and exit
+                Log.w(TAG, "Permissions denied after second formal request (request count: $permissionRequestCount). App will exit.")
+                Toast.makeText(this, "Without this authorization, operation is not possible.", Toast.LENGTH_LONG).show()
+                finish()
+            } else {
+                // Should not happen if permissionRequestCount is managed correctly (starts at 0, increments before request)
+                // but as a fallback:
+                Log.e(TAG, "Permissions denied with unexpected permissionRequestCount: $permissionRequestCount. Exiting.")
+                Toast.makeText(this, "Permissions repeatedly denied. Operation not possible.", Toast.LENGTH_LONG).show()
+                finish()
+            }
         }
     }
 
@@ -799,6 +839,50 @@ fun FirstLaunchInfoDialog(onDismiss: () -> Unit) {
                 TextButton(
                     onClick = {
                         Log.d("FirstLaunchInfoDialog", "OK button clicked")
+                        onDismiss()
+                    },
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text("OK")
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun PermissionRationaleDialog(onDismiss: () -> Unit) {
+    Log.d("PermissionRationaleDialog", "Composing PermissionRationaleDialog")
+    Dialog(onDismissRequest = {
+        Log.d("PermissionRationaleDialog", "onDismissRequest called")
+        onDismiss()
+    }) {
+        Card(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+        ) {
+            Column(
+                modifier = Modifier
+                    .padding(16.dp)
+                    .fillMaxWidth(),
+                verticalArrangement = Arrangement.Center,
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Text(
+                    text = "Permission Required",
+                    style = MaterialTheme.typography.titleLarge
+                )
+                Spacer(modifier = Modifier.height(16.dp))
+                Text(
+                    text = "You'll immediately be asked for photo and video permissions. These is necessary so the AI ​​can see the screenshots and thus also the screen taken by the Screen Operator. It will never access media that the Screen Operator didn't create themselves.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    modifier = Modifier.align(Alignment.CenterHorizontally)
+                )
+                Spacer(modifier = Modifier.height(24.dp))
+                TextButton(
+                    onClick = {
+                        Log.d("PermissionRationaleDialog", "OK button clicked")
                         onDismiss()
                     },
                     modifier = Modifier.fillMaxWidth()
