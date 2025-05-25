@@ -11,7 +11,7 @@ https://m.youtube.com/watch?v=o095RSFXJuc
 
 ### Google Crawler Bug
 
-Unfortunately, the Google crawler seems to no longer index many new repos. This one and the workaround produced repos are among them, but you can still find this via Bing, Ecosia and Yahoo.
+Unfortunately, the Google crawler seems to no longer index many new repos and other sites. This one and the workaround produced repos are among them, but you can still find this via Bing, Ecosia and Yahoo.
 
 ### Help with development
 
