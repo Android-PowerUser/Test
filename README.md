@@ -2,9 +2,9 @@
 ### Operates the screen with AI
 This Android app operates the screen with commands from vision LLMs
 
-• Like Computer use and Operator but for Android
+#### • Like Computer use and Operator but for Android
 
-• Can also control the Browser like Project Mariner and Browser use
+#### • Can also control the Browser like Project Mariner and Browser use
 
 ### How to get it from Google Play
 
