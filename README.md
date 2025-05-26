@@ -21,7 +21,7 @@ Fix a bug that prevents some apps from being launched by Screen Operator (branch
 
 Correct implementation of MediaProjection (Create screenshots for Gemini). Almost finished code in the screenshot branch. The current workaround is to trigger a screenshot via the accessibility service. However, this leads to the thumbnail.
 
-###### For Google
+###### For the Google crawler
 <script type="application/ld+json">
 {
   "@context": "https://schema.org",
