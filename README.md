@@ -2,8 +2,10 @@
 ### Operates the screen with AI
 This Android app operates the screen with commands from vision LLMs.
 
-### Become a Tester
-In early test state I must all E-Mails enter in the list of the Google Play Console. https://docs.google.com/forms/d/1wQiKmP9R2PTmZQe_1ZAp3KCv9M8_d9nlqoLsLot2M-I/edit You get a notification when I enter it.
+### How to get it from Google Play
+
+
+I must all „Tester“ E-Mails enter in the list of the Google Play Console, because „Every developer has to have his app tested extensively to publish it regular“. This takes about a month. Here can you enter an E-Mail. [https://docs.google.com/forms/d/1wQiKmP9R2PTmZQe\_1ZAp3KCv9M8\_d9nlqoLsLot2M-I/edit](https://docs.google.com/forms/d/1wQiKmP9R2PTmZQe_1ZAp3KCv9M8_d9nlqoLsLot2M-I/edit) You get a notification when I enter it in the console. You can then download it regularly from the Play Store.
 
 ### Video
 
