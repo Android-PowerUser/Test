@@ -26,7 +26,7 @@ Correct implementation of MediaProjection (Create screenshots for Gemini). Almos
 {
   "@context": "https://schema.org",
   "@type": "AndroidApp",
-  "name": "ScreenOperator",
+  "name": "Screen Operator",
   "description": "Operates the screen with AI",
   "programmingLanguage": "Kotlin",
   "codeRepository": "https://github.com/Android-PowerUser/ScreenOperator",
