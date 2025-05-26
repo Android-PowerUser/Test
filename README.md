@@ -26,7 +26,7 @@ Here can you enter an E-Mail. [https://docs.google.com/forms/d/1wQiKmP9R2PTmZQe\
 
 Current development step:
 
-Fix a bug that prevents some apps from being launched by Screen Operator (branch Better_text).
+Fix a bug that prevents some apps from being launched by Screen Operator (branch Better_text). The current workaround is to go from the home screen.
 
 Correct implementation of MediaProjection (Create screenshots for Gemini). Almost finished code in the screenshot branch. The current workaround is to trigger a screenshot via the accessibility service. However, this leads to the thumbnail.
 
