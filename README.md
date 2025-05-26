@@ -2,7 +2,7 @@
 ### Operates the screen with AI
 This Android app operates the screen with commands from vision LLMs
 
-<br/>
+
 
 #### • Like Computer use and Operator but for Android
 
