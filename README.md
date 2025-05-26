@@ -13,10 +13,6 @@ Here can you enter an E-Mail. [https://docs.google.com/forms/d/1wQiKmP9R2PTmZQe\
 
 https://m.youtube.com/watch?v=o095RSFXJuc
 
-### Google Crawler Bug
-
-Unfortunately, the Google crawler seems to no index many new repos and other sites. This one and the workaround produced repos are among them, but you can still find this via Bing, Ecosia and Yahoo.
-
 ### Help with development
 
 Current development step:
