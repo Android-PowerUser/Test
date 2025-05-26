@@ -8,6 +8,8 @@ This Android app operates the screen with commands from vision LLMs
 
 #### • Can also control the Browser like Project Mariner and Browser use
 
+![]() <img src="https://github.com/Android-PowerUser/Screen_Operator/blob/main/Screenshot_20250526-192615_Screen%20Operator.png" alt="" width="141"/>
+
 ### How to get it from Google Play
 <br/>
 
