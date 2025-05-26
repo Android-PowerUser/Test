@@ -20,3 +20,21 @@ Current development step:
 Fix a bug that prevents some apps from being launched by Screen Operator (branch Better_text).
 
 Correct implementation of MediaProjection (Create screenshots for Gemini). Almost finished code in the screenshot branch. The current workaround is to trigger a screenshot via the accessibility service. However, this leads to the thumbnail.
+
+
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "AndroidApp",
+  "name": "ScreenOperator",
+  "description": "Operates the screen with AI",
+  "programmingLanguage": "Kotlin",
+  "codeRepository": "https://github.com/Android-PowerUser/ScreenOperator",
+  "author": {
+    "@type": "Person",
+    "name": "Android PowerUser"
+  },
+  "dateCreated": "2025-04-07",
+  "keywords": ["Screen", "Operator", "vision", "LLMs", "control", "AI", "Agents"]
+}
+</script>
