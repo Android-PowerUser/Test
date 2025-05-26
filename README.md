@@ -2,6 +2,8 @@
 ### Operates the screen with AI
 This Android app operates the screen with commands from vision LLMs
 
+<br/>
+
 #### • Like Computer use and Operator but for Android
 
 #### • Can also control the Browser like Project Mariner and Browser use
@@ -14,8 +16,9 @@ I must all „Tester“ E-Mails enter in the list of the Google Play Console, be
 Here can you enter an E-Mail. [https://docs.google.com/forms/d/1wQiKmP9R2PTmZQe\_1ZAp3KCv9M8\_d9nlqoLsLot2M-I/edit](https://docs.google.com/forms/d/1wQiKmP9R2PTmZQe_1ZAp3KCv9M8_d9nlqoLsLot2M-I/edit) You get a notification when I enter it in the console. You can then download it regularly from the Play Store.
 
 ### Video
+![First attempt ever is recorded](pfad/zum/video.mp4)
 
-https://m.youtube.com/watch?v=o095RSFXJuc
+<br/>
 
 ##### Help with development
 
