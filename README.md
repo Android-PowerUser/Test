@@ -4,7 +4,7 @@ This Android app operates the screen with commands from vision LLMs
 
 
 
-#### • Like Computer use and Operator but for Android
+#### • Like Computer use and Operator but rather Smartphone use for Android
 
 #### • Can also control the Browser like Project Mariner and Browser use
 
