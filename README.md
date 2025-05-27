@@ -44,6 +44,6 @@ Correct implementation of MediaProjection (Create screenshots for Gemini). Almos
     "name": "Android PowerUser"
   },
   "dateCreated": "2025-04-07",
-  "keywords": ["Screen", "Operator", "vision", "LLMs", "control", "AI", "Agents", "AI Agents", "Computer Use", "Browser use", "Project Mariner", "Screen Operator", "vision LLM"]
+  "keywords": ["Screen", "Operator", "vision", "LLMs", "control", "AI", "Agents", "AI Agents", "Computer Use", "Browser use", "Project Mariner", "Screen Operator", "vision LLM", "Smartphone use", "Android use"]
 }
 </script>
