@@ -2,17 +2,16 @@ package com.google.ai.sample
 
 import android.Manifest
 import android.app.Activity
-import android.app.AlertDialog
+// AlertDialog, Uri, and Settings imports are removed as they were specific to the reverted MANAGE_EXTERNAL_STORAGE logic
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.content.SharedPreferences
 import android.content.pm.PackageManager
-import android.net.Uri
 import android.os.Build
 import android.os.Bundle
-import android.provider.Settings
+import android.os.Environment // Kept as per instruction for now
 import android.util.Log
 import android.widget.Toast
 import androidx.activity.ComponentActivity
@@ -96,6 +95,8 @@ class MainActivity : ComponentActivity() {
     // SharedPreferences for first launch info
     private lateinit var prefs: SharedPreferences
     private var showFirstLaunchInfoDialog by mutableStateOf(false)
+
+    // manageStoragePermissionLauncher has been removed.
 
     private val trialStatusReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
@@ -729,32 +730,33 @@ class MainActivity : ComponentActivity() {
 
     private fun checkAndRequestPermissions() {
         Log.d(TAG, "checkAndRequestPermissions called.")
-        val permissionsToRequest = requiredPermissions.filter {
+        // The 'requiredPermissions' field will be updated in the next plan step.
+        // This step focuses on reverting the structure of this method.
+        val permissionsNeeded = requiredPermissions.filter {
             ContextCompat.checkSelfPermission(this, it) != PackageManager.PERMISSION_GRANTED
         }.toTypedArray()
-        if (permissionsToRequest.isNotEmpty()) {
-            // Original: requestPermissionLauncher.launch(permissionsToRequest)
-            // New:
-            Log.i(TAG, "Required permissions not granted. Showing rationale dialog. Permissions: ${permissionsToRequest.joinToString()}")
-            showPermissionRationaleDialog = true
+
+        if (permissionsNeeded.isNotEmpty()) {
+            Log.i(TAG, "Permissions needed (${permissionsNeeded.joinToString()}). Showing rationale dialog.")
+            showPermissionRationaleDialog = true // This triggers PermissionRationaleDialog -> requestPermissionLauncher
         } else {
-            Log.i(TAG, "All required permissions already granted.")
-            Log.d(TAG, "checkAndRequestPermissions: Permissions granted, calling startTrialServiceIfNeeded. Current state: $currentTrialState")
-            // TODO: It seems the startTrialServiceIfNeeded() call was here in the original code when permissions were granted.
-            // Confirm if it should remain here or be handled elsewhere. For now, keeping it as per the 'else' block's original apparent structure.
-            // Based on the prompt, only the 'if (permissionsToRequest.isNotEmpty())' block's direct action changes.
+            Log.i(TAG, "All necessary permissions already granted.")
+            // Potentially call startTrialServiceIfNeeded() or other logic that runs when permissions are good.
+            // Refer to the original state of this method before MANAGE_EXTERNAL_STORAGE changes.
+            // Based on the provided MainActivity.kt, there wasn't a direct call here,
+            // but ensure the structure allows for normal app flow if permissions are granted.
         }
     }
 
-    private val requiredPermissions = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+    private val requiredPermissions = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) { // R is API Level 30 (Android 11)
         arrayOf(
             Manifest.permission.READ_MEDIA_IMAGES,
             Manifest.permission.READ_MEDIA_VIDEO
         )
-    } else {
+    } else { // Versions older than Android 11 (i.e., Android 10 and below)
         arrayOf(
             Manifest.permission.READ_EXTERNAL_STORAGE,
-            Manifest.permission.WRITE_EXTERNAL_STORAGE 
+            Manifest.permission.WRITE_EXTERNAL_STORAGE
         )
     }
 
