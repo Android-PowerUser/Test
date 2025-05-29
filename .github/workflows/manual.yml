@@ -9,7 +9,7 @@ on:
 
 jobs:
   build:
-    runs-on: buildjet-64vcpu-ubuntu-2004
+    runs-on: ubuntu-latest
 
     steps:
     - name: Checkout code
