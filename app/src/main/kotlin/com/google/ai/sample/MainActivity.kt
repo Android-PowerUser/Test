@@ -9,6 +9,7 @@ import android.content.Intent
 import android.content.IntentFilter
 import android.content.SharedPreferences
 import android.content.pm.PackageManager
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.os.Environment // Kept as per instruction for now
@@ -44,6 +45,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
+import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
 import androidx.navigation.NavHostController
@@ -85,6 +87,7 @@ class MainActivity : ComponentActivity() {
 
     private var showPermissionRationaleDialog by mutableStateOf(false)
     private var permissionRequestCount by mutableStateOf(0)
+    private var showSettingsRedirectDialog by mutableStateOf(false)
 
     private lateinit var navController: NavHostController
 
@@ -302,15 +305,32 @@ class MainActivity : ComponentActivity() {
                     AppNavigation(navController)
 
                     if (showPermissionRationaleDialog) {
-                        Log.d(TAG, "setContent: Rendering PermissionRationaleDialog. Request count before dialog action: $permissionRequestCount")
+                        val localPermissionsNeeded = requiredPermissions.filter {
+                            ContextCompat.checkSelfPermission(this, it) != PackageManager.PERMISSION_GRANTED
+                        }.toTypedArray()
+                        Log.d(TAG, "setContent: Rendering PermissionRationaleDialog. Request count: $permissionRequestCount")
                         PermissionRationaleDialog(
                             onDismiss = {
-                                Log.i(TAG, "PermissionRationaleDialog OK clicked. Current request count: $permissionRequestCount")
-                                permissionRequestCount++
-                                Log.i(TAG, "Permission request count incremented to: $permissionRequestCount")
                                 showPermissionRationaleDialog = false
-                                Log.i(TAG, "Requesting permissions now. Required: ${requiredPermissions.joinToString()}")
-                                requestPermissionLauncher.launch(requiredPermissions)
+                                // Incrementing count here means the next checkAndRequestPermissions will see it.
+                                // The actual permission launch should happen after this dialog.
+                                // The original instruction was to launch from here, this is kept.
+                                Log.i(TAG, "PermissionRationaleDialog OK clicked. Launching permissions: ${localPermissionsNeeded.joinToString()}")
+                                requestPermissionLauncher.launch(localPermissionsNeeded.takeIf { it.isNotEmpty() } ?: requiredPermissions)
+                            }
+                        )
+                    } else if (showSettingsRedirectDialog) {
+                        Log.d(TAG, "setContent: Rendering SettingsRedirectDialog.")
+                        SettingsRedirectDialog(
+                            onDismiss = { showSettingsRedirectDialog = false },
+                            onOpenSettingsClick = {
+                                showSettingsRedirectDialog = false
+                                val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS)
+                                intent.data = Uri.fromParts("package", packageName, null)
+                                startActivity(intent)
+                            },
+                            onExitClick = {
+                                finish()
                             }
                         )
                     } else if (showFirstLaunchInfoDialog) {
@@ -730,22 +750,46 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun checkAndRequestPermissions() {
-        Log.d(TAG, "checkAndRequestPermissions called.")
-        // The 'requiredPermissions' field will be updated in the next plan step.
-        // This step focuses on reverting the structure of this method.
-        val permissionsNeeded = requiredPermissions.filter {
+        Log.d(TAG, "checkAndRequestPermissions called. Request count: $permissionRequestCount")
+        val localPermissionsNeeded = requiredPermissions.filter {
             ContextCompat.checkSelfPermission(this, it) != PackageManager.PERMISSION_GRANTED
         }.toTypedArray()
 
-        if (permissionsNeeded.isNotEmpty()) {
-            Log.i(TAG, "Permissions needed (${permissionsNeeded.joinToString()}). Showing rationale dialog.")
-            showPermissionRationaleDialog = true // This triggers PermissionRationaleDialog -> requestPermissionLauncher
-        } else {
+        if (localPermissionsNeeded.isEmpty()) {
             Log.i(TAG, "All necessary permissions already granted.")
-            // Potentially call startTrialServiceIfNeeded() or other logic that runs when permissions are good.
-            // Refer to the original state of this method before MANAGE_EXTERNAL_STORAGE changes.
-            // Based on the provided MainActivity.kt, there wasn't a direct call here,
-            // but ensure the structure allows for normal app flow if permissions are granted.
+            // permissionRequestCount = 0 // Resetting count here is one option
+            return
+        }
+
+        Log.i(TAG, "Permissions needed: ${localPermissionsNeeded.joinToString()}")
+
+        var showOurRationale = false
+        for (perm in localPermissionsNeeded) {
+            if (ActivityCompat.shouldShowRequestPermissionRationale(this, perm)) {
+                showOurRationale = true
+                break
+            }
+        }
+
+        if (showOurRationale) {
+            Log.i(TAG, "At least one permission requires rationale. Showing PermissionRationaleDialog.")
+            showPermissionRationaleDialog = true
+        } else {
+            // No rationale needed for any specific permission.
+            // This means either it's the first time for all of them, or all have been denied with "don't ask again".
+            if (permissionRequestCount > 0 && localPermissionsNeeded.all { !ActivityCompat.shouldShowRequestPermissionRationale(this, it) }) {
+                // We've asked before (permissionRequestCount > 0) AND now *none* of the currently *needed* permissions require rationale.
+                // This is a strong indicator that all *currently needed* permissions were denied with "don't ask again".
+                Log.w(TAG, "No rationale needed for any of the ${localPermissionsNeeded.size} needed permissions, and request count is $permissionRequestCount. Assuming permanent denial for these. Showing settings redirect dialog.")
+                showSettingsRedirectDialog = true
+            } else {
+                // This covers:
+                // 1. permissionRequestCount == 0 (first time asking in this session/app-run for this set of permissions)
+                // 2. permissionRequestCount > 0 BUT some permissions might still be askable without rationale (e.g. policy change, or complex state not covered).
+                //    In this case, directly launching the system dialog is the safest default.
+                Log.i(TAG, "No specific rationale required by any needed permission OR it's the first request flow (count: $permissionRequestCount). Launching system permission request directly for: ${localPermissionsNeeded.joinToString()}")
+                requestPermissionLauncher.launch(localPermissionsNeeded)
+            }
         }
     }
 
@@ -766,33 +810,47 @@ class MainActivity : ComponentActivity() {
     ) { permissions ->
         Log.d(TAG, "requestPermissionLauncher callback received. Permissions: $permissions")
         val allGranted = permissions.entries.all { it.value }
+
         if (allGranted) {
             Log.i(TAG, "All required permissions granted by user.")
             updateStatusMessage("Alle erforderlichen Berechtigungen erteilt")
-            // Any other logic that should happen when permissions are granted (e.g., related to trial service)
-            // This part should remain as it was if permissions being granted triggered other actions.
+            permissionRequestCount = 0 // Reset count on full grant
         } else {
-            val deniedPermissions = permissions.entries.filter { !it.value }.map { it.key }
-            Log.w(TAG, "Permissions denied. Current request count: $permissionRequestCount. Denied permissions: $deniedPermissions")
+            // permissionRequestCount++ // Increment before checks for this denial round.
+            // The prompt implies incrementing in PermissionRationaleDialog's onDismiss, so this might be adjusted.
+            // For now, let's follow the structure of incrementing here after a denial.
+            // Update: The prompt is a bit mixed. The checkAndRequest has "permissionRequestCount++" in dialog OK.
+            // The launcher outline has "permissionRequestCount++ // Increment on any denial".
+            // Let's ensure it's incremented consistently. Incrementing here seems more robust for the launcher callback.
+            // However, the `PermissionRationaleDialog`'s onDismiss in current code also increments.
+            // To avoid double increment, let's manage count primarily in the launcher callback.
+            // The `PermissionRationaleDialog` will no longer increment it.
 
-            if (permissionRequestCount == 1) {
-                // First denial, show rationale again
-                Log.i(TAG, "Permissions denied once. Showing rationale dialog again for a second attempt.")
-                showPermissionRationaleDialog = true
-                // Optionally, a less intrusive toast here, or none if the dialog is prominent enough.
-                // For now, let's rely on the dialog.
-            } else if (permissionRequestCount >= 2) {
-                // Second denial, show toast and exit
-                Log.w(TAG, "Permissions denied after second formal request (request count: $permissionRequestCount). App will exit.")
-                Toast.makeText(this, "Without this authorization, operation is not possible.", Toast.LENGTH_LONG).show()
-                finish()
-            } else {
-                // Should not happen if permissionRequestCount is managed correctly (starts at 0, increments before request)
-                // but as a fallback:
-                Log.e(TAG, "Permissions denied with unexpected permissionRequestCount: $permissionRequestCount. Exiting.")
-                Toast.makeText(this, "Permissions repeatedly denied. Operation not possible.", Toast.LENGTH_LONG).show()
-                finish()
+            val deniedPermissionsKeys = permissions.entries.filter { !it.value }.map { it.key }
+            Log.w(TAG, "Permissions denied: $deniedPermissionsKeys. Current request count (before this denial processing): $permissionRequestCount")
+
+            // Incrementing here as this is a new denial event.
+            // If PermissionRationaleDialog's OK was pressed, its own logic might have already incremented.
+            // To simplify and centralize: incrementing here. The RationaleDialog should not increment.
+            // The checkAndRequest should pass the current count.
+            // Let's assume permissionRequestCount is incremented *after* this check for permanent denial.
+
+            var  isPermanentlyDenied = false
+            for (key in deniedPermissionsKeys) {
+                if (!ActivityCompat.shouldShowRequestPermissionRationale(this, key)) {
+                    isPermanentlyDenied = true
+                    break
+                }
             }
+
+            if (isPermanentlyDenied) {
+                Log.w(TAG, "At least one permission permanently denied (shouldShowRequestPermissionRationale is false). Showing settings redirect dialog.")
+                showSettingsRedirectDialog = true
+            } else {
+                Log.i(TAG, "Permissions denied, but rationale can be shown for all denied. Showing rationale dialog again.")
+                showPermissionRationaleDialog = true // Show custom rationale again
+            }
+            permissionRequestCount++ // Increment after processing this denial, for the *next* attempt.
         }
     }
 
@@ -847,6 +905,56 @@ fun FirstLaunchInfoDialog(onDismiss: () -> Unit) {
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Text("OK")
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun SettingsRedirectDialog(
+    onDismiss: () -> Unit,
+    onOpenSettingsClick: () -> Unit,
+    onExitClick: () -> Unit
+) {
+    Log.d("SettingsRedirectDialog", "Composing SettingsRedirectDialog")
+    Dialog(onDismissRequest = onDismiss) {
+        Card(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp)
+        ) {
+            Column(
+                modifier = Modifier
+                    .padding(16.dp)
+                    .fillMaxWidth(),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Text(
+                    text = "Permission Required",
+                    style = MaterialTheme.typography.titleLarge,
+                    modifier = Modifier.padding(bottom = 8.dp)
+                )
+                Text(
+                    text = "This app requires certain permissions to function correctly. Some permissions have been permanently denied. Please go to app settings to enable them.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    modifier = Modifier.padding(bottom = 16.dp)
+                )
+                Button(
+                    onClick = onOpenSettingsClick,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text("Open Settings")
+                }
+                Spacer(modifier = Modifier.height(8.dp))
+                TextButton(
+                    onClick = {
+                        onDismiss() // Dismiss the dialog first
+                        onExitClick()   // Then exit the app
+                    },
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text("Exit App")
                 }
             }
         }
