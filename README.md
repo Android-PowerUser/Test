@@ -26,6 +26,7 @@ Here can you enter an E-Mail. [https://docs.google.com/forms/d/1wQiKmP9R2PTmZQe\
 
 If you in your Google account identified as under 18, you need an adult account because Google is (unreasonably) denying you the API key.
 
+Android 12 doesn't work because of file permission problems with the screenshots path. Participate in the Project (branch better_text).
 
 ##### Help with development
 
