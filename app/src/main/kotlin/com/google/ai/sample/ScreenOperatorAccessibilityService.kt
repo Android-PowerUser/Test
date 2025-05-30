@@ -1411,18 +1411,21 @@ fun pressEnterKey() {
      */
     private fun retrieveLatestScreenshot(screenInfo: String) {
         try {
-            Log.d(TAG, "Retrieving latest screenshot using MediaStore content URI.")
+            Log.d(TAG, "Retrieving latest screenshot (expecting file:/// URI).")
             showToast("Suche nach dem aufgenommenen Screenshot...", false)
 
-            val screenshotContentUri: Uri? = getLatestScreenshotContentUri()
+            val screenshotFile: File? = findLatestScreenshotFile() // This should call the restored version
 
-            if (screenshotContentUri != null) {
-                Log.i(TAG, "Successfully retrieved screenshot content URI: $screenshotContentUri")
-                showToast("Screenshot URI gefunden!", false)
-                addScreenshotToConversation(screenshotContentUri, screenInfo)
+            if (screenshotFile != null) {
+                Log.i(TAG, "Found screenshot file: ${screenshotFile.absolutePath}")
+                showToast("Screenshot gefunden: ${screenshotFile.name}", false)
+
+                val screenshotUri = Uri.fromFile(screenshotFile) // Create file:/// URI
+                Log.d(TAG, "Screenshot URI for ViewModel: $screenshotUri")
+                addScreenshotToConversation(screenshotUri, screenInfo)
                 // closeScreenshotNotification() // Keep if desired
             } else {
-                Log.e(TAG, "Failed to retrieve recent screenshot URI via MediaStore.")
+                Log.e(TAG, "No screenshot file found (after all checks).")
                 showToast("Kein aktueller Screenshot gefunden. Bitte prüfen und erneut versuchen.", true)
             }
         } catch (e: Exception) {
@@ -1431,72 +1434,133 @@ fun pressEnterKey() {
         }
     }
 
-    private fun getLatestScreenshotContentUri(): Uri? {
-        Log.d(TAG, "Attempting to find latest screenshot URI via MediaStore.")
+    // Method to be restored/ensured:
+    private fun findLatestScreenshotViaMediaStore(): File? {
+        Log.d(TAG, "Attempting to find latest screenshot via MediaStore (returning File object).")
         try {
             val contentResolver = applicationContext.contentResolver
             val projection = arrayOf(
-                MediaStore.Images.Media._ID,
+                MediaStore.Images.Media.DATA, // Path to the file
                 MediaStore.Images.Media.DATE_ADDED,
                 MediaStore.Images.Media.DISPLAY_NAME
             )
 
-            // Define selection parts
-            val displayNameSelection = "${MediaStore.Images.Media.DISPLAY_NAME} LIKE '%Screenshot%'"
-            val bucketNameSelection = "${MediaStore.Images.Media.BUCKET_DISPLAY_NAME} LIKE '%Screenshots%'"
-            
-            val selection = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                val relativePathSelectionScreenshots = "${MediaStore.Images.Media.RELATIVE_PATH} LIKE '%Screenshots%'"
-                "($relativePathSelectionScreenshots OR $bucketNameSelection) AND $displayNameSelection"
-            } else {
-                "$bucketNameSelection AND $displayNameSelection"
-            }
-
+            // A simple selection based on display name, adjust if more specific paths were used before
+            val selection = "${MediaStore.Images.Media.DISPLAY_NAME} LIKE '%Screenshot%'"
             val sortOrder = "${MediaStore.Images.Media.DATE_ADDED} DESC"
 
             contentResolver.query(
                 MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
                 projection,
                 selection,
-                null, 
+                null,
                 sortOrder
             )?.use { cursor ->
                 if (cursor.moveToFirst()) {
-                    val idColumnIndex = cursor.getColumnIndexOrThrow(MediaStore.Images.Media._ID)
+                    val dataColumnIndex = cursor.getColumnIndexOrThrow(MediaStore.Images.Media.DATA)
                     val dateColumnIndex = cursor.getColumnIndexOrThrow(MediaStore.Images.Media.DATE_ADDED)
                     val nameColumnIndex = cursor.getColumnIndexOrThrow(MediaStore.Images.Media.DISPLAY_NAME)
 
-                    val imageId = cursor.getLong(idColumnIndex)
-                    // DATE_ADDED is in seconds, convert to milliseconds
+                    val filePath = cursor.getString(dataColumnIndex)
                     val dateAddedSeconds = cursor.getLong(dateColumnIndex)
-                    val dateAddedMillis = dateAddedSeconds * 1000 
+                    val dateAddedMillis = dateAddedSeconds * 1000
                     val displayName = cursor.getString(nameColumnIndex)
 
                     val currentTime = System.currentTimeMillis()
                     val fileAgeMillis = currentTime - dateAddedMillis
 
-                    Log.d(TAG, "MediaStore check: Found $displayName, Age: ${fileAgeMillis}ms, DateAdded: $dateAddedSeconds")
+                    Log.d(TAG, "MediaStore check (for File): Found $displayName, Age: ${fileAgeMillis}ms, Path: $filePath")
 
                     if (fileAgeMillis <= 20000) { // 20 seconds threshold
-                        val contentUri = Uri.withAppendedPath(
-                            MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
-                            imageId.toString()
-                        )
-                        Log.i(TAG, "Found recent screenshot via MediaStore: $contentUri, Name: $displayName, Age: ${fileAgeMillis}ms")
-                        return contentUri
+                        if (filePath != null && filePath.isNotEmpty()) {
+                            val file = File(filePath)
+                            if (file.exists()) {
+                                Log.i(TAG, "Found recent screenshot via MediaStore (as File): $filePath")
+                                return file
+                            } else {
+                                Log.w(TAG, "File path from MediaStore query does not exist: $filePath")
+                            }
+                        } else {
+                            Log.w(TAG, "File path from MediaStore query is null or empty.")
+                        }
                     } else {
-                        Log.i(TAG, "Screenshot $displayName is too old (Age: ${fileAgeMillis}ms). Ignoring.")
-                        // Optionally, could continue cursor here if you want to check the next few, but typically the first one is the newest.
+                        Log.i(TAG, "MediaStore screenshot $displayName is too old (Age: ${fileAgeMillis}ms). Ignoring.")
                     }
                 } else {
-                    Log.i(TAG, "MediaStore query returned no results for screenshots matching selection.")
+                     Log.i(TAG, "MediaStore query (for File) returned no results for screenshots.")
                 }
             }
         } catch (e: Exception) {
-            Log.e(TAG, "Error finding screenshot URI via MediaStore: ${e.message}", e)
-            showToast("Error accessing MediaStore: ${e.message}", true)
+            Log.e(TAG, "Error finding screenshot File via MediaStore: ${e.message}", e)
         }
         return null
+    }
+
+    // Method to be restored/ensured:
+    private fun findLatestScreenshotFile(): File? {
+        try {
+            val possibleDirs = listOfNotNull(
+                Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES)?.resolve("Screenshots"),
+                Environment.getExternalStorageDirectory()?.resolve("Pictures/Screenshots"),
+                Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DCIM)?.resolve("Screenshots"),
+                applicationContext.getExternalFilesDir(Environment.DIRECTORY_PICTURES)?.resolve("Screenshots")
+            )
+
+            var latestFile: File? = null
+            var latestModified: Long = 0
+
+            for (dir in possibleDirs) {
+                if (dir.exists() && dir.isDirectory) {
+                    Log.d(TAG, "Checking directory for files: ${dir.absolutePath}")
+                    val files = dir.listFiles { file ->
+                        file.isFile &&
+                        (file.name.startsWith("Screenshot", ignoreCase = true) || file.name.contains("screenshot", ignoreCase = true)) &&
+                        (file.name.endsWith(".png", ignoreCase = true) || file.name.endsWith(".jpg", ignoreCase = true) || file.name.endsWith(".jpeg", ignoreCase = true))
+                    }
+
+                    files?.forEach { file ->
+                        if (file.lastModified() > latestModified) {
+                            latestFile = file
+                            latestModified = file.lastModified()
+                        }
+                    }
+                }
+            }
+
+            val currentTime = System.currentTimeMillis()
+            if (latestFile != null) {
+                if (currentTime - latestModified <= 20000) { // 20 seconds for file system found file
+                     Log.d(TAG, "Found recent screenshot in file system scan: ${latestFile?.absolutePath}")
+                    // Do not return yet, let MediaStore check if it has something newer or equally new
+                } else {
+                    Log.d(TAG, "Latest file system screenshot ${latestFile?.name} is too old (${(currentTime - latestModified)/1000}s). Discarding.")
+                    latestFile = null
+                    latestModified = 0
+                }
+            }
+
+            val mediaStoreFile = findLatestScreenshotViaMediaStore() // This already checks recency
+            if (mediaStoreFile != null) {
+                if (latestFile == null || mediaStoreFile.lastModified() >= latestModified) { // Prioritize MediaStore if it's newer or equally new
+                    Log.d(TAG, "Using MediaStore file as it's newer or file system scan yielded no recent file.")
+                    return mediaStoreFile
+                } else {
+                     Log.d(TAG, "File system scan file is newer than MediaStore one, using file system file.")
+                     // latestFile is already set and confirmed recent
+                }
+            }
+
+            if(latestFile != null) {
+                // This means latestFile was recent and (either mediaStoreFile was null or older)
+                return latestFile
+            }
+
+            Log.d(TAG, "No recent screenshot file found through any method.")
+            return null
+        } catch (e: Exception) {
+            Log.e(TAG, "Error finding latest screenshot file: ${e.message}", e)
+            return null
+        }
     }
     
     /**
@@ -1744,9 +1808,6 @@ fun pressEnterKey() {
     /**
      * Find the latest screenshot file in standard locations
      */
-    // findLatestScreenshotFile method removed
-    // findLatestScreenshotViaMediaStore method removed
-    
     /**
      * Add the screenshot to the conversation with screen information
      */
