@@ -94,7 +94,7 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
             // Check if service is available
             if (!isServiceAvailable()) {
                 Log.e(TAG, "Service is not available, cannot execute command")
-                showToast("Accessibility Service ist nicht verfügbar. Bitte aktivieren Sie den Service in den Einstellungen.", true)
+                showToast("Accessibility Service is not available. Please enable the service in settings.", true)
                 return
             }
             
@@ -102,17 +102,17 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
             when (command) {
                 is Command.ClickButton -> {
                     Log.d(TAG, "Clicking button with text: ${command.buttonText}")
-                    showToast("Versuche Klick auf Button: \"${command.buttonText}\"", false)
+                    showToast("Trying to click button: \"${command.buttonText}\"", false)
                     serviceInstance?.findAndClickButtonByText(command.buttonText)
                 }
                 is Command.TapCoordinates -> {
                     Log.d(TAG, "Tapping at coordinates: (${command.x}, ${command.y})")
-                    showToast("Versuche Tippen auf Koordinaten: (${command.x}, ${command.y})", false)
+                    showToast("Trying to tap coordinates: (${command.x}, ${command.y})", false)
                     serviceInstance?.tapAtCoordinates(command.x, command.y)
                 }
                 is Command.TakeScreenshot -> {
                     Log.d(TAG, "Taking screenshot with 850ms delay")
-                    showToast("Versuche Screenshot aufzunehmen (mit 850ms Verzögerung)", false)
+                    showToast("Trying to take screenshot (with 850ms delay)", false)
                     // Add a 850ms delay before taking the screenshot, sure all commands executed before
                     mainHandler.postDelayed({
                         serviceInstance?.takeScreenshot()
@@ -120,82 +120,82 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
                 }
                 is Command.PressHomeButton -> {
                     Log.d(TAG, "Pressing home button")
-                    showToast("Versuche Home-Button zu drücken", false)
+                    showToast("Trying to press Home button", false)
                     serviceInstance?.pressHomeButton()
                 }
                 is Command.PressBackButton -> {
                     Log.d(TAG, "Pressing back button")
-                    showToast("Versuche Zurück-Button zu drücken", false)
+                    showToast("Trying to press Back button", false)
                     serviceInstance?.pressBackButton()
                 }
                 is Command.ShowRecentApps -> {
                     Log.d(TAG, "Showing recent apps")
-                    showToast("Versuche Übersicht der letzten Apps zu öffnen", false)
+                    showToast("Trying to open recent apps overview", false)
                     serviceInstance?.showRecentApps()
                 }
                 is Command.ScrollDown -> {
                     Log.d(TAG, "Scrolling down")
-                    showToast("Versuche nach unten zu scrollen", false)
+                    showToast("Trying to scroll down", false)
                     serviceInstance?.scrollDown()
                 }
                 is Command.ScrollUp -> {
                     Log.d(TAG, "Scrolling up")
-                    showToast("Versuche nach oben zu scrollen", false)
+                    showToast("Trying to scroll up", false)
                     serviceInstance?.scrollUp()
                 }
                 is Command.ScrollLeft -> {
                     Log.d(TAG, "Scrolling left")
-                    showToast("Versuche nach links zu scrollen", false)
+                    showToast("Trying to scroll left", false)
                     serviceInstance?.scrollLeft()
                 }
                 is Command.ScrollRight -> {
                     Log.d(TAG, "Scrolling right")
-                    showToast("Versuche nach rechts zu scrollen", false)
+                    showToast("Trying to scroll right", false)
                     serviceInstance?.scrollRight()
                 }
                 is Command.ScrollDownFromCoordinates -> {
                     Log.d(TAG, "Scrolling down from coordinates (${command.x}, ${command.y}) with distance ${command.distance} and duration ${command.duration}ms")
-                    showToast("Versuche von Position (${command.x}, ${command.y}) nach unten zu scrollen", false)
+                    showToast("Trying to scroll down from position (${command.x}, ${command.y})", false)
                     serviceInstance?.scrollDown(command.x, command.y, command.distance, command.duration)
                 }
                 is Command.ScrollUpFromCoordinates -> {
                     Log.d(TAG, "Scrolling up from coordinates (${command.x}, ${command.y}) with distance ${command.distance} and duration ${command.duration}ms")
-                    showToast("Versuche von Position (${command.x}, ${command.y}) nach oben zu scrollen", false)
+                    showToast("Trying to scroll up from position (${command.x}, ${command.y})", false)
                     serviceInstance?.scrollUp(command.x, command.y, command.distance, command.duration)
                 }
                 is Command.ScrollLeftFromCoordinates -> {
                     Log.d(TAG, "Scrolling left from coordinates (${command.x}, ${command.y}) with distance ${command.distance} and duration ${command.duration}ms")
-                    showToast("Versuche von Position (${command.x}, ${command.y}) nach links zu scrollen", false)
+                    showToast("Trying to scroll left from position (${command.x}, ${command.y})", false)
                     serviceInstance?.scrollLeft(command.x, command.y, command.distance, command.duration)
                 }
                 is Command.ScrollRightFromCoordinates -> {
                     Log.d(TAG, "Scrolling right from coordinates (${command.x}, ${command.y}) with distance ${command.distance} and duration ${command.duration}ms")
-                    showToast("Versuche von Position (${command.x}, ${command.y}) nach rechts zu scrollen", false)
+                    showToast("Trying to scroll right from position (${command.x}, ${command.y})", false)
                     serviceInstance?.scrollRight(command.x, command.y, command.distance, command.duration)
                 }
                 is Command.OpenApp -> {
                     Log.d(TAG, "Opening app: ${command.packageName}")
-                    showToast("Versuche App zu öffnen: ${command.packageName}", false)
+                    showToast("Trying to open app: ${command.packageName}", false)
                     serviceInstance?.openApp(command.packageName)
                 }
                 is Command.WriteText -> {
                     Log.d(TAG, "Writing text: ${command.text}")
-                    showToast("Versuche Text zu schreiben: \"${command.text}\"", false)
+                    showToast("Trying to write text: \"${command.text}\"", false)
                     serviceInstance?.writeText(command.text)
                 }
                 is Command.UseHighReasoningModel -> {
                     Log.d(TAG, "Switching to high reasoning model (gemini-2.5-pro-preview-03-25)")
-                    showToast("Wechsle zu leistungsfähigerem Modell (gemini-2.5-pro-preview-03-25)", false)
+                    showToast("Switching to more powerful model (gemini-2.5-pro-preview-03-25)", false)
                     GenerativeAiViewModelFactory.highReasoningModel()
                 }
                 is Command.UseLowReasoningModel -> {
                     Log.d(TAG, "Switching to low reasoning model (gemini-2.0-flash-lite)")
-                    showToast("Wechsle zu schnellerem Modell (gemini-2.0-flash-lite)", false)
+                    showToast("Switching to faster model (gemini-2.0-flash-lite)", false)
                     GenerativeAiViewModelFactory.lowReasoningModel()
                 } 
                     is Command.PressEnterKey -> {
                     Log.d(TAG, "Pressing Enter key")
-                    showToast("Versuche Enter-Taste zu drücken", false)
+                    showToast("Trying to press Enter key", false)
                     serviceInstance?.pressEnterKey()
                 }
             }
@@ -254,7 +254,7 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
         isServiceConnected.set(true)
         
         // Show a toast to indicate the service is connected
-        showToast("Accessibility Service ist aktiviert und verbunden", false)
+        showToast("Accessibility Service is enabled and connected", false)
     }
     
     override fun onInterrupt() {
@@ -331,7 +331,7 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
      */
     fun writeText(text: String) {
         Log.d(TAG, "Writing text: $text")
-        showToast("Schreibe Text: \"$text\"", false)
+        showToast("Writing text: \"$text\"", false)
         
         try {
             // Refresh the root node
@@ -340,7 +340,7 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
             // Check if root node is available
             if (rootNode == null) {
                 Log.e(TAG, "Root node is null, cannot write text")
-                showToast("Fehler: Root-Knoten ist nicht verfügbar", true)
+                showToast("Error: Root node is not available", true)
                 return
             }
             
@@ -349,7 +349,7 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
             
             if (focusedNode != null) {
                 Log.d(TAG, "Found focused editable node")
-                showToast("Textfeld gefunden, schreibe Text: \"$text\"", false)
+                showToast("Text field found, writing text: \"$text\"", false)
                 
                 // Set the text in the editable field
                 val bundle = android.os.Bundle()
@@ -359,10 +359,10 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
                 
                 if (result) {
                     Log.d(TAG, "Successfully wrote text: $text")
-                    showToast("Text erfolgreich geschrieben: \"$text\"", false)
+                    showToast("Text successfully written: \"$text\"", false)
                 } else {
                     Log.e(TAG, "Failed to write text, trying alternative methods")
-                    showToast("Fehler beim Schreiben des Textes, versuche alternative Methoden", true)
+                    showToast("Error writing text, trying alternative methods", true)
                     
                     // Try alternative methods
                     tryAlternativeTextInputMethods(focusedNode, text)
@@ -372,21 +372,21 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
                 focusedNode.recycle()
             } else {
                 Log.e(TAG, "Could not find focused editable node")
-                showToast("Kein fokussiertes Textfeld gefunden, versuche Suche nach editierbaren Feldern", true)
+                showToast("No focused text field found, trying to find editable fields", true)
                 
                 // Try to find any editable field
                 val editableNode = findFirstEditableNode(rootNode!!)
                 
                 if (editableNode != null) {
                     Log.d(TAG, "Found editable node")
-                    showToast("Editierbares Textfeld gefunden, versuche zu fokussieren", false)
+                    showToast("Editable text field found, trying to focus", false)
                     
                     // Focus the editable field
                     val focusResult = editableNode.performAction(AccessibilityNodeInfo.ACTION_FOCUS)
                     
                     if (focusResult) {
                         Log.d(TAG, "Successfully focused editable node")
-                        showToast("Textfeld erfolgreich fokussiert, schreibe Text: \"$text\"", false)
+                        showToast("Text field successfully focused, writing text: \"$text\"", false)
                         
                         // Set the text in the editable field
                         val bundle = android.os.Bundle()
@@ -396,29 +396,29 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
                         
                         if (result) {
                             Log.d(TAG, "Successfully wrote text: $text")
-                            showToast("Text erfolgreich geschrieben: \"$text\"", false)
+                            showToast("Text successfully written: \"$text\"", false)
                         } else {
                             Log.e(TAG, "Failed to write text, trying alternative methods")
-                            showToast("Fehler beim Schreiben des Textes, versuche alternative Methoden", true)
+                            showToast("Error writing text, trying alternative methods", true)
                             
                             // Try alternative methods
                             tryAlternativeTextInputMethods(editableNode, text)
                         }
                     } else {
                         Log.e(TAG, "Failed to focus editable node")
-                        showToast("Fehler beim Fokussieren des Textfeldes", true)
+                        showToast("Error focusing text field", true)
                     }
                     
                     // Recycle the node
                     editableNode.recycle()
                 } else {
                     Log.e(TAG, "Could not find any editable node")
-                    showToast("Kein editierbares Textfeld gefunden", true)
+                    showToast("No editable text field found", true)
                 }
             }
         } catch (e: Exception) {
             Log.e(TAG, "Error writing text: ${e.message}")
-            showToast("Fehler beim Schreiben des Textes: ${e.message}", true)
+            showToast("Error writing text: ${e.message}", true)
         }
     }
     
@@ -482,13 +482,13 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
     private fun tryAlternativeTextInputMethods(node: AccessibilityNodeInfo, text: String) {
         try {
             Log.d(TAG, "Trying alternative text input methods")
-            showToast("Versuche alternative Methoden zum Texteingeben", false)
+            showToast("Trying alternative text input methods", false)
             
             // Try to paste text
             pasteText(node, text)
         } catch (e: Exception) {
             Log.e(TAG, "Error trying alternative text input methods: ${e.message}")
-            showToast("Fehler bei alternativen Texteingabemethoden: ${e.message}", true)
+            showToast("Error with alternative text input methods: ${e.message}", true)
         }
     }
     
@@ -498,7 +498,7 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
     private fun pasteText(node: AccessibilityNodeInfo, text: String) {
         try {
             Log.d(TAG, "Trying to paste text: $text")
-            showToast("Versuche Text einzufügen: \"$text\"", false)
+            showToast("Trying to paste text: \"$text\"", false)
             
             // First, select all existing text
             val selectAllResult = node.performAction(AccessibilityNodeInfo.ACTION_FOCUS)
@@ -518,19 +518,19 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
                     
                     if (pasteResult) {
                         Log.d(TAG, "Successfully pasted text: $text")
-                        showToast("Text erfolgreich eingefügt: \"$text\"", false)
+                        showToast("Text successfully pasted: \"$text\"", false)
                     } else {
                         Log.e(TAG, "Failed to paste text")
-                        showToast("Fehler beim Einfügen des Textes", true)
+                        showToast("Error pasting text", true)
                     }
                 }, 200) // 200ms delay
             } else {
                 Log.e(TAG, "Failed to select all text")
-                showToast("Fehler beim Auswählen des vorhandenen Textes", true)
+                showToast("Error selecting existing text", true)
             }
         } catch (e: Exception) {
             Log.e(TAG, "Error pasting text: ${e.message}")
-            showToast("Fehler beim Einfügen des Textes: ${e.message}", true)
+            showToast("Error pasting text: ${e.message}", true)
         }
     }
     
@@ -539,7 +539,7 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
      */
     fun findAndClickButtonByText(buttonText: String) {
         Log.d(TAG, "Finding and clicking button with text: $buttonText")
-        showToast("Suche Button mit Text: \"$buttonText\"", false)
+        showToast("Searching for button with text: \"$buttonText\"", false)
         
         // Refresh the root node
         refreshRootNode()
@@ -547,7 +547,7 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
         // Check if root node is available
         if (rootNode == null) {
             Log.e(TAG, "Root node is null, cannot find button")
-            showToast("Fehler: Root-Knoten ist nicht verfügbar", true)
+            showToast("Error: Root node is not available", true)
             return
         }
         
@@ -556,7 +556,7 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
         
         if (node != null) {
             Log.d(TAG, "Found node with text: $buttonText")
-            showToast("Button gefunden: \"$buttonText\"", false)
+            showToast("Button found: \"$buttonText\"", false)
             
             // Add a small delay before clicking
             Handler(Looper.getMainLooper()).postDelayed({
@@ -565,10 +565,10 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
                 
                 if (clickResult) {
                     Log.d(TAG, "Successfully clicked on button: $buttonText")
-                    showToast("Klick auf Button \"$buttonText\" erfolgreich", false)
+                    showToast("Clicked button \"$buttonText\" successfully", false)
                 } else {
                     Log.e(TAG, "Failed to click on button: $buttonText")
-                    showToast("Klick auf Button \"$buttonText\" fehlgeschlagen, versuche alternative Methoden", true)
+                    showToast("Failed to click button \"$buttonText\", trying alternative methods", true)
                     
                     // Try alternative methods
                     tryAlternativeClickMethods(node, buttonText)
@@ -579,7 +579,7 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
             }, 200) // 200ms delay
         } else {
             Log.e(TAG, "Could not find node with text: $buttonText")
-            showToast("Button mit Text \"$buttonText\" nicht gefunden, versuche alternative Suche", true)
+            showToast("Button with text \"$buttonText\" not found, trying alternative search", true)
             
             // Try to find by content description
             findAndClickButtonByContentDescription(buttonText)
@@ -599,7 +599,7 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
             val centerY = rect.centerY()
             
             Log.d(TAG, "Trying to tap at the center of the button: ($centerX, $centerY)")
-            showToast("Versuche Tippen auf Koordinaten: ($centerX, $centerY)", false)
+            showToast("Trying to tap coordinates: ($centerX, $centerY)", false)
             
             // Tap at the center of the button
             tapAtCoordinates(centerX.toFloat(), centerY.toFloat())
@@ -611,12 +611,12 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
      */
     private fun findAndClickButtonByContentDescription(description: String) {
         Log.d(TAG, "Finding and clicking button with content description: $description")
-        showToast("Suche Button mit Beschreibung: \"$description\"", false)
+        showToast("Searching for button with description: \"$description\"", false)
         
         // Check if root node is available
         if (rootNode == null) {
             Log.e(TAG, "Root node is null, cannot find button by content description")
-            showToast("Fehler: Root-Knoten ist nicht verfügbar", true)
+            showToast("Error: Root node is not available", true)
             return
         }
         
@@ -625,7 +625,7 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
         
         if (node != null) {
             Log.d(TAG, "Found node with content description: $description")
-            showToast("Button gefunden mit Beschreibung: \"$description\"", false)
+            showToast("Button found with description: \"$description\"", false)
             
             // Add a small delay before clicking
             Handler(Looper.getMainLooper()).postDelayed({
@@ -634,10 +634,10 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
                 
                 if (clickResult) {
                     Log.d(TAG, "Successfully clicked on button with description: $description")
-                    showToast("Klick auf Button mit Beschreibung \"$description\" erfolgreich", false)
+                    showToast("Clicked button with description \"$description\" successfully", false)
                 } else {
                     Log.e(TAG, "Failed to click on button with description: $description")
-                    showToast("Klick auf Button mit Beschreibung \"$description\" fehlgeschlagen, versuche alternative Methoden", true)
+                    showToast("Failed to click button with description \"$description\", trying alternative methods", true)
                     
                     // Try alternative methods
                     tryAlternativeClickMethods(node, description)
@@ -648,7 +648,7 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
             }, 200) // 200ms delay
         } else {
             Log.e(TAG, "Could not find node with content description: $description")
-            showToast("Button mit Beschreibung \"$description\" nicht gefunden, versuche Suche nach ID", true)
+            showToast("Button with description \"$description\" not found, trying search by ID", true)
             
             // Try to find by ID
             findAndClickButtonById(description)
@@ -660,12 +660,12 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
      */
     private fun findAndClickButtonById(id: String) {
         Log.d(TAG, "Finding and clicking button with ID: $id")
-        showToast("Suche Button mit ID: \"$id\"", false)
+        showToast("Searching for button with ID: \"$id\"", false)
         
         // Check if root node is available
         if (rootNode == null) {
             Log.e(TAG, "Root node is null, cannot find button by ID")
-            showToast("Fehler: Root-Knoten ist nicht verfügbar", true)
+            showToast("Error: Root node is not available", true)
             return
         }
         
@@ -674,7 +674,7 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
         
         if (node != null) {
             Log.d(TAG, "Found node with ID: $id")
-            showToast("Button gefunden mit ID: \"$id\"", false)
+            showToast("Button found with ID: \"$id\"", false)
             
             // Add a small delay before clicking
             Handler(Looper.getMainLooper()).postDelayed({
@@ -683,10 +683,10 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
                 
                 if (clickResult) {
                     Log.d(TAG, "Successfully clicked on button with ID: $id")
-                    showToast("Klick auf Button mit ID \"$id\" erfolgreich", false)
+                    showToast("Clicked button with ID \"$id\" successfully", false)
                 } else {
                     Log.e(TAG, "Failed to click on button with ID: $id")
-                    showToast("Klick auf Button mit ID \"$id\" fehlgeschlagen, versuche alternative Methoden", true)
+                    showToast("Failed to click button with ID \"$id\", trying alternative methods", true)
                     
                     // Try alternative methods
                     tryAlternativeClickMethods(node, id)
@@ -697,7 +697,7 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
             }, 200) // 200ms delay
         } else {
             Log.e(TAG, "Could not find node with ID: $id")
-            showToast("Button mit ID \"$id\" nicht gefunden", true)
+            showToast("Button with ID \"$id\" not found", true)
         }
     }
     
@@ -877,11 +877,11 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
      */
     fun tapAtCoordinates(x: Float, y: Float) {
         Log.d(TAG, "Tapping at coordinates: ($x, $y)")
-        showToast("Tippen auf Koordinaten: ($x, $y)", false)
+        showToast("Tapping at coordinates: ($x, $y)", false)
         
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.N) {
             Log.e(TAG, "Gesture API is not available on this Android version")
-            showToast("Gesten-API ist auf dieser Android-Version nicht verfügbar", true)
+            showToast("Gesture API is not available on this Android version", true)
             return
         }
         
@@ -899,13 +899,13 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
                 override fun onCompleted(gestureDescription: GestureDescription) {
                     super.onCompleted(gestureDescription)
                     Log.d(TAG, "Tap gesture completed")
-                    showToast("Tippen auf Koordinaten ($x, $y) erfolgreich", false)
+                    showToast("Tapped coordinates ($x, $y) successfully", false)
                 }
                 
                 override fun onCancelled(gestureDescription: GestureDescription) {
                     super.onCancelled(gestureDescription)
                     Log.e(TAG, "Tap gesture cancelled")
-                    showToast("Tippen auf Koordinaten ($x, $y) abgebrochen, versuche längere Dauer", true)
+                    showToast("Tap at coordinates ($x, $y) cancelled, trying longer duration", true)
                     
                     // Try with longer duration
                     tapAtCoordinatesWithLongerDuration(x, y)
@@ -914,14 +914,14 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
             
             if (!dispatchResult) {
                 Log.e(TAG, "Failed to dispatch tap gesture")
-                showToast("Fehler beim Senden der Tipp-Geste, versuche längere Dauer", true)
+                showToast("Error dispatching tap gesture, trying longer duration", true)
                 
                 // Try with longer duration
                 tapAtCoordinatesWithLongerDuration(x, y)
             }
         } catch (e: Exception) {
             Log.e(TAG, "Error tapping at coordinates: ${e.message}")
-            showToast("Fehler beim Tippen auf Koordinaten: ${e.message}", true)
+            showToast("Error tapping at coordinates: ${e.message}", true)
         }
     }
     
@@ -930,11 +930,11 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
      */
     private fun tapAtCoordinatesWithLongerDuration(x: Float, y: Float) {
         Log.d(TAG, "Tapping at coordinates with longer duration: ($x, $y)")
-        showToast("Versuche Tippen mit längerer Dauer auf: ($x, $y)", false)
+        showToast("Trying to tap with longer duration at: ($x, $y)", false)
         
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.N) {
             Log.e(TAG, "Gesture API is not available on this Android version")
-            showToast("Gesten-API ist auf dieser Android-Version nicht verfügbar", true)
+            showToast("Gesture API is not available on this Android version", true)
             return
         }
         
@@ -952,23 +952,23 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
                 override fun onCompleted(gestureDescription: GestureDescription) {
                     super.onCompleted(gestureDescription)
                     Log.d(TAG, "Long tap gesture completed")
-                    showToast("Tippen mit längerer Dauer auf Koordinaten ($x, $y) erfolgreich", false)
+                    showToast("Tapped with longer duration at coordinates ($x, $y) successfully", false)
                 }
                 
                 override fun onCancelled(gestureDescription: GestureDescription) {
                     super.onCancelled(gestureDescription)
                     Log.e(TAG, "Long tap gesture cancelled")
-                    showToast("Tippen mit längerer Dauer auf Koordinaten ($x, $y) abgebrochen", true)
+                    showToast("Tap with longer duration at coordinates ($x, $y) cancelled", true)
                 }
             }, null)
             
             if (!dispatchResult) {
                 Log.e(TAG, "Failed to dispatch long tap gesture")
-                showToast("Fehler beim Senden der Tipp-Geste mit längerer Dauer", true)
+                showToast("Error dispatching tap gesture with longer duration", true)
             }
         } catch (e: Exception) {
             Log.e(TAG, "Error tapping at coordinates with longer duration: ${e.message}")
-            showToast("Fehler beim Tippen mit längerer Dauer auf Koordinaten: ${e.message}", true)
+            showToast("Error tapping with longer duration at coordinates: ${e.message}", true)
         }
     }
 
@@ -1002,22 +1002,22 @@ fun pressEnterKey() {
         val result = dispatchGesture(gestureBuilder.build(), object : GestureResultCallback() {
             override fun onCompleted(gestureDescription: GestureDescription) {
                 Log.d(TAG, "Enter key tap gesture completed")
-                showToast("Enter-Taste erfolgreich gedrückt", false)
+                showToast("Enter key pressed successfully", false)
             }
             
             override fun onCancelled(gestureDescription: GestureDescription) {
                 Log.e(TAG, "Enter key tap gesture cancelled")
-                showToast("Enter-Tasten-Geste abgebrochen", true)
+                showToast("Enter key gesture cancelled", true)
             }
         }, null)
         
         if (!result) {
             Log.e(TAG, "Failed to dispatch Enter key tap gesture")
-            showToast("Fehler beim Drücken der Enter-Taste", true)
+            showToast("Error pressing Enter key", true)
         }
     } catch (e: Exception) {
         Log.e(TAG, "Error pressing Enter key: ${e.message}")
-        showToast("Fehler beim Drücken der Enter-Taste: ${e.message}", true)
+        showToast("Error pressing Enter key: ${e.message}", true)
     }
 }
     
@@ -1041,11 +1041,11 @@ fun pressEnterKey() {
             } else {
                 // If all methods failed, show an error
                 Log.e(TAG, "Failed to open app: $packageName")
-                showToast("Fehler beim Öffnen der App: $appName", true)
+                showToast("Error opening app: $appName", true)
             }
         } catch (e: Exception) {
             Log.e(TAG, "Error opening app: ${e.message}")
-            showToast("Fehler beim Öffnen der App: ${e.message}", true)
+            showToast("Error opening app: ${e.message}", true)
         }
     }
     
@@ -1071,7 +1071,7 @@ fun pressEnterKey() {
                 applicationContext.startActivity(launchIntent)
                 
                 Log.d(TAG, "Successfully opened app using launch intent: $packageName")
-                showToast("App geöffnet: $appName", false)
+                showToast("App opened: $appName", false)
                 return true
             } else {
                 Log.d(TAG, "No launch intent found for package: $packageName, trying alternative methods")
@@ -1117,7 +1117,7 @@ fun pressEnterKey() {
                     applicationContext.startActivity(launchIntent)
                     
                     Log.d(TAG, "Successfully opened app using main activity: $packageName")
-                    showToast("App geöffnet: $appName", false)
+                    showToast("App opened: $appName", false)
                     return true
                 }
             }
@@ -1163,7 +1163,7 @@ fun pressEnterKey() {
                 applicationContext.startActivity(launchIntent)
                 
                 Log.d(TAG, "Successfully opened app using query intent activities: $packageName")
-                showToast("App geöffnet: $appName", false)
+                showToast("App opened: $appName", false)
                 return true
             }
             
@@ -1180,7 +1180,7 @@ fun pressEnterKey() {
      */
     fun takeScreenshot() {
         Log.d(TAG, "Taking screenshot")
-        showToast("Nehme Screenshot auf...", false)
+        showToast("Taking screenshot...", false)
         
         try {
             // Capture screen information before taking the screenshot
@@ -1205,11 +1205,11 @@ fun pressEnterKey() {
             
             // If the global action failed or is not available, show an error
             Log.e(TAG, "Could not take screenshot, global action not available or failed")
-            showToast("Fehler beim Aufnehmen des Screenshots: Globale Aktion nicht verfügbar oder fehlgeschlagen", true)
+            showToast("Error taking screenshot: Global action not available or failed", true)
             
         } catch (e: Exception) {
             Log.e(TAG, "Error taking screenshot: ${e.message}")
-            showToast("Fehler beim Aufnehmen des Screenshots: ${e.message}", true)
+            showToast("Error taking screenshot: ${e.message}", true)
         }
     }
     
@@ -1225,12 +1225,12 @@ fun pressEnterKey() {
         // Check if root node is available
         if (rootNode == null) {
             Log.e(TAG, "Root node is null, cannot capture screen information")
-            return "Keine Bildschirminformationen verfügbar (Root-Knoten ist null)"
+            return "No screen information available (root node is null)"
         }
         
         // Build a string with information about all interactive elements
         val screenInfo = StringBuilder()
-        screenInfo.append("Bildschirmelemente:\n")
+        screenInfo.append("Screen elements:\n")
         
         // Find all interactive elements
         val elements = findAllInteractiveElements(rootNode!!)
@@ -1246,28 +1246,28 @@ fun pressEnterKey() {
             
             // Add content description if available
             if (!element.contentDescription.isNullOrEmpty()) {
-                screenInfo.append("Beschreibung: \"${element.contentDescription}\" ")
+                screenInfo.append("Description: \"${element.contentDescription}\" ")
             }
             
             // Add element class name if available
             if (element.className != null) {
-                screenInfo.append("Klasse: ${element.className} ")
+                screenInfo.append("Class: ${element.className} ")
             }
             
             // Add element properties
             val properties = mutableListOf<String>()
-            if (element.isClickable) properties.add("klickbar")
-            if (element.isLongClickable) properties.add("lang-klickbar")
-            if (element.isCheckable) properties.add("auswählbar")
-            if (element.isChecked) properties.add("ausgewählt")
-            if (element.isEditable) properties.add("editierbar")
-            if (element.isFocusable) properties.add("fokussierbar")
-            if (element.isFocused) properties.add("fokussiert")
-            if (element.isPassword) properties.add("passwort")
-            if (element.isScrollable) properties.add("scrollbar")
+            if (element.isClickable) properties.add("clickable")
+            if (element.isLongClickable) properties.add("long-clickable")
+            if (element.isCheckable) properties.add("checkable")
+            if (element.isChecked) properties.add("checked")
+            if (element.isEditable) properties.add("editable")
+            if (element.isFocusable) properties.add("focusable")
+            if (element.isFocused) properties.add("focused")
+            if (element.isPassword) properties.add("password")
+            if (element.isScrollable) properties.add("scrollable")
             
             if (properties.isNotEmpty()) {
-                screenInfo.append("Eigenschaften: ${properties.joinToString(", ")} ")
+                screenInfo.append("Properties: ${properties.joinToString(", ")} ")
             }
             
             // Add element bounds
@@ -1278,7 +1278,7 @@ fun pressEnterKey() {
             // Add a button name if we can infer one
             val buttonName = getButtonName(element)
             if (buttonName.isNotEmpty()) {
-                screenInfo.append(" Vermuteter Name: \"$buttonName\"")
+                screenInfo.append(" Inferred name: \"$buttonName\"")
             }
             
             screenInfo.append("\n")
@@ -1391,13 +1391,13 @@ fun pressEnterKey() {
                     val hintTextMethod = node.javaClass.getMethod("getHintText")
                     val hintText = hintTextMethod.invoke(node)?.toString()
                     if (!hintText.isNullOrEmpty()) {
-                        return "Textfeld: $hintText"
+                        return "Text field: $hintText"
                     }
                 } catch (e: Exception) {
                     // Reflection failed, ignore
                 }
                 
-                return "Textfeld"
+                return "Text field"
             }
         } catch (e: Exception) {
             Log.e(TAG, "Error getting button name: ${e.message}")
@@ -1412,14 +1412,14 @@ fun pressEnterKey() {
     private fun retrieveLatestScreenshot(screenInfo: String) {
         try {
             Log.d(TAG, "Retrieving latest screenshot")
-            showToast("Suche nach dem aufgenommenen Screenshot...", false)
+            showToast("Searching for the captured screenshot...", false)
             
             // Check standard screenshot locations
             val screenshotFile = findLatestScreenshotFile()
             
             if (screenshotFile != null) {
                 Log.d(TAG, "Found screenshot file: ${screenshotFile.absolutePath}")
-                showToast("Screenshot gefunden: ${screenshotFile.name}", false)
+                showToast("Screenshot found: ${screenshotFile.name}", false)
                 
                 // Convert file to URI
                 val screenshotUri = Uri.fromFile(screenshotFile)
@@ -1431,11 +1431,11 @@ fun pressEnterKey() {
                 closeScreenshotNotification()
             } else {
                 Log.e(TAG, "No screenshot file found")
-                showToast("Kein Screenshot gefunden. Bitte prüfen Sie die Berechtigungen.", true)
+                showToast("No screenshot found. Please check permissions.", true)
             }
         } catch (e: Exception) {
             Log.e(TAG, "Error retrieving screenshot: ${e.message}")
-            showToast("Fehler beim Abrufen des Screenshots: ${e.message}", true)
+            showToast("Error retrieving screenshot: ${e.message}", true)
         }
     }
     
@@ -1454,7 +1454,7 @@ fun pressEnterKey() {
                 // Check if root node is available
                 if (rootNode == null) {
                     Log.e(TAG, "Root node is null, cannot close screenshot notification")
-                    showToast("Fehler: Root-Knoten ist nicht verfügbar", true)
+                    showToast("Error: Root node is not available", true)
                     return@postDelayed
                 }
                 
@@ -1484,17 +1484,17 @@ fun pressEnterKey() {
                     val node = findNodeByText(rootNode!!, buttonText)
                     if (node != null) {
                         Log.d(TAG, "Found screenshot close button with text: $buttonText")
-                        showToast("Screenshot-Schließen-Button gefunden: \"$buttonText\"", false)
+                        showToast("Screenshot close button found: \"$buttonText\"", false)
                         
                         // Perform the click
                         val clickResult = performClickOnNode(node)
                         
                         if (clickResult) {
                             Log.d(TAG, "Successfully clicked on screenshot close button: $buttonText")
-                            showToast("Screenshot-Benachrichtigung automatisch geschlossen", false)
+                            showToast("Screenshot notification automatically closed", false)
                         } else {
                             Log.e(TAG, "Failed to click on screenshot close button: $buttonText")
-                            showToast("Klick auf Screenshot-Schließen-Button fehlgeschlagen, versuche alternative Methoden", true)
+                            showToast("Failed to click screenshot close button, trying alternative methods", true)
                             
                             // Try alternative methods
                             tryAlternativeClickMethods(node, buttonText)
@@ -1511,17 +1511,17 @@ fun pressEnterKey() {
                     val node = findNodeByContentDescription(rootNode!!, buttonText)
                     if (node != null) {
                         Log.d(TAG, "Found screenshot close button with description: $buttonText")
-                        showToast("Screenshot-Schließen-Button gefunden mit Beschreibung: \"$buttonText\"", false)
+                        showToast("Screenshot close button found with description: \"$buttonText\"", false)
                         
                         // Perform the click
                         val clickResult = performClickOnNode(node)
                         
                         if (clickResult) {
                             Log.d(TAG, "Successfully clicked on screenshot close button with description: $buttonText")
-                            showToast("Screenshot-Benachrichtigung automatisch geschlossen", false)
+                            showToast("Screenshot notification automatically closed", false)
                         } else {
                             Log.e(TAG, "Failed to click on screenshot close button with description: $buttonText")
-                            showToast("Klick auf Screenshot-Schließen-Button fehlgeschlagen, versuche alternative Methoden", true)
+                            showToast("Failed to click screenshot close button, trying alternative methods", true)
                             
                             // Try alternative methods
                             tryAlternativeClickMethods(node, buttonText)
@@ -1540,17 +1540,17 @@ fun pressEnterKey() {
                     val rightmostButton = findRightmostButton(notificationButtons)
                     if (rightmostButton != null) {
                         Log.d(TAG, "Found rightmost notification button, assuming it's the close button")
-                        showToast("Versuche den rechtesten Button in der Benachrichtigung zu drücken", false)
+                        showToast("Trying to press the rightmost button in the notification", false)
                         
                         // Perform the click
                         val clickResult = performClickOnNode(rightmostButton)
                         
                         if (clickResult) {
                             Log.d(TAG, "Successfully clicked on rightmost notification button")
-                            showToast("Screenshot-Benachrichtigung automatisch geschlossen", false)
+                            showToast("Screenshot notification automatically closed", false)
                         } else {
                             Log.e(TAG, "Failed to click on rightmost notification button")
-                            showToast("Klick auf rechtesten Button in der Benachrichtigung fehlgeschlagen", true)
+                            showToast("Failed to click rightmost button in notification", true)
                             
                             // Try alternative methods
                             tryAlternativeClickMethods(rightmostButton, "Close")
@@ -1565,10 +1565,10 @@ fun pressEnterKey() {
                 }
                 
                 Log.d(TAG, "Could not find screenshot close button")
-                showToast("Konnte keinen Screenshot-Schließen-Button finden", true)
+                showToast("Could not find screenshot close button", true)
             } catch (e: Exception) {
                 Log.e(TAG, "Error closing screenshot notification: ${e.message}")
-                showToast("Fehler beim Schließen der Screenshot-Benachrichtigung: ${e.message}", true)
+                showToast("Error closing screenshot notification: ${e.message}", true)
             }
         }, 1000) // 1000ms delay to ensure notification is visible
     }
@@ -1812,7 +1812,7 @@ fun pressEnterKey() {
             val mainActivity = MainActivity.getInstance()
             if (mainActivity == null) {
                 Log.e(TAG, "MainActivity instance is null, cannot add screenshot to conversation")
-                showToast("Fehler: MainActivity-Instanz ist nicht verfügbar", true)
+                showToast("Error: MainActivity instance is not available", true)
                 return
             }
             
@@ -1820,7 +1820,7 @@ fun pressEnterKey() {
             val photoReasoningViewModel = mainActivity.getPhotoReasoningViewModel()
             if (photoReasoningViewModel == null) {
                 Log.e(TAG, "PhotoReasoningViewModel is null, cannot add screenshot to conversation")
-                showToast("Fehler: PhotoReasoningViewModel ist nicht verfügbar", true)
+                showToast("Error: PhotoReasoningViewModel is not available", true)
                 return
             }
             
@@ -1828,10 +1828,10 @@ fun pressEnterKey() {
             photoReasoningViewModel.addScreenshotToConversation(screenshotUri, applicationContext, screenInfo)
             
             Log.d(TAG, "Screenshot added to conversation with screen information")
-            showToast("Screenshot mit Bildschirminformationen zur Konversation hinzugefügt", false)
+            showToast("Screenshot with screen information added to conversation", false)
         } catch (e: Exception) {
             Log.e(TAG, "Error adding screenshot to conversation: ${e.message}")
-            showToast("Fehler beim Hinzufügen des Screenshots zur Konversation: ${e.message}", true)
+            showToast("Error adding screenshot to conversation: ${e.message}", true)
         }
     }
     
@@ -1840,7 +1840,7 @@ fun pressEnterKey() {
      */
     fun pressHomeButton() {
         Log.d(TAG, "Pressing home button")
-        showToast("Drücke Home-Button...", false)
+        showToast("Pressing Home button...", false)
         
         try {
             // Use the global action to press the home button
@@ -1848,14 +1848,14 @@ fun pressEnterKey() {
             
             if (result) {
                 Log.d(TAG, "Successfully pressed home button")
-                showToast("Home-Button erfolgreich gedrückt", false)
+                showToast("Home button pressed successfully", false)
             } else {
                 Log.e(TAG, "Failed to press home button")
-                showToast("Fehler beim Drücken des Home-Buttons", true)
+                showToast("Error pressing Home button", true)
             }
         } catch (e: Exception) {
             Log.e(TAG, "Error pressing home button: ${e.message}")
-            showToast("Fehler beim Drücken des Home-Buttons: ${e.message}", true)
+            showToast("Error pressing Home button: ${e.message}", true)
         }
     }
     
@@ -1864,7 +1864,7 @@ fun pressEnterKey() {
      */
     fun pressBackButton() {
         Log.d(TAG, "Pressing back button")
-        showToast("Drücke Zurück-Button...", false)
+        showToast("Pressing Back button...", false)
         
         try {
             // Use the global action to press the back button
@@ -1872,14 +1872,14 @@ fun pressEnterKey() {
             
             if (result) {
                 Log.d(TAG, "Successfully pressed back button")
-                showToast("Zurück-Button erfolgreich gedrückt", false)
+                showToast("Back button pressed successfully", false)
             } else {
                 Log.e(TAG, "Failed to press back button")
-                showToast("Fehler beim Drücken des Zurück-Buttons", true)
+                showToast("Error pressing Back button", true)
             }
         } catch (e: Exception) {
             Log.e(TAG, "Error pressing back button: ${e.message}")
-            showToast("Fehler beim Drücken des Zurück-Buttons: ${e.message}", true)
+            showToast("Error pressing Back button: ${e.message}", true)
         }
     }
     
@@ -1888,7 +1888,7 @@ fun pressEnterKey() {
      */
     fun showRecentApps() {
         Log.d(TAG, "Showing recent apps")
-        showToast("Öffne Übersicht der letzten Apps...", false)
+        showToast("Opening recent apps overview...", false)
         
         try {
             // Use the global action to show recent apps
@@ -1896,14 +1896,14 @@ fun pressEnterKey() {
             
             if (result) {
                 Log.d(TAG, "Successfully showed recent apps")
-                showToast("Übersicht der letzten Apps erfolgreich geöffnet", false)
+                showToast("Recent apps overview opened successfully", false)
             } else {
                 Log.e(TAG, "Failed to show recent apps")
-                showToast("Fehler beim Öffnen der Übersicht der letzten Apps", true)
+                showToast("Error opening recent apps overview", true)
             }
         } catch (e: Exception) {
             Log.e(TAG, "Error showing recent apps: ${e.message}")
-            showToast("Fehler beim Öffnen der Übersicht der letzten Apps: ${e.message}", true)
+            showToast("Error opening recent apps overview: ${e.message}", true)
         }
     }
     
@@ -1912,7 +1912,7 @@ fun pressEnterKey() {
      */
     fun scrollDown() {
         Log.d(TAG, "Scrolling down")
-        showToast("Scrolle nach unten...", false)
+        showToast("Scrolling down...", false)
         
         try {
             // Get display metrics to calculate swipe coordinates
@@ -1941,13 +1941,13 @@ fun pressEnterKey() {
                     override fun onCompleted(gestureDescription: GestureDescription) {
                         super.onCompleted(gestureDescription)
                         Log.d(TAG, "Scroll down gesture completed")
-                        showToast("Erfolgreich nach unten gescrollt", false)
+                        showToast("Successfully scrolled down", false)
                     }
                     
                     override fun onCancelled(gestureDescription: GestureDescription) {
                         super.onCancelled(gestureDescription)
                         Log.e(TAG, "Scroll down gesture cancelled")
-                        showToast("Scrollen nach unten abgebrochen", true)
+                        showToast("Scroll down cancelled", true)
                     }
                 },
                 null // handler
@@ -1955,11 +1955,11 @@ fun pressEnterKey() {
             
             if (!result) {
                 Log.e(TAG, "Failed to dispatch scroll down gesture")
-                showToast("Fehler beim Scrollen nach unten", true)
+                showToast("Error scrolling down", true)
             }
         } catch (e: Exception) {
             Log.e(TAG, "Error scrolling down: ${e.message}")
-            showToast("Fehler beim Scrollen nach unten: ${e.message}", true)
+            showToast("Error scrolling down: ${e.message}", true)
         }
     }
     
@@ -1973,7 +1973,7 @@ fun pressEnterKey() {
      */
     fun scrollDown(x: Float, y: Float, distance: Float, duration: Long) {
         Log.d(TAG, "Scrolling down from ($x, $y) with distance $distance and duration $duration ms")
-        showToast("Scrolle nach unten von bestimmter Position...", false)
+        showToast("Scrolling down from specific position...", false)
         
         try {
             // Create a path for the gesture (swipe from specified position upward by the specified distance)
@@ -1996,12 +1996,12 @@ fun pressEnterKey() {
                 object : GestureResultCallback() {
                     override fun onCompleted(gestureDescription: GestureDescription) {
                         Log.d(TAG, "Coordinate-based scroll down gesture completed")
-                        showToast("Erfolgreich nach unten gescrollt von Position ($x, $y)", false)
+                        showToast("Successfully scrolled down from position ($x, $y)", false)
                     }
                     
                     override fun onCancelled(gestureDescription: GestureDescription) {
                         Log.e(TAG, "Coordinate-based scroll down gesture cancelled")
-                        showToast("Scrollen nach unten von Position ($x, $y) abgebrochen", true)
+                        showToast("Scroll down from position ($x, $y) cancelled", true)
                     }
                 },
                 null // handler
@@ -2009,11 +2009,11 @@ fun pressEnterKey() {
             
             if (!result) {
                 Log.e(TAG, "Failed to dispatch coordinate-based scroll down gesture")
-                showToast("Fehler beim Scrollen nach unten von Position ($x, $y)", true)
+                showToast("Error scrolling down from position ($x, $y)", true)
             }
         } catch (e: Exception) {
             Log.e(TAG, "Error scrolling down from coordinates: ${e.message}")
-            showToast("Fehler beim Scrollen nach unten von Position ($x, $y): ${e.message}", true)
+            showToast("Error scrolling down from position ($x, $y): ${e.message}", true)
         }
     }
     
@@ -2022,7 +2022,7 @@ fun pressEnterKey() {
      */
     fun scrollUp() {
         Log.d(TAG, "Scrolling up")
-        showToast("Scrolle nach oben...", false)
+        showToast("Scrolling up...", false)
         
         try {
             // Get display metrics to calculate swipe coordinates
@@ -2051,13 +2051,13 @@ fun pressEnterKey() {
                     override fun onCompleted(gestureDescription: GestureDescription) {
                         super.onCompleted(gestureDescription)
                         Log.d(TAG, "Scroll up gesture completed")
-                        showToast("Erfolgreich nach oben gescrollt", false)
+                        showToast("Successfully scrolled up", false)
                     }
                     
                     override fun onCancelled(gestureDescription: GestureDescription) {
                         super.onCancelled(gestureDescription)
                         Log.e(TAG, "Scroll up gesture cancelled")
-                        showToast("Scrollen nach oben abgebrochen", true)
+                        showToast("Scroll up cancelled", true)
                     }
                 },
                 null // handler
@@ -2065,11 +2065,11 @@ fun pressEnterKey() {
             
             if (!result) {
                 Log.e(TAG, "Failed to dispatch scroll up gesture")
-                showToast("Fehler beim Scrollen nach oben", true)
+                showToast("Error scrolling up", true)
             }
         } catch (e: Exception) {
             Log.e(TAG, "Error scrolling up: ${e.message}")
-            showToast("Fehler beim Scrollen nach oben: ${e.message}", true)
+            showToast("Error scrolling up: ${e.message}", true)
         }
     }
     
@@ -2083,7 +2083,7 @@ fun pressEnterKey() {
      */
     fun scrollUp(x: Float, y: Float, distance: Float, duration: Long) {
         Log.d(TAG, "Scrolling up from ($x, $y) with distance $distance and duration $duration ms")
-        showToast("Scrolle nach oben von bestimmter Position...", false)
+        showToast("Scrolling up from specific position...", false)
         
         try {
             // Create a path for the gesture (swipe from specified position downward by the specified distance)
@@ -2106,12 +2106,12 @@ fun pressEnterKey() {
                 object : GestureResultCallback() {
                     override fun onCompleted(gestureDescription: GestureDescription) {
                         Log.d(TAG, "Coordinate-based scroll up gesture completed")
-                        showToast("Erfolgreich nach oben gescrollt von Position ($x, $y)", false)
+                        showToast("Successfully scrolled up from position ($x, $y)", false)
                     }
                     
                     override fun onCancelled(gestureDescription: GestureDescription) {
                         Log.e(TAG, "Coordinate-based scroll up gesture cancelled")
-                        showToast("Scrollen nach oben von Position ($x, $y) abgebrochen", true)
+                        showToast("Scroll up from position ($x, $y) cancelled", true)
                     }
                 },
                 null // handler
@@ -2119,11 +2119,11 @@ fun pressEnterKey() {
             
             if (!result) {
                 Log.e(TAG, "Failed to dispatch coordinate-based scroll up gesture")
-                showToast("Fehler beim Scrollen nach oben von Position ($x, $y)", true)
+                showToast("Error scrolling up from position ($x, $y)", true)
             }
         } catch (e: Exception) {
             Log.e(TAG, "Error scrolling up from coordinates: ${e.message}")
-            showToast("Fehler beim Scrollen nach oben von Position ($x, $y): ${e.message}", true)
+            showToast("Error scrolling up from position ($x, $y): ${e.message}", true)
         }
     }
     
@@ -2132,7 +2132,7 @@ fun pressEnterKey() {
      */
     fun scrollLeft() {
         Log.d(TAG, "Scrolling left")
-        showToast("Scrolle nach links...", false)
+        showToast("Scrolling left...", false)
         
         try {
             // Get display metrics to calculate swipe coordinates
@@ -2160,12 +2160,12 @@ fun pressEnterKey() {
                 object : GestureResultCallback() {
                     override fun onCompleted(gestureDescription: GestureDescription) {
                         Log.d(TAG, "Scroll left gesture completed")
-                        showToast("Erfolgreich nach links gescrollt", false)
+                        showToast("Successfully scrolled left", false)
                     }
                     
                     override fun onCancelled(gestureDescription: GestureDescription) {
                         Log.e(TAG, "Scroll left gesture cancelled")
-                        showToast("Scrollen nach links abgebrochen", true)
+                        showToast("Scroll left cancelled", true)
                     }
                 },
                 null // handler
@@ -2173,11 +2173,11 @@ fun pressEnterKey() {
             
             if (!result) {
                 Log.e(TAG, "Failed to dispatch scroll left gesture")
-                showToast("Fehler beim Scrollen nach links", true)
+                showToast("Error scrolling left", true)
             }
         } catch (e: Exception) {
             Log.e(TAG, "Error scrolling left: ${e.message}")
-            showToast("Fehler beim Scrollen nach links: ${e.message}", true)
+            showToast("Error scrolling left: ${e.message}", true)
         }
     }
     
@@ -2191,7 +2191,7 @@ fun pressEnterKey() {
      */
     fun scrollLeft(x: Float, y: Float, distance: Float, duration: Long) {
         Log.d(TAG, "Scrolling left from ($x, $y) with distance $distance and duration $duration ms")
-        showToast("Scrolle nach links von bestimmter Position...", false)
+        showToast("Scrolling left from specific position...", false)
         
         try {
             // Create a path for the gesture (swipe from specified position to the left by the specified distance)
@@ -2214,12 +2214,12 @@ fun pressEnterKey() {
                 object : GestureResultCallback() {
                     override fun onCompleted(gestureDescription: GestureDescription) {
                         Log.d(TAG, "Coordinate-based scroll left gesture completed")
-                        showToast("Erfolgreich nach links gescrollt von Position ($x, $y)", false)
+                        showToast("Successfully scrolled left from position ($x, $y)", false)
                     }
                     
                     override fun onCancelled(gestureDescription: GestureDescription) {
                         Log.e(TAG, "Coordinate-based scroll left gesture cancelled")
-                        showToast("Scrollen nach links von Position ($x, $y) abgebrochen", true)
+                        showToast("Scroll left from position ($x, $y) cancelled", true)
                     }
                 },
                 null // handler
@@ -2227,11 +2227,11 @@ fun pressEnterKey() {
             
             if (!result) {
                 Log.e(TAG, "Failed to dispatch coordinate-based scroll left gesture")
-                showToast("Fehler beim Scrollen nach links von Position ($x, $y)", true)
+                showToast("Error scrolling left from position ($x, $y)", true)
             }
         } catch (e: Exception) {
             Log.e(TAG, "Error scrolling left from coordinates: ${e.message}")
-            showToast("Fehler beim Scrollen nach links von Position ($x, $y): ${e.message}", true)
+            showToast("Error scrolling left from position ($x, $y): ${e.message}", true)
         }
     }
     
@@ -2240,7 +2240,7 @@ fun pressEnterKey() {
      */
     fun scrollRight() {
         Log.d(TAG, "Scrolling right")
-        showToast("Scrolle nach rechts...", false)
+        showToast("Scrolling right...", false)
         
         try {
             // Get display metrics to calculate swipe coordinates
@@ -2268,12 +2268,12 @@ fun pressEnterKey() {
                 object : GestureResultCallback() {
                     override fun onCompleted(gestureDescription: GestureDescription) {
                         Log.d(TAG, "Scroll right gesture completed")
-                        showToast("Erfolgreich nach rechts gescrollt", false)
+                        showToast("Successfully scrolled right", false)
                     }
                     
                     override fun onCancelled(gestureDescription: GestureDescription) {
                         Log.e(TAG, "Scroll right gesture cancelled")
-                        showToast("Scrollen nach rechts abgebrochen", true)
+                        showToast("Scroll right cancelled", true)
                     }
                 },
                 null // handler
@@ -2281,11 +2281,11 @@ fun pressEnterKey() {
             
             if (!result) {
                 Log.e(TAG, "Failed to dispatch scroll right gesture")
-                showToast("Fehler beim Scrollen nach rechts", true)
+                showToast("Error scrolling right", true)
             }
         } catch (e: Exception) {
             Log.e(TAG, "Error scrolling right: ${e.message}")
-            showToast("Fehler beim Scrollen nach rechts: ${e.message}", true)
+            showToast("Error scrolling right: ${e.message}", true)
         }
     }
     
@@ -2299,7 +2299,7 @@ fun pressEnterKey() {
      */
     fun scrollRight(x: Float, y: Float, distance: Float, duration: Long) {
         Log.d(TAG, "Scrolling right from ($x, $y) with distance $distance and duration $duration ms")
-        showToast("Scrolle nach rechts von bestimmter Position...", false)
+        showToast("Scrolling right from specific position...", false)
         
         try {
             // Create a path for the gesture (swipe from specified position to the right by the specified distance)
@@ -2322,12 +2322,12 @@ fun pressEnterKey() {
                 object : GestureResultCallback() {
                     override fun onCompleted(gestureDescription: GestureDescription) {
                         Log.d(TAG, "Coordinate-based scroll right gesture completed")
-                        showToast("Erfolgreich nach rechts gescrollt von Position ($x, $y)", false)
+                        showToast("Successfully scrolled right from position ($x, $y)", false)
                     }
                     
                     override fun onCancelled(gestureDescription: GestureDescription) {
                         Log.e(TAG, "Coordinate-based scroll right gesture cancelled")
-                        showToast("Scrollen nach rechts von Position ($x, $y) abgebrochen", true)
+                        showToast("Scroll right from position ($x, $y) cancelled", true)
                     }
                 },
                 null // handler
@@ -2335,11 +2335,11 @@ fun pressEnterKey() {
             
             if (!result) {
                 Log.e(TAG, "Failed to dispatch coordinate-based scroll right gesture")
-                showToast("Fehler beim Scrollen nach rechts von Position ($x, $y)", true)
+                showToast("Error scrolling right from position ($x, $y)", true)
             }
         } catch (e: Exception) {
             Log.e(TAG, "Error scrolling right from coordinates: ${e.message}")
-            showToast("Fehler beim Scrollen nach rechts von Position ($x, $y): ${e.message}", true)
+            showToast("Error scrolling right from position ($x, $y): ${e.message}", true)
         }
     }
     

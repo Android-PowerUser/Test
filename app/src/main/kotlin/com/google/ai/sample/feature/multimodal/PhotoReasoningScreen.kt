@@ -159,7 +159,7 @@ internal fun PhotoReasoningRoute(
                     // and the dedicated "activate" button on the warning card.
                 } catch (e: Exception) {
                     Log.e("PhotoReasoningRoute", "Error opening accessibility settings", e)
-                    it.updateStatusMessage("Fehler beim Öffnen der Bedienungshilfen-Einstellungen.", true)
+                    it.updateStatusMessage("Error opening Accessibility Settings.", true)
                 }
             }
         },
@@ -226,7 +226,7 @@ fun PhotoReasoningScreen(
                 OutlinedTextField(
                     value = systemMessage,
                     onValueChange = onSystemMessageChanged,
-                    placeholder = { Text("Geben Sie hier eine System-Nachricht ein, die bei jeder Anfrage mitgesendet wird") },
+                    placeholder = { Text("Enter a system message here that will be sent with every request") },
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(120.dp),
@@ -413,7 +413,7 @@ fun PhotoReasoningScreen(
                     modifier = Modifier.padding(16.dp)
                 ) {
                     Text(
-                        text = "Befehlsstatus:",
+                        text = "Command Status:",
                         style = MaterialTheme.typography.titleMedium
                     )
                     Spacer(modifier = Modifier.height(4.dp))
@@ -438,30 +438,30 @@ fun PhotoReasoningScreen(
                     modifier = Modifier.padding(16.dp)
                 ) {
                     Text(
-                        text = "Erkannte Befehle:",
+                        text = "Detected Commands:",
                         style = MaterialTheme.typography.titleMedium
                     )
                     Spacer(modifier = Modifier.height(4.dp))
                     detectedCommands.forEachIndexed { index, command ->
                         val commandText = when (command) {
-                            is Command.ClickButton -> "Klick auf Button: \"${command.buttonText}\""
-                            is Command.TapCoordinates -> "Tippen auf Koordinaten: (${command.x}, ${command.y})"
-                            is Command.TakeScreenshot -> "Screenshot aufnehmen"
-                            is Command.PressHomeButton -> "Home-Button drücken"
-                            is Command.PressBackButton -> "Zurück-Button drücken"
-                            is Command.ShowRecentApps -> "Übersicht der letzten Apps öffnen"
-                            is Command.ScrollDown -> "Nach unten scrollen"
-                            is Command.ScrollUp -> "Nach oben scrollen"
-                            is Command.ScrollLeft -> "Nach links scrollen"
-                            is Command.ScrollRight -> "Nach rechts scrollen"
-                            is Command.ScrollDownFromCoordinates -> "Nach unten scrollen von Position (${command.x}, ${command.y}) mit Distanz ${command.distance}px und Dauer ${command.duration}ms"
-                            is Command.ScrollUpFromCoordinates -> "Nach oben scrollen von Position (${command.x}, ${command.y}) mit Distanz ${command.distance}px und Dauer ${command.duration}ms"
-                            is Command.ScrollLeftFromCoordinates -> "Nach links scrollen von Position (${command.x}, ${command.y}) mit Distanz ${command.distance}px und Dauer ${command.duration}ms"
-                            is Command.ScrollRightFromCoordinates -> "Nach rechts scrollen von Position (${command.x}, ${command.y}) mit Distanz ${command.distance}px und Dauer ${command.duration}ms"
-                            is Command.OpenApp -> "App öffnen: \"${command.packageName}\""
-                            is Command.WriteText -> "Text schreiben: \"${command.text}\""
-                            is Command.UseHighReasoningModel -> "Wechsle zu leistungsfähigerem Modell (gemini-2.5-pro-preview-03-25)"
-                            is Command.UseLowReasoningModel -> "Wechsle zu schnellerem Modell (gemini-2.0-flash-lite)"
+                            is Command.ClickButton -> "Click on button: \"${command.buttonText}\""
+                            is Command.TapCoordinates -> "Tap coordinates: (${command.x}, ${command.y})"
+                            is Command.TakeScreenshot -> "Take screenshot"
+                            is Command.PressHomeButton -> "Press Home button"
+                            is Command.PressBackButton -> "Press Back button"
+                            is Command.ShowRecentApps -> "Open recent apps overview"
+                            is Command.ScrollDown -> "Scroll down"
+                            is Command.ScrollUp -> "Scroll up"
+                            is Command.ScrollLeft -> "Scroll left"
+                            is Command.ScrollRight -> "Scroll right"
+                            is Command.ScrollDownFromCoordinates -> "Scroll down from position (${command.x}, ${command.y}) with distance ${command.distance}px and duration ${command.duration}ms"
+                            is Command.ScrollUpFromCoordinates -> "Scroll up from position (${command.x}, ${command.y}) with distance ${command.distance}px and duration ${command.duration}ms"
+                            is Command.ScrollLeftFromCoordinates -> "Scroll left from position (${command.x}, ${command.y}) with distance ${command.distance}px and duration ${command.duration}ms"
+                            is Command.ScrollRightFromCoordinates -> "Scroll right from position (${command.x}, ${command.y}) with distance ${command.distance}px and duration ${command.duration}ms"
+                            is Command.OpenApp -> "Open app: \"${command.packageName}\""
+                            is Command.WriteText -> "Write text: \"${command.text}\""
+                            is Command.UseHighReasoningModel -> "Switch to more powerful model (gemini-2.5-pro-preview-03-25)"
+                            is Command.UseLowReasoningModel -> "Switch to faster model (gemini-2.0-flash-lite)"
                             is Command.PressEnterKey -> "Enter command detected"
                         }
                         Text(
@@ -618,19 +618,19 @@ fun ErrorChatBubble(
 fun PhotoReasoningScreenPreviewWithContent() {
     PhotoReasoningScreen(
         uiState = PhotoReasoningUiState.Success("This is a preview of the photo reasoning screen."),
-        commandExecutionStatus = "Befehl ausgeführt: Screenshot aufnehmen",
+        commandExecutionStatus = "Command executed: Take screenshot",
         detectedCommands = listOf(
             Command.TakeScreenshot,
             Command.ClickButton("OK")
         ),
-        systemMessage = "Dies ist eine System-Nachricht für die KI",
+        systemMessage = "This is a system message for the AI",
         chatMessages = listOf(
             PhotoReasoningMessage(
-                text = "Hallo, wie kann ich dir helfen?",
+                text = "Hello, how can I help you?",
                 participant = PhotoParticipant.USER
             ),
             PhotoReasoningMessage(
-                text = "Ich bin hier, um dir zu helfen. Was möchtest du wissen?",
+                text = "I am here to help you. What do you want to know?",
                 participant = PhotoParticipant.MODEL
             )
         )

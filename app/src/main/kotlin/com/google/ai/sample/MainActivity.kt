@@ -164,10 +164,10 @@ class MainActivity : ComponentActivity() {
             }
         } else if (billingResult.responseCode == BillingClient.BillingResponseCode.USER_CANCELED) {
             Log.i(TAG, "purchasesUpdatedListener: User cancelled the purchase flow.")
-            Toast.makeText(this, "Spendevorgang abgebrochen.", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, "Donation process cancelled.", Toast.LENGTH_SHORT).show()
         } else {
             Log.e(TAG, "purchasesUpdatedListener: Billing error: ${billingResult.debugMessage} (Code: ${billingResult.responseCode})")
-            Toast.makeText(this, "Fehler beim Spendevorgang: ${billingResult.debugMessage}", Toast.LENGTH_LONG).show()
+            Toast.makeText(this, "Error during donation process: ${billingResult.debugMessage}", Toast.LENGTH_LONG).show()
         }
     }
 
@@ -505,12 +505,12 @@ class MainActivity : ComponentActivity() {
         Log.d(TAG, "initiateDonationPurchase called.")
         if (!::billingClient.isInitialized) {
             Log.e(TAG, "initiateDonationPurchase: BillingClient not initialized.")
-            updateStatusMessage("Bezahldienst nicht initialisiert. Bitte später versuchen.", true)
+            updateStatusMessage("Payment service not initialized. Please try again later.", true)
             return
         }
         if (!billingClient.isReady) {
             Log.e(TAG, "initiateDonationPurchase: BillingClient not ready. Connection state: ${billingClient.connectionState}")
-            updateStatusMessage("Bezahldienst nicht bereit. Bitte später versuchen.", true)
+            updateStatusMessage("Payment service not ready. Please try again later.", true)
             if (billingClient.connectionState == BillingClient.ConnectionState.CLOSED || billingClient.connectionState == BillingClient.ConnectionState.DISCONNECTED){
                 Log.d(TAG, "initiateDonationPurchase: BillingClient disconnected, attempting to reconnect.")
                 billingClient.startConnection(object : BillingClientStateListener {
@@ -559,7 +559,7 @@ class MainActivity : ComponentActivity() {
             Log.i(TAG, "initiateDonationPurchase: Billing flow launch result: ${billingResult.responseCode} - ${billingResult.debugMessage}")
             if (billingResult.responseCode != BillingClient.BillingResponseCode.OK) {
                 Log.e(TAG, "Failed to launch billing flow: ${billingResult.debugMessage}")
-                updateStatusMessage("Fehler beim Starten des Spendevorgangs: ${billingResult.debugMessage}", true)
+                updateStatusMessage("Error starting donation process: ${billingResult.debugMessage}", true)
             }
         } ?: run {
             Log.e(TAG, "initiateDonationPurchase: Subscription product details are null even after check. This shouldn't happen.")
@@ -582,30 +582,30 @@ class MainActivity : ComponentActivity() {
                         Log.i(TAG, "handlePurchase (acknowledgePurchase): Result code: ${ackBillingResult.responseCode}, Message: ${ackBillingResult.debugMessage}")
                         if (ackBillingResult.responseCode == BillingClient.BillingResponseCode.OK) {
                             Log.i(TAG, "Subscription purchase acknowledged successfully.")
-                            updateStatusMessage("Vielen Dank für Ihr Abonnement!")
+                            updateStatusMessage("Thank you for your subscription!")
                             TrialManager.markAsPurchased(this)
-                            updateTrialState(TrialManager.getTrialState(this, null)) // Aktualisiere Zustand nach Kauf
+                            updateTrialState(TrialManager.getTrialState(this, null)) // Update state after purchase
                             Log.d(TAG, "handlePurchase: Stopping TrialTimerService as app is purchased.")
                             val stopIntent = Intent(this, TrialTimerService::class.java)
                             stopIntent.action = TrialTimerService.ACTION_STOP_TIMER
                             startService(stopIntent)
                         } else {
                             Log.e(TAG, "Failed to acknowledge purchase: ${ackBillingResult.debugMessage}")
-                            updateStatusMessage("Fehler beim Bestätigen des Kaufs: ${ackBillingResult.debugMessage}", true)
+                            updateStatusMessage("Error confirming purchase: ${ackBillingResult.debugMessage}", true)
                         }
                     }
                 } else {
                     Log.i(TAG, "handlePurchase: Subscription already acknowledged.")
-                    updateStatusMessage("Abonnement bereits aktiv.")
+                    updateStatusMessage("Subscription already active.")
                     TrialManager.markAsPurchased(this)
-                    updateTrialState(TrialManager.getTrialState(this, null)) // Aktualisiere Zustand nach Kauf
+                    updateTrialState(TrialManager.getTrialState(this, null)) // Update state after purchase
                 }
             } else {
                 Log.w(TAG, "handlePurchase: Purchase is PURCHASED but does not contain the target product ID ($subscriptionProductId). Products: ${purchase.products}")
             }
         } else if (purchase.purchaseState == Purchase.PurchaseState.PENDING) {
             Log.i(TAG, "handlePurchase: Purchase state is PENDING.")
-            updateStatusMessage("Ihre Zahlung ist in Bearbeitung.")
+            updateStatusMessage("Your payment is being processed.")
         } else {
             Log.w(TAG, "handlePurchase: Purchase state is UNSPECIFIED_STATE or other: ${purchase.purchaseState}")
         }
@@ -796,7 +796,7 @@ class MainActivity : ComponentActivity() {
         val allGranted = permissions.entries.all { it.value }
         if (allGranted) {
             Log.i(TAG, "All required permissions granted by user.")
-            updateStatusMessage("Alle erforderlichen Berechtigungen erteilt")
+            updateStatusMessage("All required permissions granted")
             // Any other logic that should happen when permissions are granted (e.g., related to trial service)
             // This part should remain as it was if permissions being granted triggered other actions.
         } else {

@@ -191,7 +191,7 @@ class PhotoReasoningViewModel(
             // If we get here, it's not a 503 error or quota exceeded error
             withContext(Dispatchers.Main) {
                 _uiState.value = PhotoReasoningUiState.Error(e.localizedMessage ?: "Unknown error")
-                _commandExecutionStatus.value = "Fehler bei der Generierung: ${e.localizedMessage}"
+                _commandExecutionStatus.value = "Error during generation: ${e.localizedMessage}"
                 
                 // Update chat with error message
                 _chatState.replaceLastPendingMessage()
@@ -491,7 +491,7 @@ class PhotoReasoningViewModel(
                     val commandDescriptions = commands.joinToString("; ") { command -> 
                         command.toString()
                     }
-                    _commandExecutionStatus.value = "Befehle erkannt: $commandDescriptions"
+                    _commandExecutionStatus.value = "Commands detected: $commandDescriptions"
                     
                     // Execute the commands
                     for (command in commands) {
@@ -499,13 +499,13 @@ class PhotoReasoningViewModel(
                             ScreenOperatorAccessibilityService.executeCommand(command)
                         } catch (e: Exception) {
                             Log.e(TAG, "Error executing command: ${e.message}", e)
-                            _commandExecutionStatus.value = "Fehler bei der Befehlsausführung: ${e.message}"
+                            _commandExecutionStatus.value = "Error during command execution: ${e.message}"
                         }
                     }
                 }
             } catch (e: Exception) {
                 Log.e(TAG, "Error processing commands: ${e.message}", e)
-                _commandExecutionStatus.value = "Fehler bei der Befehlsverarbeitung: ${e.message}"
+                _commandExecutionStatus.value = "Error during command processing: ${e.message}"
             }
         }
     }
@@ -646,16 +646,16 @@ class PhotoReasoningViewModel(
                 }
                 
                 // Update status
-                _commandExecutionStatus.value = "Verarbeite Screenshot..."
+                _commandExecutionStatus.value = "Processing screenshot..."
                 
                 // Show toast
-                Toast.makeText(context, "Verarbeite Screenshot...", Toast.LENGTH_SHORT).show()
+                Toast.makeText(context, "Processing screenshot...", Toast.LENGTH_SHORT).show()
                 
                 // Create message text with screen information if available
                 val messageText = if (screenInfo != null) {
-                    "Screenshot aufgenommen\n\n$screenInfo"
+                    "Screenshot captured\n\n$screenInfo"
                 } else {
-                    "Screenshot aufgenommen"
+                    "Screenshot captured"
                 }
                 
                 // Add screenshot message to chat history
@@ -690,32 +690,32 @@ class PhotoReasoningViewModel(
                         currentSelectedImages = listOf(bitmap)
                         
                         // Update status
-                        _commandExecutionStatus.value = "Screenshot hinzugefügt, sende an KI..."
+                        _commandExecutionStatus.value = "Screenshot added, sending to AI..."
                         
                         // Show toast
-                        Toast.makeText(context, "Screenshot hinzugefügt, sende an KI...", Toast.LENGTH_SHORT).show()
+                        Toast.makeText(context, "Screenshot added, sending to AI...", Toast.LENGTH_SHORT).show()
                         
                         // Create prompt with screen information if available
                         val prompt = if (screenInfo != null) {
-                            "Analysiere diesen Screenshot. Hier sind die verfügbaren Bildschirmelemente: $screenInfo"
+                            "Analyze this screenshot. Here is the available screen information: $screenInfo"
                         } else {
-                            "Analysiere diesen Screenshot"
+                            "Analyze this screenshot"
                         }
                         
                         // Re-send the query with only the latest screenshot
                         reason(prompt, listOf(bitmap))
                         
                         // Show a toast to indicate the screenshot was added
-                        Toast.makeText(context, "Screenshot zur Konversation hinzugefügt", Toast.LENGTH_SHORT).show()
+                        Toast.makeText(context, "Screenshot added to conversation", Toast.LENGTH_SHORT).show()
                     } else {
                         Log.e(TAG, "Failed to process screenshot: result is not SuccessResult")
-                        _commandExecutionStatus.value = "Fehler bei der Screenshot-Verarbeitung"
-                        Toast.makeText(context, "Fehler bei der Screenshot-Verarbeitung", Toast.LENGTH_SHORT).show()
+                        _commandExecutionStatus.value = "Error processing screenshot"
+                        Toast.makeText(context, "Error processing screenshot", Toast.LENGTH_SHORT).show()
                         
                         // Add error message to chat
                         _chatState.addMessage(
                             PhotoReasoningMessage(
-                                text = "Fehler bei der Screenshot-Verarbeitung",
+                                text = "Error processing screenshot",
                                 participant = PhotoParticipant.ERROR
                             )
                         )
@@ -726,13 +726,13 @@ class PhotoReasoningViewModel(
                     }
                 } catch (e: Exception) {
                     Log.e(TAG, "Error processing screenshot: ${e.message}", e)
-                    _commandExecutionStatus.value = "Fehler bei der Screenshot-Verarbeitung: ${e.message}"
-                    Toast.makeText(context, "Fehler bei der Screenshot-Verarbeitung: ${e.message}", Toast.LENGTH_SHORT).show()
+                    _commandExecutionStatus.value = "Error processing screenshot: ${e.message}"
+                    Toast.makeText(context, "Error processing screenshot: ${e.message}", Toast.LENGTH_SHORT).show()
                     
                     // Add error message to chat
                     _chatState.addMessage(
                         PhotoReasoningMessage(
-                            text = "Fehler bei der Screenshot-Verarbeitung: ${e.message}",
+                            text = "Error processing screenshot: ${e.message}",
                             participant = PhotoParticipant.ERROR
                         )
                     )
@@ -743,8 +743,8 @@ class PhotoReasoningViewModel(
                 }
             } catch (e: Exception) {
                 Log.e(TAG, "Error adding screenshot to conversation: ${e.message}", e)
-                _commandExecutionStatus.value = "Fehler beim Hinzufügen des Screenshots: ${e.message}"
-                Toast.makeText(context, "Fehler beim Hinzufügen des Screenshots: ${e.message}", Toast.LENGTH_SHORT).show()
+                _commandExecutionStatus.value = "Error adding screenshot: ${e.message}"
+                Toast.makeText(context, "Error adding screenshot: ${e.message}", Toast.LENGTH_SHORT).show()
             }
         }
     }

@@ -182,7 +182,7 @@ fun MenuScreen(
                     TextButton(
                         onClick = {
                             if (isTrialExpired) {
-                                Toast.makeText(context, "Bitte abonnieren Sie die App, um fortzufahren.", Toast.LENGTH_LONG).show()
+                                Toast.makeText(context, "Please subscribe to the app to continue.", Toast.LENGTH_LONG).show()
                             } else {
                                 onItemClicked(menuItem.routeId)
                             }
