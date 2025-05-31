@@ -55,6 +55,7 @@ import androidx.compose.runtime.remember // Ensure this is imported if not alrea
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow // Added missing import
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.onFocusChanged // Added import
@@ -81,7 +82,7 @@ import com.google.ai.sample.R
 import com.google.ai.sample.ScreenOperatorAccessibilityService
 import com.google.ai.sample.util.Command
 import com.google.ai.sample.util.UriSaver
-import kotlinx.coroutines.flow.snapshotFlow // Added import for snapshotFlow
+// import kotlinx.coroutines.flow.snapshotFlow // Removed this line
 import kotlinx.coroutines.launch
 import android.util.Log
 
