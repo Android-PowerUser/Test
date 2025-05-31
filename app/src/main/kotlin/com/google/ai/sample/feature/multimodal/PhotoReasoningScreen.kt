@@ -235,7 +235,7 @@ fun PhotoReasoningScreen(
                 .fillMaxWidth()
                 .padding(bottom = 16.dp)
                 // Let the card grow when the text field inside it wants to be bigger
-                .then(if (isSystemMessageExpanded) Modifier.weight(1f, fill = false) else Modifier.wrapContentHeight())
+                .then(if (isSystemMessageExpanded) Modifier.weight(1f, fill = true) else Modifier.wrapContentHeight()) // Changed fill to true
                 .animateContentSize(), // Animate card size changes
             colors = CardDefaults.cardColors(
                 containerColor = MaterialTheme.colorScheme.primaryContainer
@@ -314,7 +314,7 @@ fun PhotoReasoningScreen(
             state = listState,
             modifier = Modifier
                 .fillMaxWidth()
-                .weight(if (isSystemMessageExpanded) 0.5f else 1f) // Adjust weight based on expansion
+                .weight(if (isSystemMessageExpanded) 0.2f else 1f) // Further reduce weight when system message is expanded
         ) {
             items(chatMessages) { message ->
                 when (message.participant) {
