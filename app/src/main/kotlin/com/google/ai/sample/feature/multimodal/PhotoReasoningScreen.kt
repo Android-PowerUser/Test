@@ -6,6 +6,7 @@ import android.graphics.drawable.BitmapDrawable
 import android.net.Uri
 import android.provider.Settings
 import android.widget.Toast // Added for Toast message
+import androidx.activity.compose.BackHandler // Added import
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
@@ -231,6 +232,11 @@ fun PhotoReasoningScreen(
         if (chatMessages.isNotEmpty()) {
             listState.animateScrollToItem(chatMessages.size - 1)
         }
+    }
+
+    // Handle back press to collapse system message field if expanded
+    BackHandler(enabled = isSystemMessageExpanded) {
+        focusManager.clearFocus()
     }
 
     Column(
