@@ -44,11 +44,14 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember // Ensure this is imported if not already
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.onFocusChanged // Added import
+import androidx.compose.animation.animateContentSize // Added import
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
@@ -187,6 +190,7 @@ fun PhotoReasoningScreen(
 ) {
     var userQuestion by rememberSaveable { mutableStateOf("") }
     val imageUris = rememberSaveable(saver = UriSaver()) { mutableStateListOf() }
+    var isSystemMessageExpanded by remember { mutableStateOf(false) } // Added state variable
     val listState = rememberLazyListState()
     val context = LocalContext.current // Get context for Toast
 
@@ -229,8 +233,12 @@ fun PhotoReasoningScreen(
                     placeholder = { Text("Enter a system message here that will be sent with every request") },
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(120.dp),
-                    maxLines = 5,
+                        .onFocusChanged { focusState ->
+                            isSystemMessageExpanded = focusState.isFocused
+                        }
+                        .animateContentSize() // For smooth transition
+                        .height(if (isSystemMessageExpanded) 300.dp else 120.dp), // Dynamic height
+                    maxLines = if (isSystemMessageExpanded) 10 else 5, // Allow more lines when expanded
                     minLines = 3
                 )
             }
