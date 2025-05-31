@@ -17,10 +17,13 @@ import androidx.compose.foundation.layout.fillMaxHeight // Added import
 import androidx.compose.foundation.layout.fillMaxSize // Added import
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.ime // For direct access to ime insets
 import androidx.compose.foundation.layout.imePadding // Added import
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.requiredSize
 import androidx.compose.foundation.layout.wrapContentHeight // Added import
+import androidx.compose.foundation.layout.WindowInsets // Added import
+import androidx.compose.foundation.layout.ExperimentalLayoutApi // Added import
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
@@ -58,6 +61,7 @@ import androidx.compose.ui.focus.onFocusChanged // Added import
 import androidx.compose.animation.animateContentSize // Added import
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalDensity // Added import
 import androidx.compose.ui.platform.LocalFocusManager // Added import
 import androidx.compose.ui.input.pointer.pointerInput // Added import
 import androidx.compose.foundation.gestures.detectTapGestures // Added import
@@ -77,9 +81,11 @@ import com.google.ai.sample.R
 import com.google.ai.sample.ScreenOperatorAccessibilityService
 import com.google.ai.sample.util.Command
 import com.google.ai.sample.util.UriSaver
+import kotlinx.coroutines.flow.snapshotFlow // Added import for snapshotFlow
 import kotlinx.coroutines.launch
 import android.util.Log
 
+@OptIn(ExperimentalLayoutApi::class) // Added OptIn for WindowInsets.ime
 @Composable
 internal fun PhotoReasoningRoute(
     viewModel: PhotoReasoningViewModel = viewModel(factory = GenerativeViewModelFactory)
@@ -197,11 +203,22 @@ fun PhotoReasoningScreen(
 ) {
     var userQuestion by rememberSaveable { mutableStateOf("") }
     val imageUris = rememberSaveable(saver = UriSaver()) { mutableStateListOf() }
-    var isSystemMessageExpanded by remember { mutableStateOf(false) } // Added state variable
+    var isSystemMessageExpanded by remember { mutableStateOf(false) }
     val listState = rememberLazyListState()
-    val context = LocalContext.current // Get context for Toast
+    val context = LocalContext.current
     val defaultHeight = 120.dp
-    val focusManager = LocalFocusManager.current // Added FocusManager
+    val focusManager = LocalFocusManager.current
+
+    var isKeyboardVisible by remember { mutableStateOf(false) }
+    val density = LocalDensity.current
+    val imeInsets = WindowInsets.ime
+
+    LaunchedEffect(imeInsets, density) {
+        snapshotFlow { imeInsets.getBottom(density) }
+            .collect { bottomPadding ->
+                isKeyboardVisible = bottomPadding > 0
+            }
+    }
 
     val pickMedia = rememberLauncherForActivityResult(
         ActivityResultContracts.PickVisualMedia()
@@ -234,9 +251,9 @@ fun PhotoReasoningScreen(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(bottom = 16.dp)
-                // Let the card grow when the text field inside it wants to be bigger
-                .then(if (isSystemMessageExpanded) Modifier.weight(1f, fill = true) else Modifier.wrapContentHeight()) // Changed fill to true
-                .animateContentSize(), // Animate card size changes
+                // Card will now implicitly wrap its content's height.
+                // Removed conditional .weight() and .wrapContentHeight() here.
+                .animateContentSize(),
             colors = CardDefaults.cardColors(
                 containerColor = MaterialTheme.colorScheme.primaryContainer
             )
@@ -260,15 +277,14 @@ fun PhotoReasoningScreen(
                             isSystemMessageExpanded = focusState.isFocused
                         }
                         .animateContentSize() // Animate text field's own size changes
-                        .then(
+                        .height(
                             if (isSystemMessageExpanded) {
-                                // When expanded, try to take all available height within its parent (the Card)
-                                Modifier.fillMaxHeight()
+                                if (isKeyboardVisible) 600.dp else 1000.dp
                             } else {
-                                Modifier.height(defaultHeight)
+                                defaultHeight // e.g., 120.dp
                             }
                         ),
-                    maxLines = if (isSystemMessageExpanded) 20 else 5, // Increased maxLines for expansion
+                    maxLines = if (isSystemMessageExpanded) 50 else 5, // Allow many lines for large fixed heights
                     minLines = 3
                 )
             }
@@ -314,7 +330,7 @@ fun PhotoReasoningScreen(
             state = listState,
             modifier = Modifier
                 .fillMaxWidth()
-                .weight(if (isSystemMessageExpanded) 0.2f else 1f) // Further reduce weight when system message is expanded
+                .weight(1f) // LazyColumn should always take up the remaining space
         ) {
             items(chatMessages) { message ->
                 when (message.participant) {
