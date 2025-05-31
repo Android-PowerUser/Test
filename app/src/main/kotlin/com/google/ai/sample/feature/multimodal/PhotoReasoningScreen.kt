@@ -257,10 +257,10 @@ fun PhotoReasoningScreen(
         Card(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(bottom = 16.dp)
+                .padding(bottom = 16.dp),
                 // Card will now implicitly wrap its content's height.
                 // Removed conditional .weight() and .wrapContentHeight() here.
-                .animateContentSize(),
+                // Also removed .animateContentSize() from Card as requested.
             colors = CardDefaults.cardColors(
                 containerColor = MaterialTheme.colorScheme.primaryContainer
             )
