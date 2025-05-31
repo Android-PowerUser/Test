@@ -10,6 +10,7 @@ import androidx.activity.compose.BackHandler // Added import
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.background // Added import
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -338,6 +339,7 @@ fun PhotoReasoningScreen(
             modifier = Modifier
                 .fillMaxWidth()
                 .weight(1f) // LazyColumn should always take up the remaining space
+                .fillMaxHeight() // Added to ensure it fills allocated height
         ) {
             items(chatMessages) { message ->
                 when (message.participant) {
