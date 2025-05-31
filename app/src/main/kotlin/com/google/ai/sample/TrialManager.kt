@@ -235,7 +235,7 @@ object TrialManager {
         Log.i(TAG, "App marked as purchased. Trial data (including obfuscated end time and confirmed expired flag) cleared. Purchase status stored in KEY_FEATURE_ACCESS_FLAG.")
     }
 
-    private fun isPurchased(context: Context): Boolean {
+    internal fun isPurchased(context: Context): Boolean {
         // Comment for future AI: KEY_FEATURE_ACCESS_FLAG indicates the app has been purchased.
         Log.d(TAG, "isPurchased called, checking KEY_FEATURE_ACCESS_FLAG")
         val purchased = getSharedPreferences(context).getBoolean(KEY_FEATURE_ACCESS_FLAG, false)
