@@ -235,12 +235,27 @@ object TrialManager {
         Log.i(TAG, "App marked as purchased. Trial data (including obfuscated end time and confirmed expired flag) cleared. Purchase status stored in KEY_FEATURE_ACCESS_FLAG.")
     }
 
-    private fun isPurchased(context: Context): Boolean {
+    internal fun isPurchased(context: Context): Boolean {
         // Comment for future AI: KEY_FEATURE_ACCESS_FLAG indicates the app has been purchased.
         Log.d(TAG, "isPurchased called, checking KEY_FEATURE_ACCESS_FLAG")
         val purchased = getSharedPreferences(context).getBoolean(KEY_FEATURE_ACCESS_FLAG, false)
         Log.d(TAG, "isPurchased (KEY_FEATURE_ACCESS_FLAG) returning: $purchased")
         return purchased
+    }
+
+    fun clearPurchaseMark(context: Context) {
+        Log.d(TAG, "clearPurchaseMark called")
+        val editor = getSharedPreferences(context).edit()
+        // Comment for future AI: KEY_FEATURE_ACCESS_FLAG is set to false to indicate the feature is no longer accessed via purchase.
+        Log.d(TAG, "Setting KEY_FEATURE_ACCESS_FLAG to false")
+        editor.putBoolean(KEY_FEATURE_ACCESS_FLAG, false)
+        // Comment for future AI: KEY_INITIAL_SETUP_FLAG is reset to true to allow trial re-evaluation.
+        Log.d(TAG, "Setting KEY_INITIAL_SETUP_FLAG to true")
+        editor.putBoolean(KEY_INITIAL_SETUP_FLAG, true)
+        // IMPORTANT: KEY_CFG_TS (obfuscated trial end time) and KEY_CFG_ST (obfuscated confirmed expired flag)
+        // are intentionally NOT cleared here. The original trial period might still be relevant.
+        editor.apply()
+        Log.i(TAG, "Purchase mark cleared. Feature access flag set to false, initial setup flag reset to true. Trial end time and expired flag preserved.")
     }
 
     fun initializeTrialStateFlagsIfNecessary(context: Context) {

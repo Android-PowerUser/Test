@@ -657,21 +657,52 @@ class MainActivity : ComponentActivity() {
                     }
                 } else {
                     Log.i(TAG, "queryActiveSubscriptions: User has no active subscription for $subscriptionProductId. Re-evaluating trial logic.")
+                    // --- START: MODIFICATION ---
+                    if (TrialManager.isPurchased(this@MainActivity)) {
+                        Log.w(TAG, "queryActiveSubscriptions: No active subscription found by Google Play Billing, but app was previously marked as purchased. Clearing purchase mark.")
+                        TrialManager.clearPurchaseMark(this@MainActivity)
+                    }
+                    // --- END: MODIFICATION ---
                     if (TrialManager.getTrialState(this, null) != TrialManager.TrialState.PURCHASED) {
                         Log.d(TAG, "queryActiveSubscriptions: No active sub, and TrialManager confirms not purchased. Re-evaluating trial state and starting service if needed.")
                         updateTrialState(TrialManager.getTrialState(this, null))
+                        // --- START: MODIFICATION ---
+                        if (currentTrialState == TrialManager.TrialState.EXPIRED_INTERNET_TIME_CONFIRMED) {
+                            Log.i(TAG, "queryActiveSubscriptions: Subscription deactivated (no active sub and trial expired). Showing Toast.")
+                            Toast.makeText(this@MainActivity, "Subscription is deactivated", Toast.LENGTH_LONG).show()
+                        }
+                        // --- END: MODIFICATION ---
                         startTrialServiceIfNeeded()
                     } else {
                          Log.w(TAG, "queryActiveSubscriptions: No active sub from Google, but TrialManager says PURCHASED. This could be due to restored SharedPreferences without active subscription. Re-evaluating trial logic based on no internet time.")
-                         updateTrialState(TrialManager.getTrialState(this, null)) 
+                         updateTrialState(TrialManager.getTrialState(this, null))
+                         // --- START: MODIFICATION ---
+                         if (currentTrialState == TrialManager.TrialState.EXPIRED_INTERNET_TIME_CONFIRMED) {
+                            Log.i(TAG, "queryActiveSubscriptions: Subscription deactivated (no active sub, was purchased, now trial expired). Showing Toast.")
+                            Toast.makeText(this@MainActivity, "Subscription is deactivated", Toast.LENGTH_LONG).show()
+                         }
+                         // --- END: MODIFICATION ---
                          startTrialServiceIfNeeded()
                     }
                 }
             } else {
                 Log.e(TAG, "Failed to query active subscriptions: ${billingResult.debugMessage}")
                 Log.d(TAG, "queryActiveSubscriptions: Query failed. Re-evaluating trial state based on no internet time and starting service if needed.")
+                // --- START: MODIFICATION ---
+                // It's important to also check/clear purchase mark here if query fails but app thought it was purchased
+                if (TrialManager.isPurchased(this@MainActivity)) {
+                    Log.w(TAG, "queryActiveSubscriptions: Failed to query active subscriptions, but app was previously marked as purchased. Clearing purchase mark.")
+                    TrialManager.clearPurchaseMark(this@MainActivity)
+                }
+                // --- END: MODIFICATION ---
                 if (TrialManager.getTrialState(this, null) != TrialManager.TrialState.PURCHASED) {
                     updateTrialState(TrialManager.getTrialState(this, null))
+                    // --- START: MODIFICATION ---
+                    if (currentTrialState == TrialManager.TrialState.EXPIRED_INTERNET_TIME_CONFIRMED) {
+                        Log.i(TAG, "queryActiveSubscriptions: Subscription deactivated (query failed, trial expired). Showing Toast.")
+                        Toast.makeText(this@MainActivity, "Subscription is deactivated", Toast.LENGTH_LONG).show()
+                    }
+                    // --- END: MODIFICATION ---
                     startTrialServiceIfNeeded()
                 }
             }
