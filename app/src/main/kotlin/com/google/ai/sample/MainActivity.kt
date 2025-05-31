@@ -400,7 +400,8 @@ class MainActivity : ComponentActivity() {
                         Log.d(TAG, "MenuScreen onDonationButtonClicked: Initiating subscription purchase.")
                         initiateDonationPurchase()
                     },
-                     isTrialExpired = currentTrialState == TrialManager.TrialState.EXPIRED_INTERNET_TIME_CONFIRMED
+                    isPurchased = (currentTrialState == TrialManager.TrialState.PURCHASED),
+                    isTrialExpired = currentTrialState == TrialManager.TrialState.EXPIRED_INTERNET_TIME_CONFIRMED
                 )
             }
             composable("photo_reasoning") {

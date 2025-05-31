@@ -24,6 +24,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.text.ClickableText
@@ -46,7 +47,8 @@ fun MenuScreen(
     onItemClicked: (String) -> Unit = { },
     onApiKeyButtonClicked: () -> Unit = { },
     onDonationButtonClicked: () -> Unit = { },
-    isTrialExpired: Boolean = false // New parameter to indicate trial status
+    isTrialExpired: Boolean = false, // New parameter to indicate trial status
+    isPurchased: Boolean = false
 ) {
     val context = LocalContext.current
     val menuItems = listOf(
@@ -209,16 +211,25 @@ fun MenuScreen(
                         .fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text(
-                        text = "Support more Features",
-                        style = MaterialTheme.typography.titleMedium,
-                        modifier = Modifier.weight(1f)
-                    )
-                    Button(
-                        onClick = onDonationButtonClicked, // This button should always be active
-                        modifier = Modifier.padding(start = 8.dp)
-                    ) {
-                        Text(text = "Pro (2,90 €/Month)")
+                    if (isPurchased) {
+                        Text(
+                            text = "Thank you for supporting the development! 🎉💛",
+                            style = MaterialTheme.typography.titleMedium,
+                            modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
+                            textAlign = TextAlign.Center
+                        )
+                    } else {
+                        Text(
+                            text = "Support more Features",
+                            style = MaterialTheme.typography.titleMedium,
+                            modifier = Modifier.weight(1f)
+                        )
+                        Button(
+                            onClick = onDonationButtonClicked,
+                            modifier = Modifier.padding(start = 8.dp)
+                        ) {
+                            Text(text = "Pro (2,90 €/Month)")
+                        }
                     }
                 }
             }
@@ -268,13 +279,19 @@ fun MenuScreen(
 @Composable
 fun MenuScreenPreview() {
     // Preview with trial not expired
-    MenuScreen(isTrialExpired = false)
+    MenuScreen(isTrialExpired = false, isPurchased = false)
+}
+
+@Preview(showSystemUi = true)
+@Composable
+fun MenuScreenPurchasedPreview() {
+    MenuScreen(isTrialExpired = false, isPurchased = true)
 }
 
 @Preview(showSystemUi = true)
 @Composable
 fun MenuScreenTrialExpiredPreview() {
     // Preview with trial expired
-    MenuScreen(isTrialExpired = true)
+    MenuScreen(isTrialExpired = true, isPurchased = false)
 }
 
