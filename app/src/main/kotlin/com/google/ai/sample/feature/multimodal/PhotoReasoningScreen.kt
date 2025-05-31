@@ -13,10 +13,14 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight // Added import
+import androidx.compose.foundation.layout.fillMaxSize // Added import
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding // Added import
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.requiredSize
+import androidx.compose.foundation.layout.wrapContentHeight // Added import
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
@@ -54,6 +58,9 @@ import androidx.compose.ui.focus.onFocusChanged // Added import
 import androidx.compose.animation.animateContentSize // Added import
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalFocusManager // Added import
+import androidx.compose.ui.input.pointer.pointerInput // Added import
+import androidx.compose.foundation.gestures.detectTapGestures // Added import
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.tooling.preview.Preview
@@ -193,6 +200,8 @@ fun PhotoReasoningScreen(
     var isSystemMessageExpanded by remember { mutableStateOf(false) } // Added state variable
     val listState = rememberLazyListState()
     val context = LocalContext.current // Get context for Toast
+    val defaultHeight = 120.dp
+    val focusManager = LocalFocusManager.current // Added FocusManager
 
     val pickMedia = rememberLauncherForActivityResult(
         ActivityResultContracts.PickVisualMedia()
@@ -208,12 +217,26 @@ fun PhotoReasoningScreen(
 
     Column(
         modifier = Modifier
-            .padding(all = 16.dp)
+            .fillMaxSize() // Ensure this Column takes full screen
+            .padding(all = 16.dp) // Original padding
+            .imePadding() // This will push content up when keyboard is visible
+            .pointerInput(Unit) { // Add this for click outside
+                detectTapGestures(
+                    onTap = {
+                        if (isSystemMessageExpanded) { // Check if our field is the one that's expanded/focused
+                            focusManager.clearFocus() // This will trigger onFocusChanged for the TextField
+                        }
+                    }
+                )
+            }
     ) {
         Card(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(bottom = 16.dp),
+                .padding(bottom = 16.dp)
+                // Let the card grow when the text field inside it wants to be bigger
+                .then(if (isSystemMessageExpanded) Modifier.weight(1f, fill = false) else Modifier.wrapContentHeight())
+                .animateContentSize(), // Animate card size changes
             colors = CardDefaults.cardColors(
                 containerColor = MaterialTheme.colorScheme.primaryContainer
             )
@@ -236,9 +259,16 @@ fun PhotoReasoningScreen(
                         .onFocusChanged { focusState ->
                             isSystemMessageExpanded = focusState.isFocused
                         }
-                        .animateContentSize() // For smooth transition
-                        .height(if (isSystemMessageExpanded) 300.dp else 120.dp), // Dynamic height
-                    maxLines = if (isSystemMessageExpanded) 10 else 5, // Allow more lines when expanded
+                        .animateContentSize() // Animate text field's own size changes
+                        .then(
+                            if (isSystemMessageExpanded) {
+                                // When expanded, try to take all available height within its parent (the Card)
+                                Modifier.fillMaxHeight()
+                            } else {
+                                Modifier.height(defaultHeight)
+                            }
+                        ),
+                    maxLines = if (isSystemMessageExpanded) 20 else 5, // Increased maxLines for expansion
                     minLines = 3
                 )
             }
@@ -284,7 +314,7 @@ fun PhotoReasoningScreen(
             state = listState,
             modifier = Modifier
                 .fillMaxWidth()
-                .weight(1f)
+                .weight(if (isSystemMessageExpanded) 0.5f else 1f) // Adjust weight based on expansion
         ) {
             items(chatMessages) { message ->
                 when (message.participant) {
