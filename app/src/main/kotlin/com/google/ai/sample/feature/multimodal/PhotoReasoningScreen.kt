@@ -326,9 +326,9 @@ fun PhotoReasoningScreen(
                             text = message.text
                         )
                     }
-                }
-            }
-        }
+                } // Closing brace for 'when'
+            } // Closing brace for 'items' lambda
+        } // Closing brace for 'LazyColumn'
 
         Card(
             modifier = Modifier.fillMaxWidth()
