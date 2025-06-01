@@ -667,10 +667,6 @@ fun PhotoReasoningScreenPreviewWithContent() {
     )
 }
 
-        )
-    }
-}
-
 @Composable
 @Preview(showSystemUi = true)
 fun PhotoReasoningScreenPreviewEmpty() {

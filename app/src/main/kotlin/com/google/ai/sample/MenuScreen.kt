@@ -107,187 +107,188 @@ fun MenuScreen(
             }
         }
 
-        // Model Selection
-        item {
-            Card(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp)
-            ) {
-                Column(
+            // Model Selection
+            item {
+                Card(
                     modifier = Modifier
-                        .padding(all = 16.dp)
                         .fillMaxWidth()
+                        .padding(horizontal = 16.dp)
                 ) {
-                    Text(
-                        text = "Model Selection",
-                        style = MaterialTheme.typography.titleMedium
-                    )
+                    Column(
+                        modifier = Modifier
+                            .padding(all = 16.dp)
+                            .fillMaxWidth()
+                    ) {
+                        Text(
+                            text = "Model Selection",
+                            style = MaterialTheme.typography.titleMedium
+                        )
 
-                    Spacer(modifier = Modifier.height(8.dp))
+                        Spacer(modifier = Modifier.height(8.dp))
 
-                    Text(
-                        text = "Current model: ${selectedModel.displayName}",
-                        style = MaterialTheme.typography.bodyMedium
-                    )
+                        Text(
+                            text = "Current model: ${selectedModel.displayName}",
+                            style = MaterialTheme.typography.bodyMedium
+                        )
 
-                    Spacer(modifier = Modifier.height(8.dp))
+                        Spacer(modifier = Modifier.height(8.dp))
 
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Spacer(modifier = Modifier.weight(1f))
+
+                            Button(
+                                onClick = { expanded = true },
+                                enabled = true // Always enabled
+                            ) {
+                                Text("Change Model")
+                            }
+
+                            DropdownMenu(
+                                expanded = expanded,
+                                onDismissRequest = { expanded = false }
+                            ) {
+                                val orderedModels = listOf(
+                                    ModelOption.GEMINI_FLASH_LITE,
+                                    ModelOption.GEMINI_FLASH,
+                                    ModelOption.GEMINI_FLASH_PREVIEW,
+                                    ModelOption.GEMINI_PRO
+                                )
+
+                                orderedModels.forEach { modelOption ->
+                                    DropdownMenuItem(
+                                        text = { Text(modelOption.displayName) },
+                                        onClick = {
+                                            selectedModel = modelOption
+                                            GenerativeAiViewModelFactory.setModel(modelOption)
+                                            expanded = false
+                                        },
+                                        enabled = true // Always enabled
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Menu Items
+            items(menuItems) { menuItem ->
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp)
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .padding(all = 16.dp)
+                            .fillMaxWidth()
+                    ) {
+                        Text(
+                            text = stringResource(menuItem.titleResId),
+                            style = MaterialTheme.typography.titleMedium
+                        )
+                        Text(
+                            text = stringResource(menuItem.descriptionResId),
+                            style = MaterialTheme.typography.bodyMedium,
+                            modifier = Modifier.padding(top = 8.dp)
+                        )
+                        TextButton(
+                            onClick = {
+                                if (isTrialExpired) {
+                                    Toast.makeText(context, "Please subscribe to the app to continue.", Toast.LENGTH_LONG).show()
+                                } else {
+                                    onItemClicked(menuItem.routeId)
+                                }
+                            },
+                            enabled = !isTrialExpired, // Disable button if trial is expired
+                            modifier = Modifier.align(Alignment.End)
+                        ) {
+                            Text(text = stringResource(R.string.action_try))
+                        }
+                    }
+                }
+            }
+
+            // Donation Button Card (Should always be enabled)
+            item {
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp)
+                ) {
                     Row(
-                        modifier = Modifier.fillMaxWidth(),
+                        modifier = Modifier
+                            .padding(all = 16.dp)
+                            .fillMaxWidth(),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Spacer(modifier = Modifier.weight(1f))
-
-                        Button(
-                            onClick = { expanded = true },
-                            enabled = true // Always enabled
-                        ) {
-                            Text("Change Model")
-                        }
-
-                        DropdownMenu(
-                            expanded = expanded,
-                            onDismissRequest = { expanded = false }
-                        ) {
-                            val orderedModels = listOf(
-                                ModelOption.GEMINI_FLASH_LITE,
-                                ModelOption.GEMINI_FLASH,
-                                ModelOption.GEMINI_FLASH_PREVIEW,
-                                ModelOption.GEMINI_PRO
+                        if (isPurchased) {
+                            Text(
+                                text = "Thank you for supporting the development! 🎉💛",
+                                style = MaterialTheme.typography.titleMedium,
+                                modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
+                                textAlign = TextAlign.Center
                             )
-
-                            orderedModels.forEach { modelOption ->
-                                DropdownMenuItem(
-                                    text = { Text(modelOption.displayName) },
-                                    onClick = {
-                                        selectedModel = modelOption
-                                        GenerativeAiViewModelFactory.setModel(modelOption)
-                                        expanded = false
-                                    },
-                                    enabled = true // Always enabled
-                                )
+                        } else {
+                            Text(
+                                text = "Support more Features",
+                                style = MaterialTheme.typography.titleMedium,
+                                modifier = Modifier.weight(1f)
+                            )
+                            Button(
+                                onClick = onDonationButtonClicked,
+                                modifier = Modifier.padding(start = 8.dp)
+                            ) {
+                                Text(text = "Pro (2,90 €/Month)")
                             }
                         }
                     }
                 }
             }
-        }
 
-        // Menu Items
-        items(menuItems) { menuItem ->
-            Card(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp)
-            ) {
-                Column(
+            item {
+                Card(
                     modifier = Modifier
-                        .padding(all = 16.dp)
                         .fillMaxWidth()
+                        .padding(horizontal = 16.dp)
                 ) {
-                    Text(
-                        text = stringResource(menuItem.titleResId),
-                        style = MaterialTheme.typography.titleMedium
-                    )
-                    Text(
-                        text = stringResource(menuItem.descriptionResId),
-                        style = MaterialTheme.typography.bodyMedium,
-                        modifier = Modifier.padding(top = 8.dp)
-                    )
-                    TextButton(
-                        onClick = {
-                            if (isTrialExpired) {
-                                Toast.makeText(context, "Please subscribe to the app to continue.", Toast.LENGTH_LONG).show()
-                            } else {
-                                onItemClicked(menuItem.routeId)
-                            }
-                        },
-                        enabled = !isTrialExpired, // Disable button if trial is expired
-                        modifier = Modifier.align(Alignment.End)
-                    ) {
-                        Text(text = stringResource(R.string.action_try))
-                    }
-                }
-            }
-        }
+                    val annotatedText = buildAnnotatedString {
+                        append("Screenshots are saved in Pictures/Screenshots and you should delete them afterwards. Google has discontinued free API access to Gemini 2.5 Pro without a deposited billing account. There are rate limits for free use of Gemini models. The less powerful the models are, the more you can use them. The limits range from a maximum of 10 to 30 calls per minute. After each screenshot (every 2-3 seconds) the LLM must respond again. More information is available at ")
 
-        // Donation Button Card (Should always be enabled)
-        item {
-            Card(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp)
-            ) {
-                Row(
-                    modifier = Modifier
-                        .padding(all = 16.dp)
-                        .fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    if (isPurchased) {
-                        Text(
-                            text = "Thank you for supporting the development! 🎉💛",
-                            style = MaterialTheme.typography.titleMedium,
-                            modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
-                            textAlign = TextAlign.Center
-                        )
-                    } else {
-                        Text(
-                            text = "Support more Features",
-                            style = MaterialTheme.typography.titleMedium,
-                            modifier = Modifier.weight(1f)
-                        )
-                        Button(
-                            onClick = onDonationButtonClicked,
-                            modifier = Modifier.padding(start = 8.dp)
-                        ) {
-                            Text(text = "Pro (2,90 €/Month)")
+                        pushStringAnnotation(tag = "URL", annotation = "https://ai.google.dev/gemini-api/docs/rate-limits")
+                        withStyle(style = SpanStyle(color = MaterialTheme.colorScheme.primary, textDecoration = TextDecoration.Underline)) {
+                            append("https://ai.google.dev/gemini-api/docs/rate-limits")
                         }
+                        pop()
                     }
+
+                    val uriHandler = LocalUriHandler.current
+
+                    ClickableText(
+                        text = annotatedText,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(all = 16.dp),
+                        style = MaterialTheme.typography.bodyMedium.copy(
+                            fontSize = 15.sp,
+                            color = MaterialTheme.colorScheme.onSurface
+                        ),
+                        onClick = { offset ->
+                            // Allow clicking links even if trial is expired
+                            annotatedText.getStringAnnotations(tag = "URL", start = offset, end = offset)
+                                .firstOrNull()?.let { annotation ->
+                                    uriHandler.openUri(annotation.item)
+                                }
+                        }
+                    )
                 }
             }
-        }
-
-        item {
-            Card(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp)
-            ) {
-                val annotatedText = buildAnnotatedString {
-                    append("Screenshots are saved in Pictures/Screenshots and you should delete them afterwards. Google has discontinued free API access to Gemini 2.5 Pro without a deposited billing account. There are rate limits for free use of Gemini models. The less powerful the models are, the more you can use them. The limits range from a maximum of 10 to 30 calls per minute. After each screenshot (every 2-3 seconds) the LLM must respond again. More information is available at ")
-
-                    pushStringAnnotation(tag = "URL", annotation = "https://ai.google.dev/gemini-api/docs/rate-limits")
-                    withStyle(style = SpanStyle(color = MaterialTheme.colorScheme.primary, textDecoration = TextDecoration.Underline)) {
-                        append("https://ai.google.dev/gemini-api/docs/rate-limits")
-                    }
-                    pop()
-                }
-
-                val uriHandler = LocalUriHandler.current
-
-                ClickableText(
-                    text = annotatedText,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(all = 16.dp),
-                    style = MaterialTheme.typography.bodyMedium.copy(
-                        fontSize = 15.sp,
-                        color = MaterialTheme.colorScheme.onSurface
-                    ),
-                    onClick = { offset ->
-                        // Allow clicking links even if trial is expired
-                        annotatedText.getStringAnnotations(tag = "URL", start = offset, end = offset)
-                            .firstOrNull()?.let { annotation ->
-                                uriHandler.openUri(annotation.item)
-                            }
-                    }
-                )
-            }
-        }
-    }
-}
+        } // This closing brace is for LazyColumn
+    } // This closing brace is for Scaffold
+} // This closing brace is for MenuScreen composable
 
 @Preview(showSystemUi = true)
 @Composable

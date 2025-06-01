@@ -2,6 +2,7 @@ package com.google.ai.sample.common.ui
 
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.offset
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
