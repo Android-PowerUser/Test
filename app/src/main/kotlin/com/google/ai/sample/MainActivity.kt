@@ -11,9 +11,12 @@ import android.content.SharedPreferences
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
+import android.graphics.Rect
 import android.os.Bundle
 import android.provider.Settings
 import android.util.Log
+import android.view.View
+import android.view.ViewTreeObserver
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -69,6 +72,11 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
+
+    // Keyboard Visibility
+    private val _isKeyboardOpen = MutableStateFlow(false)
+    val isKeyboardOpen: StateFlow<Boolean> = _isKeyboardOpen.asStateFlow()
+    private var onGlobalLayoutListener: ViewTreeObserver.OnGlobalLayoutListener? = null
 
     private var photoReasoningViewModel: PhotoReasoningViewModel? = null
     private lateinit var apiKeyManager: ApiKeyManager
@@ -286,6 +294,26 @@ class MainActivity : ComponentActivity() {
         // Initial check for accessibility service status
         refreshAccessibilityServiceStatus()
 
+        // Keyboard visibility listener
+        val rootView = findViewById<View>(android.R.id.content)
+        onGlobalLayoutListener = ViewTreeObserver.OnGlobalLayoutListener {
+            val rect = Rect()
+            rootView.getWindowVisibleDisplayFrame(rect)
+            val screenHeight = rootView.rootView.height
+            val keypadHeight = screenHeight - rect.bottom
+            if (keypadHeight > screenHeight * 0.15) { // 0.15 ratio is a common threshold
+                if (!_isKeyboardOpen.value) {
+                    _isKeyboardOpen.value = true
+                    Log.d(TAG, "Keyboard visible")
+                }
+            } else {
+                if (_isKeyboardOpen.value) {
+                    _isKeyboardOpen.value = false
+                    Log.d(TAG, "Keyboard hidden")
+                }
+            }
+        }
+        rootView.viewTreeObserver.addOnGlobalLayoutListener(onGlobalLayoutListener)
 
         Log.d(TAG, "onCreate: Calling setContent.")
         setContent {
@@ -751,6 +779,11 @@ class MainActivity : ComponentActivity() {
             Log.d(TAG, "onDestroy: BillingClient is initialized and ready. Ending connection.")
             billingClient.endConnection()
             Log.d(TAG, "onDestroy: BillingClient connection ended.")
+        }
+        // Remove keyboard listener
+        onGlobalLayoutListener?.let {
+            findViewById<View>(android.R.id.content).viewTreeObserver.removeOnGlobalLayoutListener(it)
+            Log.d(TAG, "onDestroy: Keyboard layout listener removed.")
         }
         if (this == instance) {
             instance = null
