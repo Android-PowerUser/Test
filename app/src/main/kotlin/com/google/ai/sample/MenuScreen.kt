@@ -1,8 +1,10 @@
 package com.google.ai.sample
 
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -12,7 +14,9 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -35,6 +39,8 @@ import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.unit.sp
 import android.widget.Toast
+import com.google.ai.sample.common.ui.SharedTopAppBar
+import com.google.ai.sample.ui.theme.GenerativeAISample
 
 data class MenuItem(
     val routeId: String,
@@ -42,6 +48,7 @@ data class MenuItem(
     val descriptionResId: Int
 )
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MenuScreen(
     onItemClicked: (String) -> Unit = { },
@@ -60,19 +67,26 @@ fun MenuScreen(
     var selectedModel by remember { mutableStateOf(currentModel) }
     var expanded by remember { mutableStateOf(false) }
 
-    LazyColumn(
-        Modifier
-            .padding(top = 16.dp, bottom = 16.dp)
-    ) {
-        // API Key Management Button
-        item {
-            Card(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 8.dp)
-            ) {
-                Row(
+    Scaffold(
+        topBar = {
+            SharedTopAppBar()
+        }
+    ) { innerPadding ->
+        LazyColumn(
+            modifier = Modifier
+                .padding(innerPadding)
+                .fillMaxSize(),
+            contentPadding = PaddingValues(vertical = 8.dp)
+        ) {
+            // API Key Management Button
+            item {
+                Card(
                     modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp)
+                ) {
+                    Row(
+                        modifier = Modifier
                         .padding(all = 16.dp)
                         .fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically
@@ -98,7 +112,7 @@ fun MenuScreen(
             Card(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 8.dp)
+                    .padding(horizontal = 16.dp)
             ) {
                 Column(
                     modifier = Modifier
@@ -165,7 +179,7 @@ fun MenuScreen(
             Card(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 8.dp)
+                    .padding(horizontal = 16.dp)
             ) {
                 Column(
                     modifier = Modifier
@@ -203,7 +217,7 @@ fun MenuScreen(
             Card(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 8.dp)
+                    .padding(horizontal = 16.dp)
             ) {
                 Row(
                     modifier = Modifier
@@ -239,7 +253,7 @@ fun MenuScreen(
             Card(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 8.dp)
+                    .padding(horizontal = 16.dp)
             ) {
                 val annotatedText = buildAnnotatedString {
                     append("Screenshots are saved in Pictures/Screenshots and you should delete them afterwards. Google has discontinued free API access to Gemini 2.5 Pro without a deposited billing account. There are rate limits for free use of Gemini models. The less powerful the models are, the more you can use them. The limits range from a maximum of 10 to 30 calls per minute. After each screenshot (every 2-3 seconds) the LLM must respond again. More information is available at ")
@@ -278,20 +292,26 @@ fun MenuScreen(
 @Preview(showSystemUi = true)
 @Composable
 fun MenuScreenPreview() {
-    // Preview with trial not expired
-    MenuScreen(isTrialExpired = false, isPurchased = false)
+    GenerativeAISample {
+        // Preview with trial not expired
+        MenuScreen(isTrialExpired = false, isPurchased = false)
+    }
 }
 
 @Preview(showSystemUi = true)
 @Composable
 fun MenuScreenPurchasedPreview() {
-    MenuScreen(isTrialExpired = false, isPurchased = true)
+    GenerativeAISample {
+        MenuScreen(isTrialExpired = false, isPurchased = true)
+    }
 }
 
 @Preview(showSystemUi = true)
 @Composable
 fun MenuScreenTrialExpiredPreview() {
-    // Preview with trial expired
-    MenuScreen(isTrialExpired = true, isPurchased = false)
+    GenerativeAISample {
+        // Preview with trial expired
+        MenuScreen(isTrialExpired = true, isPurchased = false)
+    }
 }
 

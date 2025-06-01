@@ -14,10 +14,14 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.requiredSize
+import androidx.compose.foundation.layout.statusBars
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
@@ -68,6 +72,7 @@ import com.google.ai.sample.MainActivity
 import coil.size.Precision
 import com.google.ai.sample.R
 import com.google.ai.sample.ScreenOperatorAccessibilityService
+import com.google.ai.sample.ui.theme.GenerativeAISample
 import com.google.ai.sample.util.Command
 import com.google.ai.sample.util.UriSaver
 import kotlinx.coroutines.launch
@@ -217,6 +222,8 @@ fun PhotoReasoningScreen(
 
     Column(
         modifier = Modifier
+            .fillMaxSize()
+            .windowInsetsPadding(WindowInsets.statusBars)
             .padding(all = 16.dp)
     ) {
         Card(
@@ -637,9 +644,10 @@ fun ErrorChatBubble(
 @Preview
 @Composable
 fun PhotoReasoningScreenPreviewWithContent() {
-    PhotoReasoningScreen(
-        uiState = PhotoReasoningUiState.Success("This is a preview of the photo reasoning screen."),
-        commandExecutionStatus = "Command executed: Take screenshot",
+    GenerativeAISample {
+        PhotoReasoningScreen(
+            uiState = PhotoReasoningUiState.Success("This is a preview of the photo reasoning screen."),
+            commandExecutionStatus = "Command executed: Take screenshot",
         detectedCommands = listOf(
             Command.TakeScreenshot,
             Command.ClickButton("OK")
@@ -659,9 +667,15 @@ fun PhotoReasoningScreenPreviewWithContent() {
     )
 }
 
+        )
+    }
+}
+
 @Composable
 @Preview(showSystemUi = true)
 fun PhotoReasoningScreenPreviewEmpty() {
-    PhotoReasoningScreen(isKeyboardOpen = false)
+    GenerativeAISample {
+        PhotoReasoningScreen(isKeyboardOpen = false)
+    }
 }
 
