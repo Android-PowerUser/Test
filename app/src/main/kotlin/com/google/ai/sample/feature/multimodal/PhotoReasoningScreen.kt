@@ -6,6 +6,7 @@ import android.graphics.drawable.BitmapDrawable
 import android.net.Uri
 import android.provider.Settings
 import android.widget.Toast // Added for Toast message
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
@@ -49,9 +50,11 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
@@ -88,6 +91,7 @@ internal fun PhotoReasoningRoute(
 
     // Observe the accessibility service status from MainActivity
     val isAccessibilityServiceEffectivelyEnabled by mainActivity?.isAccessibilityServiceEnabledFlow?.collectAsState() ?: mutableStateOf(false)
+    val isKeyboardOpen by mainActivity?.isKeyboardOpen?.collectAsState() ?: mutableStateOf(false)
 
     // Launcher for opening accessibility settings
     val accessibilitySettingsLauncher = rememberLauncherForActivityResult(
@@ -168,7 +172,8 @@ internal fun PhotoReasoningRoute(
                 val vm = it.getPhotoReasoningViewModel()
                 vm?.clearChatHistory(context)
             }
-        }
+        },
+        isKeyboardOpen = isKeyboardOpen
     )
 }
 
@@ -183,12 +188,20 @@ fun PhotoReasoningScreen(
     onReasonClicked: (String, List<Uri>) -> Unit = { _, _ -> },
     isAccessibilityServiceEnabled: Boolean = false,
     onEnableAccessibilityService: () -> Unit = {},
-    onClearChatHistory: () -> Unit = {}
+    onClearChatHistory: () -> Unit = {},
+    isKeyboardOpen: Boolean
 ) {
     var userQuestion by rememberSaveable { mutableStateOf("") }
     val imageUris = rememberSaveable(saver = UriSaver()) { mutableStateListOf() }
+    var isSystemMessageFocused by rememberSaveable { mutableStateOf(false) }
     val listState = rememberLazyListState()
     val context = LocalContext.current // Get context for Toast
+    val focusManager = LocalFocusManager.current
+
+    BackHandler(enabled = isSystemMessageFocused && !isKeyboardOpen) {
+        focusManager.clearFocus() // Clear focus first
+        isSystemMessageFocused = false // Then update the state that controls height
+    }
 
     val pickMedia = rememberLauncherForActivityResult(
         ActivityResultContracts.PickVisualMedia()
@@ -223,15 +236,23 @@ fun PhotoReasoningScreen(
                     color = MaterialTheme.colorScheme.onPrimaryContainer
                 )
                 Spacer(modifier = Modifier.height(8.dp))
+                val systemMessageHeight = when {
+                    isSystemMessageFocused && isKeyboardOpen -> 450.dp // Changed from 600.dp
+                    isSystemMessageFocused && !isKeyboardOpen -> 1000.dp
+                    else -> 120.dp
+                }
+                val currentMinLines = if (systemMessageHeight == 120.dp) 3 else 1
+                val currentMaxLines = if (systemMessageHeight == 120.dp) 5 else Int.MAX_VALUE
                 OutlinedTextField(
                     value = systemMessage,
                     onValueChange = onSystemMessageChanged,
                     placeholder = { Text("Enter a system message here that will be sent with every request") },
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(120.dp),
-                    maxLines = 5,
-                    minLines = 3
+                        .height(systemMessageHeight)
+                        .onFocusChanged { focusState -> isSystemMessageFocused = focusState.isFocused },
+                    minLines = currentMinLines,
+                    maxLines = currentMaxLines
                 )
             }
         }
@@ -633,13 +654,14 @@ fun PhotoReasoningScreenPreviewWithContent() {
                 text = "I am here to help you. What do you want to know?",
                 participant = PhotoParticipant.MODEL
             )
-        )
+        ),
+        isKeyboardOpen = false
     )
 }
 
 @Composable
 @Preview(showSystemUi = true)
 fun PhotoReasoningScreenPreviewEmpty() {
-    PhotoReasoningScreen()
+    PhotoReasoningScreen(isKeyboardOpen = false)
 }
 
