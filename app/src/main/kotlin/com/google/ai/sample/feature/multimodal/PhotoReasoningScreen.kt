@@ -641,7 +641,6 @@ fun ErrorChatBubble(
     }
 }
 
-/*
 @Preview
 @Composable
 fun PhotoReasoningScreenPreviewWithContent() {
@@ -667,9 +666,7 @@ fun PhotoReasoningScreenPreviewWithContent() {
         isKeyboardOpen = false
     )
 }
-*/
 
-/*
 @Composable
 @Preview(showSystemUi = true)
 fun PhotoReasoningScreenPreviewEmpty() {
@@ -677,4 +674,3 @@ fun PhotoReasoningScreenPreviewEmpty() {
         PhotoReasoningScreen(isKeyboardOpen = false)
     }
 }
-*/

@@ -7,8 +7,10 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.scale // Import for scale
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.font.FontWeight // Import for FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.delay
@@ -45,31 +47,38 @@ fun AnimatedAppTitle(
     Row(modifier = modifier) {
         letters.forEachIndexed { index, letter ->
             var visible by remember { mutableStateOf(false) }
-            val density = LocalDensity.current
 
             val alpha by animateFloatAsState(
                 targetValue = if (visible) 1f else 0f,
-                animationSpec = tween(durationMillis = 500),
+                animationSpec = tween(durationMillis = 500, easing = LinearOutSlowInEasing), // Added easing
                 label = "alpha_anim_${index}"
             )
 
             val offsetY by animateDpAsState(
                 targetValue = if (visible) 0.dp else 20.dp,
-                animationSpec = tween(durationMillis = 500),
+                animationSpec = tween(durationMillis = 500, easing = LinearOutSlowInEasing), // Added easing
                 label = "offsetY_anim_${index}"
             )
 
+            val scale by animateFloatAsState(
+                targetValue = if (visible) 1f else 0.8f, // Scale from 0.8f to 1f
+                animationSpec = tween(durationMillis = 500, easing = LinearOutSlowInEasing), // Added easing
+                label = "scale_anim_${index}"
+            )
+
             LaunchedEffect(key1 = Unit) {
-                delay(index * 100L) // Stagger the animation start for each letter
+                delay(index * 120L) // Slightly increased delay for better effect with scale
                 visible = true
             }
 
             Text(
                 text = letter.toString(),
-                fontSize = 22.sp, // Standard TopAppBar title size
+                fontSize = 22.sp,
+                fontWeight = FontWeight.SemiBold, // Changed to SemiBold
                 color = darkLetterColors[index % darkLetterColors.size],
                 modifier = Modifier
                     .alpha(alpha)
+                    .scale(scale) // Apply scale
                     .offset(y = offsetY)
             )
         }

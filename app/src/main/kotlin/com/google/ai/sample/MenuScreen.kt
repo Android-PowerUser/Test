@@ -285,10 +285,10 @@ fun MenuScreen(
                         }
                     )
                 }
-            }
-        } // This closing brace is for LazyColumn
-    } // This closing brace is for Scaffold
-} // This closing brace is for MenuScreen composable
+            } // This is the end of the last item
+        } // This correctly closes LazyColumn
+    } // This correctly closes Scaffold
+} // This correctly closes MenuScreen
 
 @Preview(showSystemUi = true)
 @Composable
@@ -315,4 +315,3 @@ fun MenuScreenTrialExpiredPreview() {
         MenuScreen(isTrialExpired = true, isPurchased = false)
     }
 }
-
