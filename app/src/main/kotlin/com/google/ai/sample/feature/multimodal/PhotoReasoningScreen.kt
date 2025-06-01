@@ -54,6 +54,7 @@ import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
@@ -195,9 +196,11 @@ fun PhotoReasoningScreen(
     var isSystemMessageFocused by rememberSaveable { mutableStateOf(false) }
     val listState = rememberLazyListState()
     val context = LocalContext.current // Get context for Toast
+    val focusManager = LocalFocusManager.current
 
     BackHandler(enabled = isSystemMessageFocused && !isKeyboardOpen) {
-        isSystemMessageFocused = false
+        focusManager.clearFocus() // Clear focus first
+        isSystemMessageFocused = false // Then update the state that controls height
     }
 
     val pickMedia = rememberLauncherForActivityResult(
@@ -234,10 +237,12 @@ fun PhotoReasoningScreen(
                 )
                 Spacer(modifier = Modifier.height(8.dp))
                 val systemMessageHeight = when {
-                    isSystemMessageFocused && isKeyboardOpen -> 600.dp
+                    isSystemMessageFocused && isKeyboardOpen -> 450.dp // Changed from 600.dp
                     isSystemMessageFocused && !isKeyboardOpen -> 1000.dp
                     else -> 120.dp
                 }
+                val currentMinLines = if (systemMessageHeight == 120.dp) 3 else 1
+                val currentMaxLines = if (systemMessageHeight == 120.dp) 5 else Int.MAX_VALUE
                 OutlinedTextField(
                     value = systemMessage,
                     onValueChange = onSystemMessageChanged,
@@ -246,8 +251,8 @@ fun PhotoReasoningScreen(
                         .fillMaxWidth()
                         .height(systemMessageHeight)
                         .onFocusChanged { focusState -> isSystemMessageFocused = focusState.isFocused },
-                    maxLines = 5,
-                    minLines = 3
+                    minLines = currentMinLines,
+                    maxLines = currentMaxLines
                 )
             }
         }
