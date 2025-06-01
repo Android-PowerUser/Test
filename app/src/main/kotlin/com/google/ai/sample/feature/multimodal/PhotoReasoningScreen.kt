@@ -674,4 +674,3 @@ fun PhotoReasoningScreenPreviewEmpty() {
         PhotoReasoningScreen(isKeyboardOpen = false)
     }
 }
-
