@@ -44,6 +44,7 @@ import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Send
 import androidx.compose.material.icons.outlined.Person
 import androidx.compose.material.icons.rounded.Add
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -282,7 +283,11 @@ fun PhotoReasoningScreen(
                     )
                     Button(
                         onClick = { showDatabaseListPopup = true },
-                        shape = RoundedCornerShape(8.dp)
+                        shape = CircleShape, // More rounded
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = Color.Transparent,
+                            contentColor = MaterialTheme.colorScheme.onPrimaryContainer
+                        )
                     ) {
                         Text("Database")
                     }
@@ -639,58 +644,79 @@ fun DatabaseListPopup(
                     .padding(16.dp)
                     .fillMaxSize()
             ) {
-                Button(
-                    onClick = onNewClicked,
-                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
-                    modifier = Modifier.align(Alignment.CenterHorizontally)
-                ) {
-                    Text("New")
-                }
-                Spacer(modifier = Modifier.height(16.dp))
+                val displayRowCount = 10
 
-                if (entries.isEmpty()) {
-                    Box(
-                        modifier = Modifier.fillMaxSize(),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text("No entries found. Click 'New' to add one.")
-                    }
-                } else {
-                    LazyColumn(modifier = Modifier.weight(1f)) {
-                        itemsIndexed(entries) { index, entry ->
+                LazyColumn(modifier = Modifier.fillMaxSize()) { // Changed to fillMaxSize if it's the only direct child
+                    items(displayRowCount) { index ->
+                        val actualEntryIndex = index - 1 // For accessing `entries` list
+
+                        if (index == 0) {
+                            // Row for "New" button
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .background(if (index % 2 == 0) DarkYellow1 else DarkYellow2)
-                                    .padding(16.dp)
-                                    .clickable { onEntryClicked(entry) },
+                                    .background(DarkYellow1)
+                                    .padding(8.dp), // Adjusted padding
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Text(
-                                    text = entry.title,
-                                    modifier = Modifier.weight(1f),
-                                    color = Color.Black // Ensure text is visible on yellow
-                                )
-                                Box { // Box anchor for the DropdownMenu
-                                    IconButton(onClick = { entryMenuToShow = entry }) {
-                                        Icon(
-                                            Icons.Filled.MoreVert,
-                                            contentDescription = "More options",
-                                            tint = Color.Black // Ensure icon is visible
-                                        )
+                                Button(
+                                    onClick = onNewClicked,
+                                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
+                                    modifier = Modifier.padding(end = 8.dp)
+                                ) {
+                                    Text("New")
+                                }
+                                Text("Add a new system message guide", color = Color.Gray)
+                            }
+                        } else {
+                            // Subsequent rows for entries or empty placeholders
+                            if (actualEntryIndex < entries.size) {
+                                val entry = entries[actualEntryIndex]
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .background(if (actualEntryIndex % 2 == 0) DarkYellow1 else DarkYellow2)
+                                        .padding(16.dp)
+                                        .clickable { onEntryClicked(entry) },
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(
+                                        text = entry.title,
+                                        modifier = Modifier.weight(1f),
+                                        color = Color.Black
+                                    )
+                                    Box { // Box anchor for the DropdownMenu
+                                        IconButton(onClick = { entryMenuToShow = entry }) {
+                                            Icon(
+                                                Icons.Filled.MoreVert,
+                                                contentDescription = "More options",
+                                                tint = Color.Black
+                                            )
+                                        }
+                                        DropdownMenu(
+                                            expanded = entryMenuToShow == entry,
+                                            onDismissRequest = { entryMenuToShow = null }
+                                        ) {
+                                            DropdownMenuItem(
+                                                text = { Text("Delete") },
+                                                onClick = {
+                                                    onDeleteClicked(entry)
+                                                    entryMenuToShow = null
+                                                }
+                                            )
+                                        }
                                     }
-                                    DropdownMenu(
-                                        expanded = entryMenuToShow == entry,
-                                        onDismissRequest = { entryMenuToShow = null }
-                                    ) {
-                                        DropdownMenuItem(
-                                            text = { Text("Delete") },
-                                            onClick = {
-                                                onDeleteClicked(entry)
-                                                entryMenuToShow = null
-                                            }
-                                        )
-                                    }
+                                }
+                            } else {
+                                // Empty styled row
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .height(56.dp) // Adjust height as needed, e.g., to match other rows
+                                        .background(if (actualEntryIndex % 2 == 0) DarkYellow1 else DarkYellow2)
+                                        .padding(16.dp)
+                                ) {
+                                    // Optional: Text("...", color = Color.LightGray.copy(alpha = 0.5f))
                                 }
                             }
                         }
@@ -869,62 +895,68 @@ fun EditEntryPopup(
 ) {
     Dialog(
         onDismissRequest = onDismissRequest,
-        properties = DialogProperties(usePlatformDefaultWidth = false)
+        properties = DialogProperties(usePlatformDefaultWidth = false) // Allows custom sizing
     ) {
         Card(
             modifier = Modifier
-                .fillMaxWidth(0.9f)
-                .fillMaxHeight(0.7f)
-                .background(DarkYellow1) // Use DarkYellow1 for background
-                .padding(16.dp), // Padding inside the card
-            shape = RoundedCornerShape(16.dp)
+                .fillMaxWidth(0.9f)  // Dialog width relative to screen
+                .fillMaxHeight(0.7f) // Dialog height relative to screen
+                .padding(16.dp), // Overall padding *around* the card content, effectively margin from dialog edge
+            shape = RoundedCornerShape(16.dp),
+            colors = CardDefaults.cardColors(containerColor = DarkYellow1) // Set Card's own background
         ) {
             Column(
                 modifier = Modifier
-                    .padding(16.dp) // Inner padding for content
+                    .padding(16.dp) // Padding for the content *inside* the card
                     .fillMaxSize()
             ) {
                 var titleInput by rememberSaveable { mutableStateOf(entry?.title ?: "") }
                 var guideInput by rememberSaveable { mutableStateOf(entry?.guide ?: "") }
 
+                // Title Field
+                Text("Title", style = MaterialTheme.typography.labelMedium, color = Color.Black.copy(alpha = 0.7f)) // Custom label
+                Spacer(modifier = Modifier.height(4.dp))
                 OutlinedTextField(
                     value = titleInput,
                     onValueChange = { titleInput = it },
-                    label = { Text("Title") },
+                    // label = { Text("Title") }, // REMOVE LABEL
                     placeholder = { Text("App/Task", color = Color.Gray) },
                     modifier = Modifier.fillMaxWidth(),
-                    colors = TextFieldDefaults.colors( // For M3 OutlinedTextField
+                    colors = TextFieldDefaults.colors(
                         focusedContainerColor = Color.White,
                         unfocusedContainerColor = Color.White,
                         disabledContainerColor = Color.White,
                         cursorColor = Color.Black, // Ensure cursor is visible
                         focusedTextColor = Color.Black,
                         unfocusedTextColor = Color.Black,
-                        focusedLabelColor = MaterialTheme.colorScheme.primary,
-                        unfocusedLabelColor = Color.Gray
+                        // focusedLabelColor = MaterialTheme.colorScheme.primary, // Not needed without label
+                        // unfocusedLabelColor = Color.Gray // Not needed without label
                     ),
                     singleLine = true
                 )
 
                 Spacer(modifier = Modifier.height(8.dp))
 
+                // Guide Field
+                Text("Guide", style = MaterialTheme.typography.labelMedium, color = Color.Black.copy(alpha = 0.7f)) // Custom label
+                Spacer(modifier = Modifier.height(4.dp))
                 OutlinedTextField(
                     value = guideInput,
                     onValueChange = { guideInput = it },
-                    label = { Text("Guide") },
+                    // label = { Text("Guide") }, // REMOVE LABEL
                     placeholder = { Text("Write a guide for an LLM on how it should perform certain tasks to be successful", color = Color.Gray) },
                     modifier = Modifier
                         .fillMaxWidth()
                         .weight(1f),
-                    colors = TextFieldDefaults.colors( // For M3 OutlinedTextField
+                    colors = TextFieldDefaults.colors(
                         focusedContainerColor = Color.White,
                         unfocusedContainerColor = Color.White,
                         disabledContainerColor = Color.White,
                         cursorColor = Color.Black, // Ensure cursor is visible
                         focusedTextColor = Color.Black,
                         unfocusedTextColor = Color.Black,
-                        focusedLabelColor = MaterialTheme.colorScheme.primary,
-                        unfocusedLabelColor = Color.Gray
+                        // focusedLabelColor = MaterialTheme.colorScheme.primary, // Not needed without label
+                        // unfocusedLabelColor = Color.Gray // Not needed without label
                     ),
                     minLines = 5
                 )
