@@ -19,25 +19,47 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.requiredSize
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.requiredSize
+import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Send
 import androidx.compose.material.icons.outlined.Person
 import androidx.compose.material.icons.rounded.Add
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Divider
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -45,7 +67,9 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.Saver
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -58,6 +82,8 @@ import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import androidx.lifecycle.viewmodel.compose.viewModel
 import coil.ImageLoader
 import coil.compose.AsyncImage
@@ -69,9 +95,15 @@ import coil.size.Precision
 import com.google.ai.sample.R
 import com.google.ai.sample.ScreenOperatorAccessibilityService
 import com.google.ai.sample.util.Command
+import com.google.ai.sample.util.SystemMessageEntry
+import com.google.ai.sample.util.SystemMessageEntryPreferences
 import com.google.ai.sample.util.UriSaver
 import kotlinx.coroutines.launch
 import android.util.Log
+
+// Define Colors
+val DarkYellow1 = Color(0xFFF0A500) // A darker yellow
+val DarkYellow2 = Color(0xFFF3C100) // A slightly lighter dark yellow
 
 @Composable
 internal fun PhotoReasoningRoute(
@@ -194,9 +226,17 @@ fun PhotoReasoningScreen(
     var userQuestion by rememberSaveable { mutableStateOf("") }
     val imageUris = rememberSaveable(saver = UriSaver()) { mutableStateListOf() }
     var isSystemMessageFocused by rememberSaveable { mutableStateOf(false) }
+    var showDatabaseListPopup by rememberSaveable { mutableStateOf(false) }
+    var showEditEntryPopup by rememberSaveable { mutableStateOf(false) }
+    var entryToEdit: SystemMessageEntry? by rememberSaveable(stateSaver = SystemMessageEntrySaver) { mutableStateOf(null) }
     val listState = rememberLazyListState()
-    val context = LocalContext.current // Get context for Toast
+    val context = LocalContext.current
+    var systemMessageEntries by rememberSaveable { mutableStateOf(emptyList<SystemMessageEntry>()) }
     val focusManager = LocalFocusManager.current
+
+    LaunchedEffect(Unit) { // Load entries when the screen is first composed
+        systemMessageEntries = SystemMessageEntryPreferences.loadEntries(context)
+    }
 
     BackHandler(enabled = isSystemMessageFocused && !isKeyboardOpen) {
         focusManager.clearFocus() // Clear focus first
@@ -230,11 +270,23 @@ fun PhotoReasoningScreen(
             Column(
                 modifier = Modifier.padding(16.dp)
             ) {
-                Text(
-                    text = "System Message",
-                    style = MaterialTheme.typography.titleMedium,
-                    color = MaterialTheme.colorScheme.onPrimaryContainer
-                )
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "System Message",
+                        style = MaterialTheme.typography.titleMedium,
+                        color = MaterialTheme.colorScheme.onPrimaryContainer,
+                        modifier = Modifier.weight(1f)
+                    )
+                    Button(
+                        onClick = { showDatabaseListPopup = true },
+                        shape = RoundedCornerShape(8.dp)
+                    ) {
+                        Text("Database")
+                    }
+                }
                 Spacer(modifier = Modifier.height(8.dp))
                 val systemMessageHeight = when {
                     isSystemMessageFocused && isKeyboardOpen -> 450.dp // Changed from 600.dp
@@ -499,6 +551,153 @@ fun PhotoReasoningScreen(
                 }
             }
         }
+
+        if (showDatabaseListPopup) {
+            DatabaseListPopup(
+                onDismissRequest = { showDatabaseListPopup = false },
+                entries = systemMessageEntries,
+                onNewClicked = {
+                    entryToEdit = null // For a new entry
+                    showEditEntryPopup = true
+                    Log.d("PhotoReasoningScreen", "New clicked, opening edit popup")
+                },
+                onEntryClicked = { entry ->
+                    entryToEdit = entry // For editing an existing entry
+                    showEditEntryPopup = true
+                    Log.d("PhotoReasoningScreen", "Entry clicked: ${entry.title}, opening edit popup")
+                },
+                onDeleteClicked = { entry ->
+                    Log.d("PhotoReasoningScreen", "Delete clicked in popup for: ${entry.title}")
+                    SystemMessageEntryPreferences.deleteEntry(context, entry)
+                    systemMessageEntries = SystemMessageEntryPreferences.loadEntries(context) // Refresh list
+                }
+            )
+        }
+
+        if (showEditEntryPopup) {
+            EditEntryPopup(
+                entry = entryToEdit,
+                onDismissRequest = { showEditEntryPopup = false },
+                onSaveClicked = { title, guide, originalEntry ->
+                    val currentEntry = SystemMessageEntry(title.trim(), guide.trim()) // Trim inputs
+                    if (title.isBlank() || guide.isBlank()) { // Basic validation
+                        Toast.makeText(context, "Title and Guide cannot be empty.", Toast.LENGTH_SHORT).show()
+                        return@EditEntryPopup
+                    }
+
+                    if (originalEntry == null) { // New entry
+                        val existingEntry = systemMessageEntries.find { it.title.equals(currentEntry.title, ignoreCase = true) }
+                        if (existingEntry == null) {
+                            SystemMessageEntryPreferences.addEntry(context, currentEntry)
+                            Log.d("PhotoReasoningScreen", "Saved new entry: ${currentEntry.title}")
+                            showEditEntryPopup = false
+                            systemMessageEntries = SystemMessageEntryPreferences.loadEntries(context) // Refresh list
+                        } else {
+                            Toast.makeText(context, "An entry with this title already exists.", Toast.LENGTH_SHORT).show()
+                            return@EditEntryPopup // Prevent adding duplicate and keep popup open
+                        }
+                    } else { // Updating existing entry
+                        val existingEntryWithNewTitle = systemMessageEntries.find { it.title.equals(currentEntry.title, ignoreCase = true) && it.guide != originalEntry.guide }
+                        if (existingEntryWithNewTitle != null && originalEntry.title != currentEntry.title) {
+                            Toast.makeText(context, "Another entry with this new title already exists.", Toast.LENGTH_SHORT).show()
+                            return@EditEntryPopup // Prevent update if new title clashes
+                        }
+                        SystemMessageEntryPreferences.updateEntry(context, originalEntry, currentEntry)
+                        Log.d("PhotoReasoningScreen", "Updated entry: ${originalEntry.title} to ${currentEntry.title}")
+                        showEditEntryPopup = false
+                        systemMessageEntries = SystemMessageEntryPreferences.loadEntries(context) // Refresh list
+                    }
+                }
+            )
+        }
+    }
+}
+
+@Composable
+fun DatabaseListPopup(
+    onDismissRequest: () -> Unit,
+    entries: List<SystemMessageEntry>,
+    onNewClicked: () -> Unit,
+    onEntryClicked: (SystemMessageEntry) -> Unit,
+    onDeleteClicked: (SystemMessageEntry) -> Unit
+) {
+    var entryMenuToShow: SystemMessageEntry? by remember { mutableStateOf(null) }
+
+    Dialog(
+        onDismissRequest = onDismissRequest,
+        properties = DialogProperties(usePlatformDefaultWidth = false)
+    ) {
+        Card( // Using Card for elevation and rounded corners by default
+            modifier = Modifier
+                .fillMaxWidth(0.95f) // Fill 95% of width
+                .fillMaxHeight(0.85f) // Fill 85% of height
+                .padding(16.dp),
+            shape = RoundedCornerShape(16.dp) // Explicitly define shape for consistency
+        ) {
+            Column(
+                modifier = Modifier
+                    .padding(16.dp)
+                    .fillMaxSize()
+            ) {
+                Button(
+                    onClick = onNewClicked,
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
+                    modifier = Modifier.align(Alignment.CenterHorizontally)
+                ) {
+                    Text("New")
+                }
+                Spacer(modifier = Modifier.height(16.dp))
+
+                if (entries.isEmpty()) {
+                    Box(
+                        modifier = Modifier.fillMaxSize(),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text("No entries found. Click 'New' to add one.")
+                    }
+                } else {
+                    LazyColumn(modifier = Modifier.weight(1f)) {
+                        itemsIndexed(entries) { index, entry ->
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .background(if (index % 2 == 0) DarkYellow1 else DarkYellow2)
+                                    .padding(16.dp)
+                                    .clickable { onEntryClicked(entry) },
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = entry.title,
+                                    modifier = Modifier.weight(1f),
+                                    color = Color.Black // Ensure text is visible on yellow
+                                )
+                                Box { // Box anchor for the DropdownMenu
+                                    IconButton(onClick = { entryMenuToShow = entry }) {
+                                        Icon(
+                                            Icons.Filled.MoreVert,
+                                            contentDescription = "More options",
+                                            tint = Color.Black // Ensure icon is visible
+                                        )
+                                    }
+                                    DropdownMenu(
+                                        expanded = entryMenuToShow == entry,
+                                        onDismissRequest = { entryMenuToShow = null }
+                                    ) {
+                                        DropdownMenuItem(
+                                            text = { Text("Delete") },
+                                            onClick = {
+                                                onDeleteClicked(entry)
+                                                entryMenuToShow = null
+                                            }
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -634,34 +833,197 @@ fun ErrorChatBubble(
     }
 }
 
+// Adjusted Preview to avoid issues with LocalContext if SystemMessageEntryPreferences were used directly
 @Preview
 @Composable
 fun PhotoReasoningScreenPreviewWithContent() {
-    PhotoReasoningScreen(
-        uiState = PhotoReasoningUiState.Success("This is a preview of the photo reasoning screen."),
-        commandExecutionStatus = "Command executed: Take screenshot",
-        detectedCommands = listOf(
-            Command.TakeScreenshot,
-            Command.ClickButton("OK")
-        ),
-        systemMessage = "This is a system message for the AI",
-        chatMessages = listOf(
-            PhotoReasoningMessage(
-                text = "Hello, how can I help you?",
-                participant = PhotoParticipant.USER
+    MaterialTheme { // Wrap in MaterialTheme for proper theming
+        PhotoReasoningScreen(
+            uiState = PhotoReasoningUiState.Success("This is a preview of the photo reasoning screen."),
+            commandExecutionStatus = "Command executed: Take screenshot",
+            detectedCommands = listOf(
+                Command.TakeScreenshot,
+                Command.ClickButton("OK")
             ),
-            PhotoReasoningMessage(
-                text = "I am here to help you. What do you want to know?",
-                participant = PhotoParticipant.MODEL
-            )
-        ),
-        isKeyboardOpen = false
-    )
+            systemMessage = "This is a system message for the AI",
+            chatMessages = listOf(
+                PhotoReasoningMessage(
+                    text = "Hello, how can I help you?",
+                    participant = PhotoParticipant.USER
+                ),
+                PhotoReasoningMessage(
+                    text = "I am here to help you. What do you want to know?",
+                    participant = PhotoParticipant.MODEL
+                )
+            ),
+            isKeyboardOpen = false
+        )
+    }
 }
+
+@Composable
+fun EditEntryPopup(
+    entry: SystemMessageEntry?,
+    onDismissRequest: () -> Unit,
+    onSaveClicked: (title: String, guide: String, originalEntry: SystemMessageEntry?) -> Unit
+) {
+    Dialog(
+        onDismissRequest = onDismissRequest,
+        properties = DialogProperties(usePlatformDefaultWidth = false)
+    ) {
+        Card(
+            modifier = Modifier
+                .fillMaxWidth(0.9f)
+                .fillMaxHeight(0.7f)
+                .background(DarkYellow1) // Use DarkYellow1 for background
+                .padding(16.dp), // Padding inside the card
+            shape = RoundedCornerShape(16.dp)
+        ) {
+            Column(
+                modifier = Modifier
+                    .padding(16.dp) // Inner padding for content
+                    .fillMaxSize()
+            ) {
+                var titleInput by rememberSaveable { mutableStateOf(entry?.title ?: "") }
+                var guideInput by rememberSaveable { mutableStateOf(entry?.guide ?: "") }
+
+                OutlinedTextField(
+                    value = titleInput,
+                    onValueChange = { titleInput = it },
+                    label = { Text("Title") },
+                    placeholder = { Text("App/Task", color = Color.Gray) },
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = TextFieldDefaults.colors( // For M3 OutlinedTextField
+                        focusedContainerColor = Color.White,
+                        unfocusedContainerColor = Color.White,
+                        disabledContainerColor = Color.White,
+                        cursorColor = Color.Black, // Ensure cursor is visible
+                        focusedTextColor = Color.Black,
+                        unfocusedTextColor = Color.Black,
+                        focusedLabelColor = MaterialTheme.colorScheme.primary,
+                        unfocusedLabelColor = Color.Gray
+                    ),
+                    singleLine = true
+                )
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                OutlinedTextField(
+                    value = guideInput,
+                    onValueChange = { guideInput = it },
+                    label = { Text("Guide") },
+                    placeholder = { Text("Write a guide for an LLM on how it should perform certain tasks to be successful", color = Color.Gray) },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .weight(1f),
+                    colors = TextFieldDefaults.colors( // For M3 OutlinedTextField
+                        focusedContainerColor = Color.White,
+                        unfocusedContainerColor = Color.White,
+                        disabledContainerColor = Color.White,
+                        cursorColor = Color.Black, // Ensure cursor is visible
+                        focusedTextColor = Color.Black,
+                        unfocusedTextColor = Color.Black,
+                        focusedLabelColor = MaterialTheme.colorScheme.primary,
+                        unfocusedLabelColor = Color.Gray
+                    ),
+                    minLines = 5
+                )
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                Button(
+                    onClick = { onSaveClicked(titleInput, guideInput, entry) },
+                    modifier = Modifier.align(Alignment.End),
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
+                ) {
+                    Text("Save")
+                }
+            }
+        }
+    }
+}
+
+@Preview(showBackground = true, name = "EditEntryPopup New")
+@Composable
+fun EditEntryPopupNewPreview() {
+    MaterialTheme {
+        EditEntryPopup(
+            entry = null,
+            onDismissRequest = {},
+            onSaveClicked = { _, _, _ -> }
+        )
+    }
+}
+
+@Preview(showBackground = true, name = "EditEntryPopup Edit")
+@Composable
+fun EditEntryPopupEditPreview() {
+    MaterialTheme {
+        EditEntryPopup(
+            entry = SystemMessageEntry("Existing Title", "Existing Guide"),
+            onDismissRequest = {},
+            onSaveClicked = { _, _, _ -> }
+        )
+    }
+}
+
+// Saver for SystemMessageEntry
+val SystemMessageEntrySaver = Saver<SystemMessageEntry?, List<String?>>(
+    save = { entry ->
+        if (entry == null) {
+            listOf(null, null)
+        } else {
+            listOf(entry.title, entry.guide)
+        }
+    },
+    restore = { list ->
+        val title = list[0]
+        val guide = list[1]
+        if (title != null && guide != null) {
+            SystemMessageEntry(title, guide)
+        } else {
+            null
+        }
+    }
+)
 
 @Composable
 @Preview(showSystemUi = true)
 fun PhotoReasoningScreenPreviewEmpty() {
-    PhotoReasoningScreen(isKeyboardOpen = false)
+    MaterialTheme { // Wrap in MaterialTheme for proper theming
+        PhotoReasoningScreen(isKeyboardOpen = false)
+    }
+}
+
+@Preview(showBackground = true)
+@Composable
+fun DatabaseListPopupPreview() {
+    MaterialTheme {
+        DatabaseListPopup(
+            onDismissRequest = {},
+            entries = listOf(
+                SystemMessageEntry("Title 1", "Guide for prompt 1"),
+                SystemMessageEntry("Title 2", "Another guide for prompt 2"),
+                SystemMessageEntry("Title 3", "Yet another guide for prompt 3. This one is a bit longer to see how it wraps or truncates if not handled.")
+            ),
+            onNewClicked = {},
+            onEntryClicked = {},
+            onDeleteClicked = {}
+        )
+    }
+}
+
+@Preview(showBackground = true, name = "DatabaseListPopup Empty")
+@Composable
+fun DatabaseListPopupEmptyPreview() {
+    MaterialTheme {
+        DatabaseListPopup(
+            onDismissRequest = {},
+            entries = emptyList(),
+            onNewClicked = {},
+            onEntryClicked = {},
+            onDeleteClicked = {}
+        )
+    }
 }
 
