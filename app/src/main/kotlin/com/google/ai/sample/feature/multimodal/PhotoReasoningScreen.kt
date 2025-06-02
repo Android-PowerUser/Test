@@ -673,4 +673,4 @@ fun PhotoReasoningScreenPreviewEmpty() {
     GenerativeAISample {
         PhotoReasoningScreen(isKeyboardOpen = false)
     }
-}
+} }
