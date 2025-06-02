@@ -150,7 +150,7 @@ internal fun PhotoReasoningRoute(
             viewModel.updateSystemMessage(message, context)
         },
         onReasonClicked = { inputText, selectedItems ->
-            coroutineScope.launch { // Default dispatcher is fine for VM calls
+            coroutineScope.launch { 
                 val bitmaps = selectedItems.mapNotNull {
                     val imageRequest = imageRequestBuilder.data(it).precision(Precision.EXACT).build()
                     try {
@@ -745,9 +745,9 @@ fun DatabaseListPopup(
                     }
                 }
                 Spacer(modifier = Modifier.height(8.dp))
-                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End, verticalAlignment = Alignment.CenterVertically) {
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                     if (selectionModeActive) {
-                        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(end = 8.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
                             Checkbox(
                                 checked = selectAllChecked,
                                 onCheckedChange = { isChecked ->
@@ -758,27 +758,32 @@ fun DatabaseListPopup(
                             )
                             Text("All", color = Color.Black, style = MaterialTheme.typography.bodyMedium)
                         }
+                    } else {
+                        Spacer(modifier = Modifier.width(80.dp)) // Placeholder for alignment
                     }
-                    Button(onClick = { filePickerLauncher.launch("*/*") }, colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary), modifier = Modifier.padding(end = 8.dp)) { Text("Import") }
-                    Button(
-                        onClick = {
-                            if (selectionModeActive) { 
-                                if (selectedEntryTitles.isEmpty()) {
-                                    Toast.makeText(context, "No entries selected for export." as CharSequence, Toast.LENGTH_SHORT).show()
-                                } else {
-                                    val entriesToExport = entries.filter { selectedEntryTitles.contains(it.title) }
-                                    val jsonString = Json.encodeToString(ListSerializer(SystemMessageEntry.serializer()), entriesToExport)
-                                    shareTextFile(context, "system_messages_export.txt", jsonString)
+
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Button(onClick = { filePickerLauncher.launch("*/*") }, colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary), modifier = Modifier.padding(end = 8.dp)) { Text("Import") }
+                        Button(
+                            onClick = {
+                                if (selectionModeActive) { 
+                                    if (selectedEntryTitles.isEmpty()) {
+                                        Toast.makeText(context, "No entries selected for export." as CharSequence, Toast.LENGTH_SHORT).show()
+                                    } else {
+                                        val entriesToExport = entries.filter { selectedEntryTitles.contains(it.title) }
+                                        val jsonString = Json.encodeToString(ListSerializer(SystemMessageEntry.serializer()), entriesToExport)
+                                        shareTextFile(context, "system_messages_export.txt", jsonString)
+                                    }
+                                    selectionModeActive = false
+                                    selectedEntryTitles = emptySet()
+                                    selectAllChecked = false
+                                } else { 
+                                    selectionModeActive = true
                                 }
-                                selectionModeActive = false
-                                selectedEntryTitles = emptySet()
-                                selectAllChecked = false
-                            } else { 
-                                selectionModeActive = true
-                            }
-                        },
-                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
-                    ) { Text(if (selectionModeActive) "Share" else "Export") }
+                            },
+                            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
+                        ) { Text("Export") } // Text is now always "Export"
+                    }
                 }
             }
         }
