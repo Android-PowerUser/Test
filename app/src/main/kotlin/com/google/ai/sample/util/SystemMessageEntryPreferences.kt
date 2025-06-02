@@ -19,7 +19,7 @@ object SystemMessageEntryPreferences {
     fun saveEntries(context: Context, entries: List<SystemMessageEntry>) {
         try {
             val jsonString = Json.encodeToString(ListSerializer(SystemMessageEntry.serializer()), entries)
-            Log.d(TAG, "Saving entries: $jsonString")
+            Log.d(TAG, "Saving ${entries.size} entries. First entry title if exists: ${entries.firstOrNull()?.title}. JSON: $jsonString")
             val editor = getSharedPreferences(context).edit()
             editor.putString(KEY_SYSTEM_MESSAGE_ENTRIES, jsonString)
             editor.apply()
@@ -32,8 +32,10 @@ object SystemMessageEntryPreferences {
         try {
             val jsonString = getSharedPreferences(context).getString(KEY_SYSTEM_MESSAGE_ENTRIES, null)
             if (jsonString != null) {
-                Log.d(TAG, "Loaded entries: $jsonString")
-                return Json.decodeFromString(ListSerializer(SystemMessageEntry.serializer()), jsonString)
+                // Log.d(TAG, "Loaded entries JSON: $jsonString") // Original log, can be verbose
+                val loadedEntries = Json.decodeFromString(ListSerializer(SystemMessageEntry.serializer()), jsonString)
+                Log.d(TAG, "Loaded ${loadedEntries.size} entries. First entry title if exists: ${loadedEntries.firstOrNull()?.title}")
+                return loadedEntries
             }
             Log.d(TAG, "No entries found, returning empty list.")
             return emptyList()
@@ -44,17 +46,20 @@ object SystemMessageEntryPreferences {
     }
 
     fun addEntry(context: Context, entry: SystemMessageEntry) {
+        Log.d(TAG, "Adding entry: ${entry.title}")
         val entries = loadEntries(context).toMutableList()
         entries.add(entry)
         saveEntries(context, entries)
     }
 
     fun updateEntry(context: Context, oldEntry: SystemMessageEntry, newEntry: SystemMessageEntry) {
+        Log.d(TAG, "Updating entry with old title '${oldEntry.title}' to new title '${newEntry.title}'")
         val entries = loadEntries(context).toMutableList()
         val index = entries.indexOfFirst { it.title == oldEntry.title } // Assuming title is unique for now
         if (index != -1) {
             entries[index] = newEntry
             saveEntries(context, entries)
+            Log.i(TAG, "Entry updated successfully: ${newEntry.title}")
         } else {
             Log.w(TAG, "Entry with title '${oldEntry.title}' not found for update.")
             // Optionally, add the new entry if the old one is not found
