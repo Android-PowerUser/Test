@@ -1088,5 +1088,3 @@ fun DatabaseListPopupEmptyPreview() {
         DatabaseListPopup(onDismissRequest = {}, entries = emptyList(), onNewClicked = {}, onEntryClicked = {}, onDeleteClicked = {}, onImportCompleted = {})
     }
 }
-
-[end of app/src/main/kotlin/com/google/ai/sample/feature/multimodal/PhotoReasoningScreen.kt]
