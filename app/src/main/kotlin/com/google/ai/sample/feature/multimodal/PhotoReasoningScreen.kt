@@ -431,7 +431,8 @@ fun DatabaseListPopup(
     onDeleteClicked: (SystemMessageEntry) -> Unit,
     onImportCompleted: () -> Unit // New lambda parameter
 ) {
-    val TAG_IMPORT_PROCESS = "ImportProcess" // Define a TAG for logging
+    val TAG_IMPORT_PROCESS = "ImportProcess"
+    val scope = rememberCoroutineScope() // Added CoroutineScope
     var entryMenuToShow: SystemMessageEntry? by remember { mutableStateOf(null) }
     var selectionModeActive by rememberSaveable { mutableStateOf(false) }
     var selectedEntryTitles by rememberSaveable { mutableStateOf(emptySet<String>()) }
@@ -485,61 +486,103 @@ fun DatabaseListPopup(
             Log.d(TAG_IMPORT_PROCESS, "FilePickerLauncher onResult triggered.")
             if (uri == null) {
                 Log.w(TAG_IMPORT_PROCESS, "URI is null, no file selected or operation cancelled.")
-                Toast.makeText(context, "No file selected.", Toast.LENGTH_SHORT).show()
+                scope.launch(kotlinx.coroutines.Dispatchers.Main) {
+                    Toast.makeText(context, "No file selected.", Toast.LENGTH_SHORT).show()
+                }
                 return@rememberLauncherForActivityResult
             }
 
             Log.i(TAG_IMPORT_PROCESS, "Selected file URI: $uri")
-            Toast.makeText(context, "File selected: $uri. Starting import...", Toast.LENGTH_SHORT).show()
+            scope.launch(kotlinx.coroutines.Dispatchers.Main) {
+                Toast.makeText(context, "File selected: $uri. Starting import...", Toast.LENGTH_SHORT).show()
+            }
 
-            try {
-                Log.d(TAG_IMPORT_PROCESS, "Attempting to open InputStream for URI: $uri")
-                context.contentResolver.openInputStream(uri)?.use { inputStream ->
-                    Log.i(TAG_IMPORT_PROCESS, "InputStream opened successfully. Reading text...")
-                    val jsonString = inputStream.bufferedReader().readText()
-                    Log.i(TAG_IMPORT_PROCESS, "File content read successfully. Size: ${jsonString.length} chars.")
-                    Log.v(TAG_IMPORT_PROCESS, "File content (first 500 chars): ${jsonString.take(500)}")
-
-                    if (jsonString.isBlank()) {
-                        Log.w(TAG_IMPORT_PROCESS, "Imported file is empty.")
-                        Toast.makeText(context, "Imported file is empty.", Toast.LENGTH_LONG).show()
-                        return@use
+            scope.launch(kotlinx.coroutines.Dispatchers.IO) { // Perform file operations on IO dispatcher
+                try {
+                    Log.d(TAG_IMPORT_PROCESS, "Attempting to open InputStream for URI: $uri on thread: ${Thread.currentThread().name}")
+                    
+                    var fileSize = -1L
+                    try {
+                        context.contentResolver.openFileDescriptor(uri, "r")?.use { pfd ->
+                            fileSize = pfd.statSize
+                        }
+                        Log.i(TAG_IMPORT_PROCESS, "Estimated file size: $fileSize bytes.")
+                    } catch (e: Exception) {
+                        Log.w(TAG_IMPORT_PROCESS, "Could not determine file size for URI: $uri. Will proceed without size check.", e)
                     }
 
-                    Log.d(TAG_IMPORT_PROCESS, "Attempting to parse JSON string.")
-                    val parsedEntries = Json.decodeFromString(ListSerializer(SystemMessageEntry.serializer()), jsonString)
-                    Log.i(TAG_IMPORT_PROCESS, "JSON parsed successfully. Found ${parsedEntries.size} entries.")
-
-                    val currentSystemEntries = SystemMessageEntryPreferences.loadEntries(context)
-                    Log.d(TAG_IMPORT_PROCESS, "Current system entries loaded: ${currentSystemEntries.size} entries.")
-                    
-                    skipAllDuplicates = false // Reset for new import
-                    processImportedEntries(
-                        context = context,
-                        imported = parsedEntries,
-                        currentEntries = currentSystemEntries,
-                        onComplete = { summary ->
-                            Log.i(TAG_IMPORT_PROCESS, "processImportedEntries onComplete: $summary")
-                            Toast.makeText(context, summary, Toast.LENGTH_LONG).show()
-                            onImportCompleted()
-                        },
-                        askForOverwrite = { existing, new, remaining ->
-                            Log.d(TAG_IMPORT_PROCESS, "processImportedEntries askForOverwrite for title: '${new.title}'. Remaining: ${remaining.size}")
-                            entryToConfirmOverwrite = Pair(existing, new)
-                            remainingEntriesToImport = remaining
-                        },
-                        shouldSkipAll = { 
-                            Log.d(TAG_IMPORT_PROCESS, "processImportedEntries shouldSkipAll check: $skipAllDuplicates")
-                            skipAllDuplicates 
+                    val MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024 // 10MB limit for example
+                    if (fileSize != -1L && fileSize > MAX_FILE_SIZE_BYTES) {
+                        Log.e(TAG_IMPORT_PROCESS, "File size ($fileSize bytes) exceeds limit of $MAX_FILE_SIZE_BYTES bytes.")
+                        withContext(kotlinx.coroutines.Dispatchers.Main) {
+                            Toast.makeText(context, "File is too large (max 10MB).", Toast.LENGTH_LONG).show()
                         }
-                    )
-                } ?: Log.w(TAG_IMPORT_PROCESS, "ContentResolver.openInputStream returned null for URI: $uri")
-            } catch (e: SerializationException) {
-                Log.e(TAG_IMPORT_PROCESS, "JSON Parsing error for URI: $uri", e)
-                Toast.makeText(context, "Error parsing file: Invalid JSON format.", Toast.LENGTH_LONG).show()
-            } catch (e: Exception) {
-                Log.e(TAG_IMPORT_PROCESS, "Error during file import process for URI: $uri", e)
-                Toast.makeText(context, "Error importing file: ${e.message}", Toast.LENGTH_LONG).show()
+                        return@launch // from coroutine
+                    }
+                     if (fileSize == 0L) { // Check if file is empty
+                         Log.w(TAG_IMPORT_PROCESS, "Imported file is empty (0 bytes).")
+                        withContext(kotlinx.coroutines.Dispatchers.Main) {
+                            Toast.makeText(context, "Imported file is empty.", Toast.LENGTH_LONG).show()
+                        }
+                        return@launch // from coroutine
+                    }
+
+                    context.contentResolver.openInputStream(uri)?.use { inputStream ->
+                        Log.i(TAG_IMPORT_PROCESS, "InputStream opened. Reading text on thread: ${Thread.currentThread().name}")
+                        val jsonString = inputStream.bufferedReader().readText() // This is the potentially long I/O + memory operation
+                        Log.i(TAG_IMPORT_PROCESS, "File content read. Size: ${jsonString.length} chars.")
+                        Log.v(TAG_IMPORT_PROCESS, "File content snippet: ${jsonString.take(500)}")
+
+                        if (jsonString.isBlank()) {
+                            Log.w(TAG_IMPORT_PROCESS, "Imported file content is blank.")
+                            withContext(kotlinx.coroutines.Dispatchers.Main) {
+                                Toast.makeText(context, "Imported file content is blank.", Toast.LENGTH_LONG).show()
+                            }
+                            return@use // from use block
+                        }
+
+                        Log.d(TAG_IMPORT_PROCESS, "Attempting to parse JSON string on thread: ${Thread.currentThread().name}")
+                        val parsedEntries = Json.decodeFromString(ListSerializer(SystemMessageEntry.serializer()), jsonString)
+                        Log.i(TAG_IMPORT_PROCESS, "JSON parsed. Found ${parsedEntries.size} entries.")
+
+                        val currentSystemEntries = SystemMessageEntryPreferences.loadEntries(context) // SharedPreferences, usually fast
+                        Log.d(TAG_IMPORT_PROCESS, "Current system entries loaded: ${currentSystemEntries.size} entries.")
+
+                        withContext(kotlinx.coroutines.Dispatchers.Main) { // Switch to Main for processImportedEntries due to its UI interactions
+                            Log.d(TAG_IMPORT_PROCESS, "Switching to Main thread for processImportedEntries: ${Thread.currentThread().name}")
+                            skipAllDuplicates = false // Reset for new import
+                            processImportedEntries(
+                                context = context,
+                                imported = parsedEntries,
+                                currentEntries = currentSystemEntries,
+                                onComplete = { summary ->
+                                    Log.i(TAG_IMPORT_PROCESS, "processImportedEntries onComplete: $summary")
+                                    Toast.makeText(context, summary, Toast.LENGTH_LONG).show()
+                                    onImportCompleted() 
+                                },
+                                askForOverwrite = { existing, new, remaining ->
+                                    Log.d(TAG_IMPORT_PROCESS, "processImportedEntries askForOverwrite for title: '${new.title}'. Remaining: ${remaining.size}")
+                                    entryToConfirmOverwrite = Pair(existing, new)
+                                    remainingEntriesToImport = remaining
+                                },
+                                shouldSkipAll = { 
+                                    Log.d(TAG_IMPORT_PROCESS, "processImportedEntries shouldSkipAll check: $skipAllDuplicates")
+                                    skipAllDuplicates 
+                                }
+                            )
+                        }
+                    } ?: Log.w(TAG_IMPORT_PROCESS, "ContentResolver.openInputStream returned null for URI: $uri (second check).")
+                } catch (e: Exception) {
+                    Log.e(TAG_IMPORT_PROCESS, "Error during file import for URI: $uri on thread: ${Thread.currentThread().name}", e)
+                    withContext(kotlinx.coroutines.Dispatchers.Main) {
+                        val errorMessage = if (e is OutOfMemoryError) {
+                            "Out of memory. File may be too large or contain too many entries."
+                        } else {
+                            e.message ?: "Unknown error during import."
+                        }
+                        Toast.makeText(context, "Error importing file: $errorMessage", Toast.LENGTH_LONG).show()
+                    }
+                }
             }
         }
     )
@@ -555,10 +598,10 @@ fun DatabaseListPopup(
                 entryToConfirmOverwrite = null
                 val currentSystemEntries = SystemMessageEntryPreferences.loadEntries(context)
                 Log.d(TAG_IMPORT_PROCESS, "Continuing with remaining ${remainingEntriesToImport.size} entries after dialog (Confirm).")
-                processImportedEntries(
-                    context, 
-                    remainingEntriesToImport, 
-                    currentSystemEntries,
+                 processImportedEntries( // Continue with remaining
+                    context,
+                    remainingEntriesToImport,
+                    currentSystemEntries, // Pass the latest entries
                     onComplete = { summary ->
                         Log.i(TAG_IMPORT_PROCESS, "processImportedEntries onComplete: $summary")
                         Toast.makeText(context, summary, Toast.LENGTH_LONG).show()
@@ -577,11 +620,11 @@ fun DatabaseListPopup(
                 entryToConfirmOverwrite = null
                 val currentSystemEntries = SystemMessageEntryPreferences.loadEntries(context)
                 Log.d(TAG_IMPORT_PROCESS, "Continuing with remaining ${remainingEntriesToImport.size} entries after dialog (Deny).")
-                processImportedEntries(
-                    context, 
-                    remainingEntriesToImport, 
-                    currentSystemEntries,
-                     onComplete = { summary ->
+                processImportedEntries( // Continue with remaining
+                    context,
+                    remainingEntriesToImport,
+                    currentSystemEntries, // Pass the latest entries
+                    onComplete = { summary ->
                         Log.i(TAG_IMPORT_PROCESS, "processImportedEntries onComplete: $summary")
                         Toast.makeText(context, summary, Toast.LENGTH_LONG).show()
                         onImportCompleted()
@@ -600,10 +643,10 @@ fun DatabaseListPopup(
                 entryToConfirmOverwrite = null
                 val currentSystemEntries = SystemMessageEntryPreferences.loadEntries(context)
                 Log.d(TAG_IMPORT_PROCESS, "Continuing with remaining ${remainingEntriesToImport.size} entries after dialog (SkipAll).")
-                processImportedEntries(
-                    context, 
-                    remainingEntriesToImport, 
-                    currentSystemEntries,
+                processImportedEntries( // Continue with remaining
+                    context,
+                    remainingEntriesToImport,
+                    currentSystemEntries, // Pass the latest entries
                     onComplete = { summary ->
                         Log.i(TAG_IMPORT_PROCESS, "processImportedEntries onComplete: $summary")
                         Toast.makeText(context, summary, Toast.LENGTH_LONG).show()

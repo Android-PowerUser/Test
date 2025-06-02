@@ -19,7 +19,8 @@ object SystemMessageEntryPreferences {
     fun saveEntries(context: Context, entries: List<SystemMessageEntry>) {
         try {
             val jsonString = Json.encodeToString(ListSerializer(SystemMessageEntry.serializer()), entries)
-            Log.d(TAG, "Saving ${entries.size} entries. First entry title if exists: ${entries.firstOrNull()?.title}. JSON: $jsonString")
+            Log.d(TAG, "Saving ${entries.size} entries. First entry title if exists: ${entries.firstOrNull()?.title}.")
+            // Log.v(TAG, "Saving JSON: $jsonString") // Verbose, uncomment if needed for deep debugging
             val editor = getSharedPreferences(context).edit()
             editor.putString(KEY_SYSTEM_MESSAGE_ENTRIES, jsonString)
             editor.apply()
@@ -32,9 +33,9 @@ object SystemMessageEntryPreferences {
         try {
             val jsonString = getSharedPreferences(context).getString(KEY_SYSTEM_MESSAGE_ENTRIES, null)
             if (jsonString != null) {
-                // Log.d(TAG, "Loaded entries JSON: $jsonString") // Original log, can be verbose
+                // Log.v(TAG, "Loaded JSON: $jsonString") // Verbose
                 val loadedEntries = Json.decodeFromString(ListSerializer(SystemMessageEntry.serializer()), jsonString)
-                Log.d(TAG, "Loaded ${loadedEntries.size} entries. First entry title if exists: ${loadedEntries.firstOrNull()?.title}")
+                Log.d(TAG, "Loaded ${loadedEntries.size} entries. First entry title if exists: ${loadedEntries.firstOrNull()?.title}.")
                 return loadedEntries
             }
             Log.d(TAG, "No entries found, returning empty list.")
@@ -46,22 +47,22 @@ object SystemMessageEntryPreferences {
     }
 
     fun addEntry(context: Context, entry: SystemMessageEntry) {
-        Log.d(TAG, "Adding entry: ${entry.title}")
+        Log.d(TAG, "Adding entry: Title='${entry.title}'")
         val entries = loadEntries(context).toMutableList()
         entries.add(entry)
         saveEntries(context, entries)
     }
 
     fun updateEntry(context: Context, oldEntry: SystemMessageEntry, newEntry: SystemMessageEntry) {
-        Log.d(TAG, "Updating entry with old title '${oldEntry.title}' to new title '${newEntry.title}'")
+        Log.d(TAG, "Updating entry: OldTitle='${oldEntry.title}', NewTitle='${newEntry.title}'")
         val entries = loadEntries(context).toMutableList()
-        val index = entries.indexOfFirst { it.title == oldEntry.title } // Assuming title is unique for now
+        val index = entries.indexOfFirst { it.title == oldEntry.title } 
         if (index != -1) {
             entries[index] = newEntry
             saveEntries(context, entries)
-            Log.i(TAG, "Entry updated successfully: ${newEntry.title}")
+            Log.i(TAG, "Entry updated successfully: NewTitle='${newEntry.title}'")
         } else {
-            Log.w(TAG, "Entry with title '${oldEntry.title}' not found for update.")
+            Log.w(TAG, "Entry with old title '${oldEntry.title}' not found for update.")
             // Optionally, add the new entry if the old one is not found
             // addEntry(context, newEntry)
         }
