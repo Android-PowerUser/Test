@@ -632,91 +632,98 @@ fun DatabaseListPopup(
         onDismissRequest = onDismissRequest,
         properties = DialogProperties(usePlatformDefaultWidth = false)
     ) {
-        Card( // Using Card for elevation and rounded corners by default
+        Card(
             modifier = Modifier
-                .fillMaxWidth(0.95f) // Fill 95% of width
-                .fillMaxHeight(0.85f) // Fill 85% of height
-                .padding(16.dp),
-            shape = RoundedCornerShape(16.dp) // Explicitly define shape for consistency
+                .fillMaxWidth(0.95f) // Fill 95% of screen width
+                .fillMaxHeight(0.85f), // Fill 85% of screen height
+            shape = RoundedCornerShape(16.dp),
+            colors = CardDefaults.cardColors(containerColor = DarkYellow1)
         ) {
             Column(
                 modifier = Modifier
-                    .padding(16.dp)
+                    .padding(16.dp) // Padding for content *inside* the card
                     .fillMaxSize()
             ) {
-                val displayRowCount = 10
+                val displayRowCount = 15
+                val newButtonRowIndex = entries.size // This is the index where the 'New' button row will appear
 
-                LazyColumn(modifier = Modifier.fillMaxSize()) { // Changed to fillMaxSize if it's the only direct child
-                    items(displayRowCount) { index ->
-                        val actualEntryIndex = index - 1 // For accessing `entries` list
+                LazyColumn(modifier = Modifier.weight(1f)) { // Ensure LazyColumn takes available space
+                    items(displayRowCount) { rowIndex ->
+                        val currentAlternatingColor = if (rowIndex % 2 == 0) DarkYellow1 else DarkYellow2
 
-                        if (index == 0) {
-                            // Row for "New" button
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .background(DarkYellow1)
-                                    .padding(8.dp), // Adjusted padding
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Button(
-                                    onClick = onNewClicked,
-                                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
-                                    modifier = Modifier.padding(end = 8.dp)
-                                ) {
-                                    Text("New")
-                                }
-                                Text("Add a new system message guide", color = Color.Gray)
-                            }
-                        } else {
-                            // Subsequent rows for entries or empty placeholders
-                            if (actualEntryIndex < entries.size) {
-                                val entry = entries[actualEntryIndex]
+                        when {
+                            // Case 1: This row is for an actual entry
+                            rowIndex < entries.size -> {
+                                val entry = entries[rowIndex]
                                 Row(
                                     modifier = Modifier
                                         .fillMaxWidth()
-                                        .background(if (actualEntryIndex % 2 == 0) DarkYellow1 else DarkYellow2)
-                                        .padding(16.dp)
+                                        .background(currentAlternatingColor)
+                                        .padding(horizontal = 16.dp, vertical = 8.dp) // Consistent padding
                                         .clickable { onEntryClicked(entry) },
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
                                     Text(
                                         text = entry.title,
                                         modifier = Modifier.weight(1f),
-                                        color = Color.Black
+                                        color = Color.Black,
+                                        style = MaterialTheme.typography.bodyLarge // Slightly larger text for entries
                                     )
-                                    Box { // Box anchor for the DropdownMenu
-                                        IconButton(onClick = { entryMenuToShow = entry }) {
-                                            Icon(
-                                                Icons.Filled.MoreVert,
-                                                contentDescription = "More options",
-                                                tint = Color.Black
-                                            )
+                                    Box { // Anchor for DropdownMenu
+                                        IconButton(onClick = { entryMenuToShow = entry }) { // entryMenuToShow state
+                                            Icon(Icons.Filled.MoreVert, contentDescription = "More options", tint = Color.Black)
                                         }
                                         DropdownMenu(
-                                            expanded = entryMenuToShow == entry,
-                                            onDismissRequest = { entryMenuToShow = null }
+                                            expanded = entryMenuToShow == entry, // entryMenuToShow state
+                                            onDismissRequest = { entryMenuToShow = null } // entryMenuToShow state
                                         ) {
                                             DropdownMenuItem(
                                                 text = { Text("Delete") },
                                                 onClick = {
                                                     onDeleteClicked(entry)
-                                                    entryMenuToShow = null
+                                                    entryMenuToShow = null // entryMenuToShow state
                                                 }
                                             )
                                         }
                                     }
                                 }
-                            } else {
-                                // Empty styled row
+                            }
+
+                            // Case 2: This row is the "New" button row
+                            rowIndex == newButtonRowIndex -> {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .background(currentAlternatingColor)
+                                        .padding(8.dp) // Slightly less vertical padding for button row
+                                        .clickable(onClick = onNewClicked),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Button(
+                                        onClick = onNewClicked,
+                                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
+                                        modifier = Modifier.padding(end = 8.dp)
+                                    ) {
+                                        Text("New")
+                                    }
+                                    Text(
+                                        "Add a new system message guide",
+                                        color = Color.Black.copy(alpha = 0.6f),
+                                        style = MaterialTheme.typography.bodyMedium
+                                    )
+                                }
+                            }
+
+                            // Case 3: This is an empty placeholder row
+                            else -> {
                                 Box(
                                     modifier = Modifier
                                         .fillMaxWidth()
-                                        .height(56.dp) // Adjust height as needed, e.g., to match other rows
-                                        .background(if (actualEntryIndex % 2 == 0) DarkYellow1 else DarkYellow2)
-                                        .padding(16.dp)
+                                        .height(56.dp) // Maintain consistent row height
+                                        .background(currentAlternatingColor)
+                                        .padding(16.dp) // Keep padding for visual consistency
                                 ) {
-                                    // Optional: Text("...", color = Color.LightGray.copy(alpha = 0.5f))
+                                    // Empty, or a very subtle placeholder if desired
                                 }
                             }
                         }
