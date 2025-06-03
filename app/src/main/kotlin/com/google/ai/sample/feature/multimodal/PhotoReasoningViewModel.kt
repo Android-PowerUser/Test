@@ -1,5 +1,6 @@
 package com.google.ai.sample.feature.multimodal
 
+import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.drawable.BitmapDrawable
 import android.net.Uri
@@ -23,6 +24,8 @@ import com.google.ai.sample.util.ChatHistoryPreferences
 import com.google.ai.sample.util.Command
 import com.google.ai.sample.util.CommandParser
 import com.google.ai.sample.util.SystemMessagePreferences
+import com.google.ai.sample.util.SystemMessageEntryPreferences // Added import
+import com.google.ai.sample.util.SystemMessageEntry // Added import
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -444,7 +447,7 @@ class PhotoReasoningViewModel(
     /**
      * Update the system message
      */
-    fun updateSystemMessage(message: String, context: android.content.Context) {
+    fun updateSystemMessage(message: String, context: Context) {
         _systemMessage.value = message
         
         // Save to SharedPreferences for persistence
@@ -454,12 +457,30 @@ class PhotoReasoningViewModel(
     /**
      * Load the system message from SharedPreferences
      */
-    fun loadSystemMessage(context: android.content.Context) {
+    fun loadSystemMessage(context: Context) {
         val message = SystemMessagePreferences.loadSystemMessage(context)
         _systemMessage.value = message
         
         // Also load chat history
         loadChatHistory(context)
+    }
+
+    /**
+     * Helper function to format database entries as text.
+     */
+    private fun formatDatabaseEntriesAsText(context: Context): String {
+        val entries = SystemMessageEntryPreferences.loadEntries(context)
+        if (entries.isEmpty()) {
+            return ""
+        }
+        val builder = StringBuilder()
+        builder.append("Available System Guides:\n---\n")
+        for (entry in entries) {
+            builder.append("Title: ${entry.title}\n")
+            builder.append("Guide: ${entry.guide}\n")
+            builder.append("---\n")
+        }
+        return builder.toString()
     }
     
     /**
@@ -505,7 +526,7 @@ class PhotoReasoningViewModel(
     /**
      * Save chat history to SharedPreferences
      */
-    private fun saveChatHistory(context: android.content.Context?) {
+    private fun saveChatHistory(context: Context?) {
         context?.let {
             ChatHistoryPreferences.saveChatMessages(it, chatMessages)
         }
@@ -514,7 +535,7 @@ class PhotoReasoningViewModel(
     /**
      * Load chat history from SharedPreferences
      */
-    fun loadChatHistory(context: android.content.Context) {
+    fun loadChatHistory(context: Context) {
         val savedMessages = ChatHistoryPreferences.loadChatMessages(context)
         if (savedMessages.isNotEmpty()) {
             _chatState.clearMessages()
@@ -524,22 +545,29 @@ class PhotoReasoningViewModel(
             _chatMessagesFlow.value = chatMessages
             
             // Rebuild the chat history for the AI
-            rebuildChatHistory()
+            rebuildChatHistory(context) // Pass context here
         }
     }
     
     /**
      * Rebuild the chat history for the AI based on the current messages
      */
-    private fun rebuildChatHistory() {
+    private fun rebuildChatHistory(context: Context) { // Added context parameter
         // Convert the current chat messages to Content objects for the chat history
         val history = mutableListOf<Content>()
 
+        // 1. Active System Message
         if (_systemMessage.value.isNotBlank()) {
             history.add(content(role = "user") { text(_systemMessage.value) })
         }
+
+        // 2. Formatted Database Entries
+        val formattedDbEntries = formatDatabaseEntriesAsText(context)
+        if (formattedDbEntries.isNotBlank()) {
+            history.add(content(role = "user") { text(formattedDbEntries) })
+        }
         
-        // Group messages by participant to create proper conversation turns
+        // 3. Group messages by participant to create proper conversation turns
         var currentUserContent = ""
         var currentModelContent = ""
         
@@ -593,23 +621,30 @@ class PhotoReasoningViewModel(
             chat = generativeModel.startChat(
                 history = history
             )
+        } else {
+            // Ensure chat is reset even if history is empty (e.g. only system message was there and it's now blank)
+            chat = generativeModel.startChat(history = emptyList())
         }
     }
     
     /**
      * Clear the chat history
      */
-    fun clearChatHistory(context: android.content.Context? = null) {
+    fun clearChatHistory(context: Context? = null) {
         _chatState.clearMessages()
         _chatMessagesFlow.value = emptyList()
         
-        // Reset the chat with empty history or system message
-        val initialHistory = if (_systemMessage.value.isNotBlank()) {
-            listOf(content(role = "user") { text(_systemMessage.value) })
-        } else {
-            emptyList()
+        val initialHistory = mutableListOf<Content>()
+        if (_systemMessage.value.isNotBlank()) {
+            initialHistory.add(content(role = "user") { text(_systemMessage.value) })
         }
-        chat = generativeModel.startChat(history = initialHistory)
+        context?.let { ctx ->
+            val formattedDbEntries = formatDatabaseEntriesAsText(ctx)
+            if (formattedDbEntries.isNotBlank()) {
+                initialHistory.add(content(role = "user") { text(formattedDbEntries) })
+            }
+        }
+        chat = generativeModel.startChat(history = initialHistory.toList())
         
         // Also clear from SharedPreferences if context is provided
         context?.let {
@@ -626,7 +661,7 @@ class PhotoReasoningViewModel(
      */
     fun addScreenshotToConversation(
         screenshotUri: Uri, 
-        context: android.content.Context,
+        context: Context,
         screenInfo: String? = null
     ) {
         PhotoReasoningApplication.applicationScope.launch(Dispatchers.Main) {
