@@ -77,13 +77,13 @@ object CommandParser {
     // Tap coordinates patterns - expanded to catch more variations
     private val TAP_COORDINATES_PATTERNS = listOf(
         // Standard patterns
-        Regex("(?i)\\b(?:tap|click|press|tippe|klicke|tippe auf|klicke auf) (?:at|on|auf) (?:coordinates?|koordinaten|position|stelle|punkt)[:\\s]\\s*\\(?\\s*(\\d+(?:\\.\\d+)?)\\s*,\\s*(\\d+(?:\\.\\d+)?)\\s*\\)?"),
-        Regex("(?i)\\b(?:tap|click|press|tippe|klicke|tippe auf|klicke auf) (?:at|on|auf) \\(?\\s*(\\d+(?:\\.\\d+)?)\\s*,\\s*(\\d+(?:\\.\\d+)?)\\s*\\)?"),
+        Regex("(?i)\\b(?:tap|click|press|tippe|klicke|tippe auf|klicke auf) (?:at|on|auf) (?:coordinates?|koordinaten|position|stelle|punkt)[:\\s]\\s*\\(?\\s*([\\d\\.%]+)\\s*,\\s*([\\d\\.%]+)\\s*\\)?"),
+        Regex("(?i)\\b(?:tap|click|press|tippe|klicke|tippe auf|klicke auf) (?:at|on|auf) \\(?\\s*([\\d\\.%]+)\\s*,\\s*([\\d\\.%]+)\\s*\\)?"),
 
         // Function-like patterns
-        Regex("(?i)\\btapAtCoordinates\\(\\s*(\\d+(?:\\.\\d+)?)\\s*,\\s*(\\d+(?:\\.\\d+)?)\\s*\\)"),
-        Regex("(?i)\\bclickAtPosition\\(\\s*(\\d+(?:\\.\\d+)?)\\s*,\\s*(\\d+(?:\\.\\d+)?)\\s*\\)"),
-        Regex("(?i)\\btapAt\\(\\s*(\\d+(?:\\.\\d+)?)\\s*,\\s*(\\d+(?:\\.\\d+)?)\\s*\\)")
+        Regex("(?i)\\btapAtCoordinates\\(\\s*([\\d\\.%]+)\\s*,\\s*([\\d\\.%]+)\\s*\\)"),
+        Regex("(?i)\\bclickAtPosition\\(\\s*([\\d\\.%]+)\\s*,\\s*([\\d\\.%]+)\\s*\\)"),
+        Regex("(?i)\\btapAt\\(\\s*([\\d\\.%]+)\\s*,\\s*([\\d\\.%]+)\\s*\\)")
     )
 
     // Screenshot patterns - expanded for consistency
@@ -475,13 +475,14 @@ object CommandParser {
             for (match in matches) {
                 try {
                     if (match.groupValues.size > 2) {
-                        val x = match.groupValues[1].trim().toFloat()
-                        val y = match.groupValues[2].trim().toFloat()
+                        val xString = match.groupValues[1].trim()
+                        val yString = match.groupValues[2].trim()
 
                         // Check if this command is already in the list (avoid duplicates)
-                        if (!commands.any { it is Command.TapCoordinates && it.x == x && it.y == y }) {
-                            Log.d(TAG, "Found tap coordinates command with pattern ${pattern.pattern}: ($x, $y)")
-                            commands.add(Command.TapCoordinates(x, y))
+                        // Note: Comparison now happens with strings directly.
+                        if (!commands.any { it is Command.TapCoordinates && it.x == xString && it.y == yString }) {
+                            Log.d(TAG, "Found tap coordinates command with pattern ${pattern.pattern}: ($xString, $yString)")
+                            commands.add(Command.TapCoordinates(xString, yString))
                         }
                     }
                 } catch (e: Exception) {
@@ -568,19 +569,19 @@ object CommandParser {
      */
     private fun findScrollDownCommands(text: String, commands: MutableList<Command>) {
         // First check for coordinate-based scroll down commands
-        val coordPattern = Regex("(?i)\\bscrollDown\\s*\\(\\s*(\\d+)\\s*,\\s*(\\d+)\\s*,\\s*(\\d+)\\s*,\\s*(\\d+)\\s*\\)")
+        val coordPattern = Regex("(?i)\\bscrollDown\\s*\\(\\s*([\\d\\.%]+)\\s*,\\s*([\\d\\.%]+)\\s*,\\s*(\\d+(?:\\.\\d+)?)\\s*,\\s*(\\d+)\\s*\\)")
         val matches = coordPattern.findAll(text)
 
         for (match in matches) {
             if (match.groupValues.size >= 5) {
                 try {
-                    val x = match.groupValues[1].toFloat()
-                    val y = match.groupValues[2].toFloat()
+                    val xString = match.groupValues[1].trim()
+                    val yString = match.groupValues[2].trim()
                     val distance = match.groupValues[3].toFloat()
                     val duration = match.groupValues[4].toLong()
 
-                    Log.d(TAG, "Found coordinate-based scroll down command: scrollDown($x, $y, $distance, $duration)")
-                    commands.add(Command.ScrollDownFromCoordinates(x, y, distance, duration))
+                    Log.d(TAG, "Found coordinate-based scroll down command: scrollDown($xString, $yString, $distance, $duration)")
+                    commands.add(Command.ScrollDownFromCoordinates(xString, yString, distance, duration))
                 } catch (e: Exception) {
                     Log.e(TAG, "Error parsing coordinate-based scroll down command: ${e.message}")
                 }
@@ -609,19 +610,19 @@ object CommandParser {
      */
     private fun findScrollUpCommands(text: String, commands: MutableList<Command>) {
         // First check for coordinate-based scroll up commands
-        val coordPattern = Regex("(?i)\\bscrollUp\\s*\\(\\s*(\\d+)\\s*,\\s*(\\d+)\\s*,\\s*(\\d+)\\s*,\\s*(\\d+)\\s*\\)")
+        val coordPattern = Regex("(?i)\\bscrollUp\\s*\\(\\s*([\\d\\.%]+)\\s*,\\s*([\\d\\.%]+)\\s*,\\s*(\\d+(?:\\.\\d+)?)\\s*,\\s*(\\d+)\\s*\\)")
         val matches = coordPattern.findAll(text)
 
         for (match in matches) {
             if (match.groupValues.size >= 5) {
                 try {
-                    val x = match.groupValues[1].toFloat()
-                    val y = match.groupValues[2].toFloat()
+                    val xString = match.groupValues[1].trim()
+                    val yString = match.groupValues[2].trim()
                     val distance = match.groupValues[3].toFloat()
                     val duration = match.groupValues[4].toLong()
 
-                    Log.d(TAG, "Found coordinate-based scroll up command: scrollUp($x, $y, $distance, $duration)")
-                    commands.add(Command.ScrollUpFromCoordinates(x, y, distance, duration))
+                    Log.d(TAG, "Found coordinate-based scroll up command: scrollUp($xString, $yString, $distance, $duration)")
+                    commands.add(Command.ScrollUpFromCoordinates(xString, yString, distance, duration))
                 } catch (e: Exception) {
                     Log.e(TAG, "Error parsing coordinate-based scroll up command: ${e.message}")
                 }
@@ -650,19 +651,19 @@ object CommandParser {
      */
     private fun findScrollLeftCommands(text: String, commands: MutableList<Command>) {
         // First check for coordinate-based scroll left commands
-        val coordPattern = Regex("(?i)\\bscrollLeft\\s*\\(\\s*(\\d+)\\s*,\\s*(\\d+)\\s*,\\s*(\\d+)\\s*,\\s*(\\d+)\\s*\\)")
+        val coordPattern = Regex("(?i)\\bscrollLeft\\s*\\(\\s*([\\d\\.%]+)\\s*,\\s*([\\d\\.%]+)\\s*,\\s*(\\d+(?:\\.\\d+)?)\\s*,\\s*(\\d+)\\s*\\)")
         val matches = coordPattern.findAll(text)
 
         for (match in matches) {
             if (match.groupValues.size >= 5) {
                 try {
-                    val x = match.groupValues[1].toFloat()
-                    val y = match.groupValues[2].toFloat()
+                    val xString = match.groupValues[1].trim()
+                    val yString = match.groupValues[2].trim()
                     val distance = match.groupValues[3].toFloat()
                     val duration = match.groupValues[4].toLong()
 
-                    Log.d(TAG, "Found coordinate-based scroll left command: scrollLeft($x, $y, $distance, $duration)")
-                    commands.add(Command.ScrollLeftFromCoordinates(x, y, distance, duration))
+                    Log.d(TAG, "Found coordinate-based scroll left command: scrollLeft($xString, $yString, $distance, $duration)")
+                    commands.add(Command.ScrollLeftFromCoordinates(xString, yString, distance, duration))
                 } catch (e: Exception) {
                     Log.e(TAG, "Error parsing coordinate-based scroll left command: ${e.message}")
                 }
@@ -691,19 +692,19 @@ object CommandParser {
      */
     private fun findScrollRightCommands(text: String, commands: MutableList<Command>) {
         // First check for coordinate-based scroll right commands
-        val coordPattern = Regex("(?i)\\bscrollRight\\s*\\(\\s*(\\d+)\\s*,\\s*(\\d+)\\s*,\\s*(\\d+)\\s*,\\s*(\\d+)\\s*\\)")
+        val coordPattern = Regex("(?i)\\bscrollRight\\s*\\(\\s*([\\d\\.%]+)\\s*,\\s*([\\d\\.%]+)\\s*,\\s*(\\d+(?:\\.\\d+)?)\\s*,\\s*(\\d+)\\s*\\)")
         val matches = coordPattern.findAll(text)
 
         for (match in matches) {
             if (match.groupValues.size >= 5) {
                 try {
-                    val x = match.groupValues[1].toFloat()
-                    val y = match.groupValues[2].toFloat()
+                    val xString = match.groupValues[1].trim()
+                    val yString = match.groupValues[2].trim()
                     val distance = match.groupValues[3].toFloat()
                     val duration = match.groupValues[4].toLong()
 
-                    Log.d(TAG, "Found coordinate-based scroll right command: scrollRight($x, $y, $distance, $duration)")
-                    commands.add(Command.ScrollRightFromCoordinates(x, y, distance, duration))
+                    Log.d(TAG, "Found coordinate-based scroll right command: scrollRight($xString, $yString, $distance, $duration)")
+                    commands.add(Command.ScrollRightFromCoordinates(xString, yString, distance, duration))
                 } catch (e: Exception) {
                     Log.e(TAG, "Error parsing coordinate-based scroll right command: ${e.message}")
                 }
@@ -796,7 +797,7 @@ sealed class Command {
     /**
      * Command to tap at the specified coordinates
      */
-    data class TapCoordinates(val x: Float, val y: Float) : Command()
+    data class TapCoordinates(val x: String, val y: String) : Command()
 
     /**
      * Command to take a screenshot
@@ -846,22 +847,22 @@ sealed class Command {
     /**
      * Command to scroll down from specific coordinates with custom distance and duration
      */
-    data class ScrollDownFromCoordinates(val x: Float, val y: Float, val distance: Float, val duration: Long) : Command()
+    data class ScrollDownFromCoordinates(val x: String, val y: String, val distance: Float, val duration: Long) : Command()
 
     /**
      * Command to scroll up from specific coordinates with custom distance and duration
      */
-    data class ScrollUpFromCoordinates(val x: Float, val y: Float, val distance: Float, val duration: Long) : Command()
+    data class ScrollUpFromCoordinates(val x: String, val y: String, val distance: Float, val duration: Long) : Command()
 
     /**
      * Command to scroll left from specific coordinates with custom distance and duration
      */
-    data class ScrollLeftFromCoordinates(val x: Float, val y: Float, val distance: Float, val duration: Long) : Command()
+    data class ScrollLeftFromCoordinates(val x: String, val y: String, val distance: Float, val duration: Long) : Command()
 
     /**
      * Command to scroll right from specific coordinates with custom distance and duration
      */
-    data class ScrollRightFromCoordinates(val x: Float, val y: Float, val distance: Float, val duration: Long) : Command()
+    data class ScrollRightFromCoordinates(val x: String, val y: String, val distance: Float, val duration: Long) : Command()
 
     /**
      * Command to open an app by package name

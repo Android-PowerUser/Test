@@ -32,6 +32,7 @@ import com.google.ai.sample.GenerativeViewModelFactory
 import java.util.Date
 import java.util.Locale
 import java.util.concurrent.atomic.AtomicBoolean
+import java.lang.NumberFormatException
 
 class ScreenOperatorAccessibilityService : AccessibilityService() {
     companion object {
@@ -97,6 +98,10 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
                 showToast("Accessibility Service is not available. Please enable the service in settings.", true)
                 return
             }
+
+            val displayMetrics = serviceInstance!!.resources.displayMetrics
+            val screenWidth = displayMetrics.widthPixels
+            val screenHeight = displayMetrics.heightPixels
             
             // Execute the command
             when (command) {
@@ -106,9 +111,11 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
                     serviceInstance?.findAndClickButtonByText(command.buttonText)
                 }
                 is Command.TapCoordinates -> {
-                    Log.d(TAG, "Tapping at coordinates: (${command.x}, ${command.y})")
-                    showToast("Trying to tap coordinates: (${command.x}, ${command.y})", false)
-                    serviceInstance?.tapAtCoordinates(command.x, command.y)
+                    val xPx = serviceInstance!!.convertCoordinate(command.x, screenWidth)
+                    val yPx = serviceInstance!!.convertCoordinate(command.y, screenHeight)
+                    Log.d(TAG, "Tapping at coordinates: (${command.x} -> $xPx, ${command.y} -> $yPx)")
+                    showToast("Trying to tap coordinates: ($xPx, $yPx)", false)
+                    serviceInstance?.tapAtCoordinates(xPx, yPx)
                 }
                 is Command.TakeScreenshot -> {
                     Log.d(TAG, "Taking screenshot with 850ms delay")
@@ -154,24 +161,32 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
                     serviceInstance?.scrollRight()
                 }
                 is Command.ScrollDownFromCoordinates -> {
-                    Log.d(TAG, "Scrolling down from coordinates (${command.x}, ${command.y}) with distance ${command.distance} and duration ${command.duration}ms")
-                    showToast("Trying to scroll down from position (${command.x}, ${command.y})", false)
-                    serviceInstance?.scrollDown(command.x, command.y, command.distance, command.duration)
+                    val xPx = serviceInstance!!.convertCoordinate(command.x, screenWidth)
+                    val yPx = serviceInstance!!.convertCoordinate(command.y, screenHeight)
+                    Log.d(TAG, "Scrolling down from coordinates (${command.x} -> $xPx, ${command.y} -> $yPx) with distance ${command.distance} and duration ${command.duration}ms")
+                    showToast("Trying to scroll down from position ($xPx, $yPx)", false)
+                    serviceInstance?.scrollDown(xPx, yPx, command.distance, command.duration)
                 }
                 is Command.ScrollUpFromCoordinates -> {
-                    Log.d(TAG, "Scrolling up from coordinates (${command.x}, ${command.y}) with distance ${command.distance} and duration ${command.duration}ms")
-                    showToast("Trying to scroll up from position (${command.x}, ${command.y})", false)
-                    serviceInstance?.scrollUp(command.x, command.y, command.distance, command.duration)
+                    val xPx = serviceInstance!!.convertCoordinate(command.x, screenWidth)
+                    val yPx = serviceInstance!!.convertCoordinate(command.y, screenHeight)
+                    Log.d(TAG, "Scrolling up from coordinates (${command.x} -> $xPx, ${command.y} -> $yPx) with distance ${command.distance} and duration ${command.duration}ms")
+                    showToast("Trying to scroll up from position ($xPx, $yPx)", false)
+                    serviceInstance?.scrollUp(xPx, yPx, command.distance, command.duration)
                 }
                 is Command.ScrollLeftFromCoordinates -> {
-                    Log.d(TAG, "Scrolling left from coordinates (${command.x}, ${command.y}) with distance ${command.distance} and duration ${command.duration}ms")
-                    showToast("Trying to scroll left from position (${command.x}, ${command.y})", false)
-                    serviceInstance?.scrollLeft(command.x, command.y, command.distance, command.duration)
+                    val xPx = serviceInstance!!.convertCoordinate(command.x, screenWidth)
+                    val yPx = serviceInstance!!.convertCoordinate(command.y, screenHeight)
+                    Log.d(TAG, "Scrolling left from coordinates (${command.x} -> $xPx, ${command.y} -> $yPx) with distance ${command.distance} and duration ${command.duration}ms")
+                    showToast("Trying to scroll left from position ($xPx, $yPx)", false)
+                    serviceInstance?.scrollLeft(xPx, yPx, command.distance, command.duration)
                 }
                 is Command.ScrollRightFromCoordinates -> {
-                    Log.d(TAG, "Scrolling right from coordinates (${command.x}, ${command.y}) with distance ${command.distance} and duration ${command.duration}ms")
-                    showToast("Trying to scroll right from position (${command.x}, ${command.y})", false)
-                    serviceInstance?.scrollRight(command.x, command.y, command.distance, command.duration)
+                    val xPx = serviceInstance!!.convertCoordinate(command.x, screenWidth)
+                    val yPx = serviceInstance!!.convertCoordinate(command.y, screenHeight)
+                    Log.d(TAG, "Scrolling right from coordinates (${command.x} -> $xPx, ${command.y} -> $yPx) with distance ${command.distance} and duration ${command.duration}ms")
+                    showToast("Trying to scroll right from position ($xPx, $yPx)", false)
+                    serviceInstance?.scrollRight(xPx, yPx, command.distance, command.duration)
                 }
                 is Command.OpenApp -> {
                     Log.d(TAG, "Opening app: ${command.packageName}")
@@ -255,6 +270,25 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
         
         // Show a toast to indicate the service is connected
         showToast("Accessibility Service is enabled and connected", false)
+    }
+
+    private fun convertCoordinate(coordinateString: String, screenSize: Int): Float {
+        return try {
+            if (coordinateString.endsWith("%")) {
+                val numericValue = coordinateString.removeSuffix("%").toFloat()
+                (numericValue / 100.0f) * screenSize
+            } else {
+                coordinateString.toFloat()
+            }
+        } catch (e: NumberFormatException) {
+            Log.e(TAG, "Error converting coordinate string: '$coordinateString'", e)
+            showToast("Error parsing coordinate: '$coordinateString'. Using 0f.", true)
+            0f // Default to 0f or handle error as appropriate
+        } catch (e: Exception) {
+            Log.e(TAG, "Unexpected error converting coordinate string: '$coordinateString'", e)
+            showToast("Unexpected error parsing coordinate: '$coordinateString'. Using 0f.", true)
+            0f // Default to 0f or handle error as appropriate
+        }
     }
     
     override fun onInterrupt() {
