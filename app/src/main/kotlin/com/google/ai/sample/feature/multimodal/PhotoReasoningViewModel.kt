@@ -90,15 +90,7 @@ class PhotoReasoningViewModel(
     ) {
         _uiState.value = PhotoReasoningUiState.Loading
         
-        // Get the system message
-        val systemMessageText = _systemMessage.value
-
-        // Create the prompt with system message if available
-        val prompt = if (systemMessageText.isNotBlank()) {
-            "System Message: $systemMessageText\n\nFOLLOW THE INSTRUCTIONS STRICTLY: $userInput"
-        } else {
-            "FOLLOW THE INSTRUCTIONS STRICTLY: $userInput"
-        }
+        val prompt = "FOLLOW THE INSTRUCTIONS STRICTLY: $userInput"
         
         // Store the current user input and selected images
         currentUserInput = userInput
@@ -542,6 +534,10 @@ class PhotoReasoningViewModel(
     private fun rebuildChatHistory() {
         // Convert the current chat messages to Content objects for the chat history
         val history = mutableListOf<Content>()
+
+        if (_systemMessage.value.isNotBlank()) {
+            history.add(content(role = "user") { text(_systemMessage.value) })
+        }
         
         // Group messages by participant to create proper conversation turns
         var currentUserContent = ""
@@ -607,10 +603,13 @@ class PhotoReasoningViewModel(
         _chatState.clearMessages()
         _chatMessagesFlow.value = emptyList()
         
-        // Reset the chat with empty history
-        chat = generativeModel.startChat(
-            history = emptyList()
-        )
+        // Reset the chat with empty history or system message
+        val initialHistory = if (_systemMessage.value.isNotBlank()) {
+            listOf(content(role = "user") { text(_systemMessage.value) })
+        } else {
+            emptyList()
+        }
+        chat = generativeModel.startChat(history = initialHistory)
         
         // Also clear from SharedPreferences if context is provided
         context?.let {
