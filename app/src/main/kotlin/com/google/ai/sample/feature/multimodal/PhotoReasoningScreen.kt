@@ -95,10 +95,12 @@ import com.google.ai.sample.util.Command
 import com.google.ai.sample.util.SystemMessageEntry
 import com.google.ai.sample.util.SystemMessageEntryPreferences
 import com.google.ai.sample.util.UriSaver
-import com.google.ai.sample.util.shareTextFile // Added for sharing
+import com.google.ai.sample.util.shareTextFile
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
-import kotlinx.serialization.builtins.ListSerializer // Added for JSON
-import kotlinx.serialization.json.Json // Added for JSON
+import kotlinx.coroutines.withContext
+import kotlinx.serialization.builtins.ListSerializer
+import kotlinx.serialization.json.Json 
 import android.util.Log
 import kotlinx.serialization.SerializationException
 
@@ -148,7 +150,7 @@ internal fun PhotoReasoningRoute(
             viewModel.updateSystemMessage(message, context)
         },
         onReasonClicked = { inputText, selectedItems ->
-            coroutineScope.launch {
+            coroutineScope.launch { 
                 val bitmaps = selectedItems.mapNotNull {
                     val imageRequest = imageRequestBuilder.data(it).precision(Precision.EXACT).build()
                     try {
@@ -205,7 +207,7 @@ fun PhotoReasoningScreen(
     LaunchedEffect(Unit) { 
         systemMessageEntries = SystemMessageEntryPreferences.loadEntries(context)
     }
-     LaunchedEffect(showDatabaseListPopup) { // Reload entries when database popup becomes visible
+     LaunchedEffect(showDatabaseListPopup) { 
         if (showDatabaseListPopup) {
             systemMessageEntries = SystemMessageEntryPreferences.loadEntries(context)
         }
@@ -283,7 +285,7 @@ fun PhotoReasoningScreen(
                     Spacer(modifier = Modifier.height(8.dp))
                     TextButton(onClick = {
                         onEnableAccessibilityService()
-                        Toast.makeText(context, "Open Accessibility Settings...", Toast.LENGTH_SHORT).show()
+                        Toast.makeText(context, "Open Accessibility Settings..." as CharSequence, Toast.LENGTH_SHORT).show()
                     }) { Text("Activate Accessibility Service") }
                 }
             }
@@ -324,7 +326,7 @@ fun PhotoReasoningScreen(
                         }
                     } else {
                         onEnableAccessibilityService()
-                        Toast.makeText(context, "Enable the Accessibility service for Screen Operator", Toast.LENGTH_LONG).show()
+                        Toast.makeText(context, "Enable the Accessibility service for Screen Operator" as CharSequence, Toast.LENGTH_LONG).show()
                     }
                 }, modifier = Modifier.padding(all = 4.dp).align(Alignment.CenterVertically)) {
                     Icon(Icons.Default.Send, stringResource(R.string.action_go), tint = MaterialTheme.colorScheme.primary)
@@ -354,7 +356,6 @@ fun PhotoReasoningScreen(
                             is Command.ClickButton -> "Click on button: \"${command.buttonText}\""
                             is Command.TapCoordinates -> "Tap coordinates: (${command.x}, ${command.y})"
                             is Command.TakeScreenshot -> "Take screenshot"
-                            // ... (other command types) ...
                             else -> command::class.simpleName ?: "Unknown Command"
                         }
                         Text("${index + 1}. $commandText", color = MaterialTheme.colorScheme.onTertiaryContainer)
@@ -380,7 +381,7 @@ fun PhotoReasoningScreen(
                     SystemMessageEntryPreferences.deleteEntry(context, entry)
                     systemMessageEntries = SystemMessageEntryPreferences.loadEntries(context) 
                 },
-                onImportCompleted = { // Add this new lambda
+                onImportCompleted = { 
                     systemMessageEntries = SystemMessageEntryPreferences.loadEntries(context)
                 }
             )
@@ -393,7 +394,7 @@ fun PhotoReasoningScreen(
                 onSaveClicked = { title, guide, originalEntry ->
                     val currentEntry = SystemMessageEntry(title.trim(), guide.trim()) 
                     if (title.isBlank() || guide.isBlank()) { 
-                        Toast.makeText(context, "Title and Guide cannot be empty.", Toast.LENGTH_SHORT).show()
+                        Toast.makeText(context, "Title and Guide cannot be empty." as CharSequence, Toast.LENGTH_SHORT).show()
                         return@EditEntryPopup
                     }
                     if (originalEntry == null) { 
@@ -403,13 +404,13 @@ fun PhotoReasoningScreen(
                             showEditEntryPopup = false
                             systemMessageEntries = SystemMessageEntryPreferences.loadEntries(context) 
                         } else {
-                            Toast.makeText(context, "An entry with this title already exists.", Toast.LENGTH_SHORT).show()
+                            Toast.makeText(context, "An entry with this title already exists." as CharSequence, Toast.LENGTH_SHORT).show()
                             return@EditEntryPopup 
                         }
                     } else { 
                         val existingEntryWithNewTitle = systemMessageEntries.find { it.title.equals(currentEntry.title, ignoreCase = true) && it.guide != originalEntry.guide }
                         if (existingEntryWithNewTitle != null && originalEntry.title != currentEntry.title) {
-                            Toast.makeText(context, "Another entry with this new title already exists.", Toast.LENGTH_SHORT).show()
+                            Toast.makeText(context, "Another entry with this new title already exists." as CharSequence, Toast.LENGTH_SHORT).show()
                             return@EditEntryPopup 
                         }
                         SystemMessageEntryPreferences.updateEntry(context, originalEntry, currentEntry)
@@ -429,8 +430,10 @@ fun DatabaseListPopup(
     onNewClicked: () -> Unit,
     onEntryClicked: (SystemMessageEntry) -> Unit,
     onDeleteClicked: (SystemMessageEntry) -> Unit,
-    onImportCompleted: () -> Unit // New lambda parameter
+    onImportCompleted: () -> Unit
 ) {
+    val TAG_IMPORT_PROCESS = "ImportProcess"
+    val scope = rememberCoroutineScope()
     var entryMenuToShow: SystemMessageEntry? by remember { mutableStateOf(null) }
     var selectionModeActive by rememberSaveable { mutableStateOf(false) }
     var selectedEntryTitles by rememberSaveable { mutableStateOf(emptySet<String>()) }
@@ -441,58 +444,136 @@ fun DatabaseListPopup(
     var remainingEntriesToImport by remember { mutableStateOf<List<SystemMessageEntry>>(emptyList()) }
     var skipAllDuplicates by remember { mutableStateOf(false) }
 
-    fun processImportedEntries(
+    // processImportedEntries is defined within DatabaseListPopup, so it has access to context, onImportCompleted, etc.
+    fun processImportedEntries( 
         imported: List<SystemMessageEntry>,
-        currentSystemEntries: List<SystemMessageEntry> // Pass current entries for comparison
+        currentSystemEntries: List<SystemMessageEntry>
     ) {
+        val TAG_IMPORT_PROCESS_FUNCTION = "ImportProcessFunction" 
+        Log.d(TAG_IMPORT_PROCESS_FUNCTION, "Starting processImportedEntries. Imported: ${imported.size}, Current: ${currentSystemEntries.size}, SkipAll: $skipAllDuplicates")
+
         var newCount = 0
-        var updatedCount = 0
+        var updatedCount = 0 
         var skippedCount = 0
         val entriesToProcess = imported.toMutableList()
 
-        fun continueProcessing(remainingToProcess: MutableList<SystemMessageEntry>) {
-            while (remainingToProcess.isNotEmpty()) {
-                val newEntry = remainingToProcess.removeAt(0)
-                val existingEntry = currentSystemEntries.find { it.title.equals(newEntry.title, ignoreCase = true) }
+        while (entriesToProcess.isNotEmpty()) {
+            val newEntry = entriesToProcess.removeAt(0)
+            Log.d(TAG_IMPORT_PROCESS_FUNCTION, "Processing entry: Title='${newEntry.title}'. Remaining in batch: ${entriesToProcess.size}")
+            val existingEntry = currentSystemEntries.find { it.title.equals(newEntry.title, ignoreCase = true) }
 
-                if (existingEntry != null) {
-                    if (skipAllDuplicates) {
-                        skippedCount++
-                        continue
-                    }
-                    entryToConfirmOverwrite = Pair(existingEntry, newEntry)
-                    remainingEntriesToImport = remainingToProcess.toList() // Save remaining for after dialog
-                    return // Stop processing, let dialog handle this one
-                } else {
-                    SystemMessageEntryPreferences.addEntry(context, newEntry)
-                    newCount++
+            if (existingEntry != null) {
+                Log.d(TAG_IMPORT_PROCESS_FUNCTION, "Duplicate found for title: '${newEntry.title}'. Existing guide: '${existingEntry.guide.take(50)}', New guide: '${newEntry.guide.take(50)}'")
+                if (skipAllDuplicates) {
+                    Log.d(TAG_IMPORT_PROCESS_FUNCTION, "Skipping duplicate '${newEntry.title}' due to skipAllDuplicates flag.")
+                    skippedCount++
+                    continue
                 }
+                Log.d(TAG_IMPORT_PROCESS_FUNCTION, "Calling askForOverwrite for '${newEntry.title}'.")
+                entryToConfirmOverwrite = Pair(existingEntry, newEntry) 
+                remainingEntriesToImport = entriesToProcess.toList() 
+                return 
+            } else {
+                Log.i(TAG_IMPORT_PROCESS_FUNCTION, "Adding new entry: Title='${newEntry.title}'")
+                SystemMessageEntryPreferences.addEntry(context, newEntry)
+                newCount++
             }
-            // All processed or skipped
-            val summary = "Import finished: $newCount added, $updatedCount updated, $skippedCount skipped."
-            Toast.makeText(context, summary, Toast.LENGTH_LONG).show()
-            onImportCompleted() // Refresh the main list
-            skipAllDuplicates = false // Reset for next import operation
         }
-        continueProcessing(entriesToProcess)
+        Log.i(TAG_IMPORT_PROCESS_FUNCTION, "Finished processing batch. newCount=$newCount, updatedCount=$updatedCount, skippedCount=$skippedCount")
+        val summary = "Import finished: $newCount added, $updatedCount updated, $skippedCount skipped."
+        Toast.makeText(context, summary as CharSequence, Toast.LENGTH_LONG).show()
+        onImportCompleted() 
+        skipAllDuplicates = false 
     }
 
 
     val filePickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent(),
         onResult = { uri: Uri? ->
-            uri?.let {
+            Log.d(TAG_IMPORT_PROCESS, "FilePickerLauncher onResult triggered.")
+            if (uri == null) {
+                Log.w(TAG_IMPORT_PROCESS, "URI is null, no file selected or operation cancelled.")
+                scope.launch(Dispatchers.Main) {
+                    Toast.makeText(context, "No file selected." as CharSequence, Toast.LENGTH_SHORT).show()
+                }
+                return@rememberLauncherForActivityResult
+            }
+
+            Log.i(TAG_IMPORT_PROCESS, "Selected file URI: $uri")
+            scope.launch(Dispatchers.Main) {
+                Toast.makeText(context, "File selected: $uri. Starting import..." as CharSequence, Toast.LENGTH_SHORT).show()
+            }
+
+            scope.launch(Dispatchers.IO) { 
                 try {
-                    context.contentResolver.openInputStream(it)?.use { inputStream ->
-                        val jsonString = inputStream.bufferedReader().readText()
-                        val parsedEntries = Json.decodeFromString(ListSerializer(SystemMessageEntry.serializer()), jsonString)
-                        val currentSystemEntries = SystemMessageEntryPreferences.loadEntries(context) // Load fresh list
-                        skipAllDuplicates = false // Reset for new import
-                        processImportedEntries(parsedEntries, currentSystemEntries)
+                    Log.d(TAG_IMPORT_PROCESS, "Attempting to open InputStream for URI: $uri on thread: ${Thread.currentThread().name}")
+                    
+                    var fileSize = -1L
+                    try {
+                        context.contentResolver.openFileDescriptor(uri, "r")?.use { pfd ->
+                            fileSize = pfd.statSize
+                        }
+                        Log.i(TAG_IMPORT_PROCESS, "Estimated file size: $fileSize bytes.")
+                    } catch (e: Exception) {
+                        Log.w(TAG_IMPORT_PROCESS, "Could not determine file size for URI: $uri. Will proceed without size check.", e)
                     }
+
+                    val MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024 
+                    if (fileSize != -1L && fileSize > MAX_FILE_SIZE_BYTES) {
+                        Log.e(TAG_IMPORT_PROCESS, "File size ($fileSize bytes) exceeds limit of $MAX_FILE_SIZE_BYTES bytes.")
+                        withContext(Dispatchers.Main) {
+                            Toast.makeText(context, "File is too large (max 10MB)." as CharSequence, Toast.LENGTH_LONG).show()
+                        }
+                        return@launch 
+                    }
+                     if (fileSize == 0L) { 
+                         Log.w(TAG_IMPORT_PROCESS, "Imported file is empty (0 bytes).")
+                        withContext(Dispatchers.Main) {
+                            Toast.makeText(context, "Imported file is empty." as CharSequence, Toast.LENGTH_LONG).show()
+                        }
+                        return@launch 
+                    }
+
+                    context.contentResolver.openInputStream(uri)?.use { inputStream ->
+                        Log.i(TAG_IMPORT_PROCESS, "InputStream opened. Reading text on thread: ${Thread.currentThread().name}")
+                        val jsonString = inputStream.bufferedReader().readText() 
+                        Log.i(TAG_IMPORT_PROCESS, "File content read. Size: ${jsonString.length} chars.")
+                        Log.v(TAG_IMPORT_PROCESS, "File content snippet: ${jsonString.take(500)}")
+
+                        if (jsonString.isBlank()) {
+                            Log.w(TAG_IMPORT_PROCESS, "Imported file content is blank.")
+                            withContext(Dispatchers.Main) {
+                                Toast.makeText(context, "Imported file content is blank." as CharSequence, Toast.LENGTH_LONG).show()
+                            }
+                            return@use 
+                        }
+
+                        Log.d(TAG_IMPORT_PROCESS, "Attempting to parse JSON string on thread: ${Thread.currentThread().name}")
+                        val parsedEntries = Json.decodeFromString(ListSerializer(SystemMessageEntry.serializer()), jsonString)
+                        Log.i(TAG_IMPORT_PROCESS, "JSON parsed. Found ${parsedEntries.size} entries.")
+
+                        val currentSystemEntries = SystemMessageEntryPreferences.loadEntries(context) 
+                        Log.d(TAG_IMPORT_PROCESS, "Current system entries loaded: ${currentSystemEntries.size} entries.")
+
+                        withContext(Dispatchers.Main) { 
+                            Log.d(TAG_IMPORT_PROCESS, "Switching to Main thread for processImportedEntries: ${Thread.currentThread().name}")
+                            skipAllDuplicates = false 
+                            processImportedEntries(
+                                imported = parsedEntries,
+                                currentSystemEntries = currentSystemEntries
+                            )
+                        }
+                    } ?: Log.w(TAG_IMPORT_PROCESS, "ContentResolver.openInputStream returned null for URI: $uri (second check).")
                 } catch (e: Exception) {
-                    Log.e("DatabaseListPopup", "Error reading or parsing imported file", e)
-                    Toast.makeText(context, "Error importing file: ${e.message}", Toast.LENGTH_LONG).show()
+                    Log.e(TAG_IMPORT_PROCESS, "Error during file import for URI: $uri on thread: ${Thread.currentThread().name}", e)
+                    withContext(Dispatchers.Main) {
+                        val errorMessage = if (e is OutOfMemoryError) {
+                            "Out of memory. File may be too large or contain too many entries."
+                        } else {
+                            e.message ?: "Unknown error during import."
+                        }
+                        Toast.makeText(context, "Error importing file: $errorMessage" as CharSequence, Toast.LENGTH_LONG).show()
+                    }
                 }
             }
         }
@@ -503,33 +584,45 @@ fun DatabaseListPopup(
         OverwriteConfirmationDialog(
             entryTitle = newEntry.title,
             onConfirm = {
+                Log.d(TAG_IMPORT_PROCESS, "Overwrite confirmed for title: '${newEntry.title}'")
                 SystemMessageEntryPreferences.updateEntry(context, existingEntry, newEntry)
-                // updatedCount++ // This logic needs to be inside processImportedEntries or passed back
-                Toast.makeText(context, "Entry '${newEntry.title}' overwritten.", Toast.LENGTH_SHORT).show()
+                Toast.makeText(context, "Entry '${newEntry.title}' overwritten." as CharSequence, Toast.LENGTH_SHORT).show()
                 entryToConfirmOverwrite = null
-                val currentSystemEntries = SystemMessageEntryPreferences.loadEntries(context) // Reload for next check
-                processImportedEntries(remainingEntriesToImport, currentSystemEntries) // Continue with remaining
+                val currentSystemEntriesAfterUpdate = SystemMessageEntryPreferences.loadEntries(context) 
+                Log.d(TAG_IMPORT_PROCESS, "Continuing with remaining ${remainingEntriesToImport.size} entries after dialog (Confirm).")
+                processImportedEntries( 
+                    imported = remainingEntriesToImport,
+                    currentSystemEntries = currentSystemEntriesAfterUpdate
+                )
             },
-            onDeny = { // User chose "No" for this specific entry
-                // skippedCount++ // This logic needs to be inside processImportedEntries or passed back
+            onDeny = { 
+                Log.d(TAG_IMPORT_PROCESS, "Overwrite denied for title: '${newEntry.title}'")
                 entryToConfirmOverwrite = null
-                val currentSystemEntries = SystemMessageEntryPreferences.loadEntries(context) // Reload for next check
-                // Here you could ask about "Skip All remaining?"
-                // For now, just continue processing without skipping all by default
-                 processImportedEntries(remainingEntriesToImport, currentSystemEntries) // Continue with remaining
+                val currentSystemEntriesAfterDeny = SystemMessageEntryPreferences.loadEntries(context) 
+                Log.d(TAG_IMPORT_PROCESS, "Continuing with remaining ${remainingEntriesToImport.size} entries after dialog (Deny).")
+                processImportedEntries( 
+                    imported = remainingEntriesToImport,
+                    currentSystemEntries = currentSystemEntriesAfterDeny
+                )
             },
-            onSkipAll = { // This is now a conceptual third option in the dialog, or handled differently
+            onSkipAll = { 
+                Log.d(TAG_IMPORT_PROCESS, "Skip All selected for title: '${newEntry.title}'")
                 skipAllDuplicates = true
                 entryToConfirmOverwrite = null
-                val currentSystemEntries = SystemMessageEntryPreferences.loadEntries(context) // Reload for next check
-                processImportedEntries(remainingEntriesToImport, currentSystemEntries) // Continue with remaining, now skipping
+                val currentSystemEntriesAfterSkipAll = SystemMessageEntryPreferences.loadEntries(context) 
+                Log.d(TAG_IMPORT_PROCESS, "Continuing with remaining ${remainingEntriesToImport.size} entries after dialog (SkipAll).")
+                processImportedEntries( 
+                    imported = remainingEntriesToImport,
+                    currentSystemEntries = currentSystemEntriesAfterSkipAll
+                )
             },
-            onDismiss = { // Dialog dismissed externally
-                entryToConfirmOverwrite = null
-                remainingEntriesToImport = emptyList() // Stop this import batch
+            onDismiss = { 
+                Log.d(TAG_IMPORT_PROCESS, "Overwrite dialog dismissed for title: '${entryToConfirmOverwrite?.second?.title}'. Import process for this batch might halt.")
+                entryToConfirmOverwrite = null 
+                remainingEntriesToImport = emptyList() 
                 skipAllDuplicates = false
-                Toast.makeText(context, "Import cancelled.", Toast.LENGTH_SHORT).show()
-                onImportCompleted() // Refresh to show any partial imports before dismissal
+                Toast.makeText(context, "Import cancelled for remaining items." as CharSequence, Toast.LENGTH_SHORT).show()
+                onImportCompleted() 
             }
         )
     }
@@ -652,9 +745,9 @@ fun DatabaseListPopup(
                     }
                 }
                 Spacer(modifier = Modifier.height(8.dp))
-                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End, verticalAlignment = Alignment.CenterVertically) {
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                     if (selectionModeActive) {
-                        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(end = 8.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
                             Checkbox(
                                 checked = selectAllChecked,
                                 onCheckedChange = { isChecked ->
@@ -665,27 +758,32 @@ fun DatabaseListPopup(
                             )
                             Text("All", color = Color.Black, style = MaterialTheme.typography.bodyMedium)
                         }
+                    } else {
+                        Spacer(modifier = Modifier.width(80.dp)) // Placeholder for alignment
                     }
-                    Button(onClick = { filePickerLauncher.launch("*/*") }, colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary), modifier = Modifier.padding(end = 8.dp)) { Text("Import") }
-                    Button(
-                        onClick = {
-                            if (selectionModeActive) { 
-                                if (selectedEntryTitles.isEmpty()) {
-                                    Toast.makeText(context, "No entries selected for export.", Toast.LENGTH_SHORT).show()
-                                } else {
-                                    val entriesToExport = entries.filter { selectedEntryTitles.contains(it.title) }
-                                    val jsonString = Json.encodeToString(ListSerializer(SystemMessageEntry.serializer()), entriesToExport)
-                                    shareTextFile(context, "system_messages_export.txt", jsonString)
+
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Button(onClick = { filePickerLauncher.launch("*/*") }, colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary), modifier = Modifier.padding(end = 8.dp)) { Text("Import") }
+                        Button(
+                            onClick = {
+                                if (selectionModeActive) { 
+                                    if (selectedEntryTitles.isEmpty()) {
+                                        Toast.makeText(context, "No entries selected for export." as CharSequence, Toast.LENGTH_SHORT).show()
+                                    } else {
+                                        val entriesToExport = entries.filter { selectedEntryTitles.contains(it.title) }
+                                        val jsonString = Json.encodeToString(ListSerializer(SystemMessageEntry.serializer()), entriesToExport)
+                                        shareTextFile(context, "system_messages_export.txt", jsonString)
+                                    }
+                                    selectionModeActive = false
+                                    selectedEntryTitles = emptySet()
+                                    selectAllChecked = false
+                                } else { 
+                                    selectionModeActive = true
                                 }
-                                selectionModeActive = false
-                                selectedEntryTitles = emptySet()
-                                selectAllChecked = false
-                            } else { 
-                                selectionModeActive = true
-                            }
-                        },
-                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
-                    ) { Text(if (selectionModeActive) "Share" else "Export") }
+                            },
+                            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
+                        ) { Text("Export") } // Text is now always "Export"
+                    }
                 }
             }
         }
@@ -698,7 +796,7 @@ fun OverwriteConfirmationDialog(
     entryTitle: String,
     onConfirm: () -> Unit,
     onDeny: () -> Unit,
-    onSkipAll: () -> Unit, // Added for conceptual completeness, might need UI adjustment
+    onSkipAll: () -> Unit, 
     onDismiss: () -> Unit
 ) {
     AlertDialog(
@@ -711,13 +809,6 @@ fun OverwriteConfirmationDialog(
         dismissButton = {
             TextButton(onClick = onDeny) { Text("No") }
         }
-        // To add "Skip All", AlertDialog might need to be replaced with a custom Dialog,
-        // or we could add a checkbox "Apply to all future duplicates in this session?" to this dialog.
-        // For this iteration, Skip All is handled by the calling logic if "No" is chosen.
-        // A more integrated "Skip All" button could be:
-        // neutralButton = { TextButton(onClick = onSkipAll) { Text("Skip All") } }
-        // However, standard AlertDialog doesn't have a direct neutralButton like this.
-        // Consider adding a TextButton next to No/Yes if UI permits, or a checkbox.
     )
 }
 
