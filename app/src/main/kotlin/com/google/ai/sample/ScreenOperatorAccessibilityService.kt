@@ -163,30 +163,34 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
                 is Command.ScrollDownFromCoordinates -> {
                     val xPx = serviceInstance!!.convertCoordinate(command.x, screenWidth)
                     val yPx = serviceInstance!!.convertCoordinate(command.y, screenHeight)
-                    Log.d(TAG, "Scrolling down from coordinates (${command.x} -> $xPx, ${command.y} -> $yPx) with distance ${command.distance} and duration ${command.duration}ms")
+                    val distancePx = serviceInstance!!.convertCoordinate(command.distance, screenHeight)
+                    Log.d(TAG, "Scrolling down from coordinates (${command.x} -> $xPx, ${command.y} -> $yPx) with distance ${command.distance} -> $distancePx and duration ${command.duration}ms")
                     showToast("Trying to scroll down from position ($xPx, $yPx)", false)
-                    serviceInstance?.scrollDown(xPx, yPx, command.distance, command.duration)
+                    serviceInstance?.scrollDown(xPx, yPx, distancePx, command.duration)
                 }
                 is Command.ScrollUpFromCoordinates -> {
                     val xPx = serviceInstance!!.convertCoordinate(command.x, screenWidth)
                     val yPx = serviceInstance!!.convertCoordinate(command.y, screenHeight)
-                    Log.d(TAG, "Scrolling up from coordinates (${command.x} -> $xPx, ${command.y} -> $yPx) with distance ${command.distance} and duration ${command.duration}ms")
+                    val distancePx = serviceInstance!!.convertCoordinate(command.distance, screenHeight)
+                    Log.d(TAG, "Scrolling up from coordinates (${command.x} -> $xPx, ${command.y} -> $yPx) with distance ${command.distance} -> $distancePx and duration ${command.duration}ms")
                     showToast("Trying to scroll up from position ($xPx, $yPx)", false)
-                    serviceInstance?.scrollUp(xPx, yPx, command.distance, command.duration)
+                    serviceInstance?.scrollUp(xPx, yPx, distancePx, command.duration)
                 }
                 is Command.ScrollLeftFromCoordinates -> {
                     val xPx = serviceInstance!!.convertCoordinate(command.x, screenWidth)
                     val yPx = serviceInstance!!.convertCoordinate(command.y, screenHeight)
-                    Log.d(TAG, "Scrolling left from coordinates (${command.x} -> $xPx, ${command.y} -> $yPx) with distance ${command.distance} and duration ${command.duration}ms")
+                    val distancePx = serviceInstance!!.convertCoordinate(command.distance, screenWidth)
+                    Log.d(TAG, "Scrolling left from coordinates (${command.x} -> $xPx, ${command.y} -> $yPx) with distance ${command.distance} -> $distancePx and duration ${command.duration}ms")
                     showToast("Trying to scroll left from position ($xPx, $yPx)", false)
-                    serviceInstance?.scrollLeft(xPx, yPx, command.distance, command.duration)
+                    serviceInstance?.scrollLeft(xPx, yPx, distancePx, command.duration)
                 }
                 is Command.ScrollRightFromCoordinates -> {
                     val xPx = serviceInstance!!.convertCoordinate(command.x, screenWidth)
                     val yPx = serviceInstance!!.convertCoordinate(command.y, screenHeight)
-                    Log.d(TAG, "Scrolling right from coordinates (${command.x} -> $xPx, ${command.y} -> $yPx) with distance ${command.distance} and duration ${command.duration}ms")
+                    val distancePx = serviceInstance!!.convertCoordinate(command.distance, screenWidth)
+                    Log.d(TAG, "Scrolling right from coordinates (${command.x} -> $xPx, ${command.y} -> $yPx) with distance ${command.distance} -> $distancePx and duration ${command.duration}ms")
                     showToast("Trying to scroll right from position ($xPx, $yPx)", false)
-                    serviceInstance?.scrollRight(xPx, yPx, command.distance, command.duration)
+                    serviceInstance?.scrollRight(xPx, yPx, distancePx, command.duration)
                 }
                 is Command.OpenApp -> {
                     Log.d(TAG, "Opening app: ${command.packageName}")
