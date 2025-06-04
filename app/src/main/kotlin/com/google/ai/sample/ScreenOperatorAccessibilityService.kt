@@ -161,34 +161,42 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
                     serviceInstance?.scrollRight()
                 }
                 is Command.ScrollDownFromCoordinates -> {
+                    Log.d(TAG, "ScrollDownFromCoordinates: Original inputs x='${command.x}', y='${command.y}', distance='${command.distance}', duration='${command.duration}'")
+                    Log.d(TAG, "ScrollDownFromCoordinates: Using screenWidth=$screenWidth, screenHeight=$screenHeight for conversions (distance uses screenHeight).")
                     val xPx = serviceInstance!!.convertCoordinate(command.x, screenWidth)
                     val yPx = serviceInstance!!.convertCoordinate(command.y, screenHeight)
                     val distancePx = serviceInstance!!.convertCoordinate(command.distance, screenHeight)
-                    Log.d(TAG, "Scrolling down from coordinates (${command.x} -> $xPx, ${command.y} -> $yPx) with distance ${command.distance} -> $distancePx and duration ${command.duration}ms")
+                    Log.d(TAG, "ScrollDownFromCoordinates: Converted to xPx=$xPx, yPx=$yPx, distancePx=$distancePx")
                     showToast("Trying to scroll down from position ($xPx, $yPx)", false)
                     serviceInstance?.scrollDown(xPx, yPx, distancePx, command.duration)
                 }
                 is Command.ScrollUpFromCoordinates -> {
+                    Log.d(TAG, "ScrollUpFromCoordinates: Original inputs x='${command.x}', y='${command.y}', distance='${command.distance}', duration='${command.duration}'")
+                    Log.d(TAG, "ScrollUpFromCoordinates: Using screenWidth=$screenWidth, screenHeight=$screenHeight for conversions (distance uses screenHeight).")
                     val xPx = serviceInstance!!.convertCoordinate(command.x, screenWidth)
                     val yPx = serviceInstance!!.convertCoordinate(command.y, screenHeight)
                     val distancePx = serviceInstance!!.convertCoordinate(command.distance, screenHeight)
-                    Log.d(TAG, "Scrolling up from coordinates (${command.x} -> $xPx, ${command.y} -> $yPx) with distance ${command.distance} -> $distancePx and duration ${command.duration}ms")
+                    Log.d(TAG, "ScrollUpFromCoordinates: Converted to xPx=$xPx, yPx=$yPx, distancePx=$distancePx")
                     showToast("Trying to scroll up from position ($xPx, $yPx)", false)
                     serviceInstance?.scrollUp(xPx, yPx, distancePx, command.duration)
                 }
                 is Command.ScrollLeftFromCoordinates -> {
+                    Log.d(TAG, "ScrollLeftFromCoordinates: Original inputs x='${command.x}', y='${command.y}', distance='${command.distance}', duration='${command.duration}'")
+                    Log.d(TAG, "ScrollLeftFromCoordinates: Using screenWidth=$screenWidth, screenHeight=$screenHeight for conversions (distance uses screenWidth).")
                     val xPx = serviceInstance!!.convertCoordinate(command.x, screenWidth)
                     val yPx = serviceInstance!!.convertCoordinate(command.y, screenHeight)
                     val distancePx = serviceInstance!!.convertCoordinate(command.distance, screenWidth)
-                    Log.d(TAG, "Scrolling left from coordinates (${command.x} -> $xPx, ${command.y} -> $yPx) with distance ${command.distance} -> $distancePx and duration ${command.duration}ms")
+                    Log.d(TAG, "ScrollLeftFromCoordinates: Converted to xPx=$xPx, yPx=$yPx, distancePx=$distancePx")
                     showToast("Trying to scroll left from position ($xPx, $yPx)", false)
                     serviceInstance?.scrollLeft(xPx, yPx, distancePx, command.duration)
                 }
                 is Command.ScrollRightFromCoordinates -> {
+                    Log.d(TAG, "ScrollRightFromCoordinates: Original inputs x='${command.x}', y='${command.y}', distance='${command.distance}', duration='${command.duration}'")
+                    Log.d(TAG, "ScrollRightFromCoordinates: Using screenWidth=$screenWidth, screenHeight=$screenHeight for conversions (distance uses screenWidth).")
                     val xPx = serviceInstance!!.convertCoordinate(command.x, screenWidth)
                     val yPx = serviceInstance!!.convertCoordinate(command.y, screenHeight)
                     val distancePx = serviceInstance!!.convertCoordinate(command.distance, screenWidth)
-                    Log.d(TAG, "Scrolling right from coordinates (${command.x} -> $xPx, ${command.y} -> $yPx) with distance ${command.distance} -> $distancePx and duration ${command.duration}ms")
+                    Log.d(TAG, "ScrollRightFromCoordinates: Converted to xPx=$xPx, yPx=$yPx, distancePx=$distancePx")
                     showToast("Trying to scroll right from position ($xPx, $yPx)", false)
                     serviceInstance?.scrollRight(xPx, yPx, distancePx, command.duration)
                 }
@@ -2010,14 +2018,19 @@ fun pressEnterKey() {
      * @param duration Duration of the scroll gesture in milliseconds
      */
     fun scrollDown(x: Float, y: Float, distance: Float, duration: Long) {
-        Log.d(TAG, "Scrolling down from ($x, $y) with distance $distance and duration $duration ms")
+        Log.d(TAG, "scrollDown method: Received x=$x, y=$y, distance=$distance, duration=$duration")
         showToast("Scrolling down from specific position...", false)
         
         try {
             // Create a path for the gesture (swipe from specified position upward by the specified distance)
             val swipePath = Path()
-            swipePath.moveTo(x, y) // Start from specified position
-            swipePath.lineTo(x, y - distance) // Move upward by the specified distance
+            val startX = x
+            val startY = y
+            val endX = x
+            val endY = y - distance
+            swipePath.moveTo(startX, startY)
+            swipePath.lineTo(endX, endY)
+            Log.d(TAG, "scrollDown method: Creating swipePath from ($startX, $startY) to ($endX, $endY) over $duration ms")
             
             // Create a gesture builder and add the swipe
             val gestureBuilder = GestureDescription.Builder()
@@ -2033,21 +2046,23 @@ fun pressEnterKey() {
                 gestureBuilder.build(),
                 object : GestureResultCallback() {
                     override fun onCompleted(gestureDescription: GestureDescription) {
-                        Log.d(TAG, "Coordinate-based scroll down gesture completed")
-                        showToast("Successfully scrolled down from position ($x, $y)", false)
+                        super.onCompleted(gestureDescription)
+                        Log.d(TAG, "scrollDown method: Gesture completed for path from ($startX, $startY) to ($endX, $endY)")
+                        showToast("Successfully scrolled down from position ($startX, $startY)", false)
                     }
                     
                     override fun onCancelled(gestureDescription: GestureDescription) {
-                        Log.e(TAG, "Coordinate-based scroll down gesture cancelled")
-                        showToast("Scroll down from position ($x, $y) cancelled", true)
+                        super.onCancelled(gestureDescription)
+                        Log.e(TAG, "scrollDown method: Gesture CANCELLED for path from ($startX, $startY) to ($endX, $endY). GestureDescription: $gestureDescription")
+                        showToast("Scroll down from position ($startX, $startY) cancelled", true)
                     }
                 },
                 null // handler
             )
             
             if (!result) {
-                Log.e(TAG, "Failed to dispatch coordinate-based scroll down gesture")
-                showToast("Error scrolling down from position ($x, $y)", true)
+                Log.e(TAG, "Failed to dispatch coordinate-based scroll down gesture for path from ($startX, $startY) to ($endX, $endY)")
+                showToast("Error scrolling down from position ($startX, $startY)", true)
             }
         } catch (e: Exception) {
             Log.e(TAG, "Error scrolling down from coordinates: ${e.message}")
@@ -2120,14 +2135,19 @@ fun pressEnterKey() {
      * @param duration Duration of the scroll gesture in milliseconds
      */
     fun scrollUp(x: Float, y: Float, distance: Float, duration: Long) {
-        Log.d(TAG, "Scrolling up from ($x, $y) with distance $distance and duration $duration ms")
+        Log.d(TAG, "scrollUp method: Received x=$x, y=$y, distance=$distance, duration=$duration")
         showToast("Scrolling up from specific position...", false)
         
         try {
             // Create a path for the gesture (swipe from specified position downward by the specified distance)
             val swipePath = Path()
-            swipePath.moveTo(x, y) // Start from specified position
-            swipePath.lineTo(x, y + distance) // Move downward by the specified distance
+            val startX = x
+            val startY = y
+            val endX = x
+            val endY = y + distance
+            swipePath.moveTo(startX, startY)
+            swipePath.lineTo(endX, endY)
+            Log.d(TAG, "scrollUp method: Creating swipePath from ($startX, $startY) to ($endX, $endY) over $duration ms")
             
             // Create a gesture builder and add the swipe
             val gestureBuilder = GestureDescription.Builder()
@@ -2143,21 +2163,23 @@ fun pressEnterKey() {
                 gestureBuilder.build(),
                 object : GestureResultCallback() {
                     override fun onCompleted(gestureDescription: GestureDescription) {
-                        Log.d(TAG, "Coordinate-based scroll up gesture completed")
-                        showToast("Successfully scrolled up from position ($x, $y)", false)
+                        super.onCompleted(gestureDescription)
+                        Log.d(TAG, "scrollUp method: Gesture completed for path from ($startX, $startY) to ($endX, $endY)")
+                        showToast("Successfully scrolled up from position ($startX, $startY)", false)
                     }
                     
                     override fun onCancelled(gestureDescription: GestureDescription) {
-                        Log.e(TAG, "Coordinate-based scroll up gesture cancelled")
-                        showToast("Scroll up from position ($x, $y) cancelled", true)
+                        super.onCancelled(gestureDescription)
+                        Log.e(TAG, "scrollUp method: Gesture CANCELLED for path from ($startX, $startY) to ($endX, $endY). GestureDescription: $gestureDescription")
+                        showToast("Scroll up from position ($startX, $startY) cancelled", true)
                     }
                 },
                 null // handler
             )
             
             if (!result) {
-                Log.e(TAG, "Failed to dispatch coordinate-based scroll up gesture")
-                showToast("Error scrolling up from position ($x, $y)", true)
+                Log.e(TAG, "Failed to dispatch coordinate-based scroll up gesture for path from ($startX, $startY) to ($endX, $endY)")
+                showToast("Error scrolling up from position ($startX, $startY)", true)
             }
         } catch (e: Exception) {
             Log.e(TAG, "Error scrolling up from coordinates: ${e.message}")
@@ -2228,14 +2250,19 @@ fun pressEnterKey() {
      * @param duration Duration of the scroll gesture in milliseconds
      */
     fun scrollLeft(x: Float, y: Float, distance: Float, duration: Long) {
-        Log.d(TAG, "Scrolling left from ($x, $y) with distance $distance and duration $duration ms")
+        Log.d(TAG, "scrollLeft method: Received x=$x, y=$y, distance=$distance, duration=$duration")
         showToast("Scrolling left from specific position...", false)
         
         try {
             // Create a path for the gesture (swipe from specified position to the left by the specified distance)
             val swipePath = Path()
-            swipePath.moveTo(x, y) // Start from specified position
-            swipePath.lineTo(x - distance, y) // Move to the left by the specified distance
+            val startX = x
+            val startY = y
+            val endX = x - distance
+            val endY = y
+            swipePath.moveTo(startX, startY)
+            swipePath.lineTo(endX, endY)
+            Log.d(TAG, "scrollLeft method: Creating swipePath from ($startX, $startY) to ($endX, $endY) over $duration ms")
             
             // Create a gesture builder and add the swipe
             val gestureBuilder = GestureDescription.Builder()
@@ -2251,21 +2278,23 @@ fun pressEnterKey() {
                 gestureBuilder.build(),
                 object : GestureResultCallback() {
                     override fun onCompleted(gestureDescription: GestureDescription) {
-                        Log.d(TAG, "Coordinate-based scroll left gesture completed")
-                        showToast("Successfully scrolled left from position ($x, $y)", false)
+                        super.onCompleted(gestureDescription)
+                        Log.d(TAG, "scrollLeft method: Gesture completed for path from ($startX, $startY) to ($endX, $endY)")
+                        showToast("Successfully scrolled left from position ($startX, $startY)", false)
                     }
                     
                     override fun onCancelled(gestureDescription: GestureDescription) {
-                        Log.e(TAG, "Coordinate-based scroll left gesture cancelled")
-                        showToast("Scroll left from position ($x, $y) cancelled", true)
+                        super.onCancelled(gestureDescription)
+                        Log.e(TAG, "scrollLeft method: Gesture CANCELLED for path from ($startX, $startY) to ($endX, $endY). GestureDescription: $gestureDescription")
+                        showToast("Scroll left from position ($startX, $startY) cancelled", true)
                     }
                 },
                 null // handler
             )
             
             if (!result) {
-                Log.e(TAG, "Failed to dispatch coordinate-based scroll left gesture")
-                showToast("Error scrolling left from position ($x, $y)", true)
+                Log.e(TAG, "Failed to dispatch coordinate-based scroll left gesture for path from ($startX, $startY) to ($endX, $endY)")
+                showToast("Error scrolling left from position ($startX, $startY)", true)
             }
         } catch (e: Exception) {
             Log.e(TAG, "Error scrolling left from coordinates: ${e.message}")
@@ -2336,14 +2365,19 @@ fun pressEnterKey() {
      * @param duration Duration of the scroll gesture in milliseconds
      */
     fun scrollRight(x: Float, y: Float, distance: Float, duration: Long) {
-        Log.d(TAG, "Scrolling right from ($x, $y) with distance $distance and duration $duration ms")
+        Log.d(TAG, "scrollRight method: Received x=$x, y=$y, distance=$distance, duration=$duration")
         showToast("Scrolling right from specific position...", false)
         
         try {
             // Create a path for the gesture (swipe from specified position to the right by the specified distance)
             val swipePath = Path()
-            swipePath.moveTo(x, y) // Start from specified position
-            swipePath.lineTo(x + distance, y) // Move to the right by the specified distance
+            val startX = x
+            val startY = y
+            val endX = x + distance
+            val endY = y
+            swipePath.moveTo(startX, startY)
+            swipePath.lineTo(endX, endY)
+            Log.d(TAG, "scrollRight method: Creating swipePath from ($startX, $startY) to ($endX, $endY) over $duration ms")
             
             // Create a gesture builder and add the swipe
             val gestureBuilder = GestureDescription.Builder()
@@ -2359,21 +2393,23 @@ fun pressEnterKey() {
                 gestureBuilder.build(),
                 object : GestureResultCallback() {
                     override fun onCompleted(gestureDescription: GestureDescription) {
-                        Log.d(TAG, "Coordinate-based scroll right gesture completed")
-                        showToast("Successfully scrolled right from position ($x, $y)", false)
+                        super.onCompleted(gestureDescription)
+                        Log.d(TAG, "scrollRight method: Gesture completed for path from ($startX, $startY) to ($endX, $endY)")
+                        showToast("Successfully scrolled right from position ($startX, $startY)", false)
                     }
                     
                     override fun onCancelled(gestureDescription: GestureDescription) {
-                        Log.e(TAG, "Coordinate-based scroll right gesture cancelled")
-                        showToast("Scroll right from position ($x, $y) cancelled", true)
+                        super.onCancelled(gestureDescription)
+                        Log.e(TAG, "scrollRight method: Gesture CANCELLED for path from ($startX, $startY) to ($endX, $endY). GestureDescription: $gestureDescription")
+                        showToast("Scroll right from position ($startX, $startY) cancelled", true)
                     }
                 },
                 null // handler
             )
             
             if (!result) {
-                Log.e(TAG, "Failed to dispatch coordinate-based scroll right gesture")
-                showToast("Error scrolling right from position ($x, $y)", true)
+                Log.e(TAG, "Failed to dispatch coordinate-based scroll right gesture for path from ($startX, $startY) to ($endX, $endY)")
+                showToast("Error scrolling right from position ($startX, $startY)", true)
             }
         } catch (e: Exception) {
             Log.e(TAG, "Error scrolling right from coordinates: ${e.message}")
