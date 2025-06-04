@@ -2200,10 +2200,10 @@ fun pressEnterKey() {
             val screenHeight = displayMetrics.heightPixels
             val screenWidth = displayMetrics.widthPixels
             
-            // Create a path for the gesture (swipe from middle-right to middle-left)
+            // Create a path for the gesture (swipe from left to right, content moves left)
             val swipePath = Path()
-            swipePath.moveTo(screenWidth * 0.7f, screenHeight / 2f) // Start from 70% across the screen
-            swipePath.lineTo(screenWidth * 0.3f, screenHeight / 2f) // Move to 30% across the screen
+            swipePath.moveTo(screenWidth * 0.3f, screenHeight / 2f) // Start from 30% across the screen
+            swipePath.lineTo(screenWidth * 0.7f, screenHeight / 2f) // Move to 70% across the screen
             
             // Create a gesture builder and add the swipe
             val gestureBuilder = GestureDescription.Builder()
@@ -2254,11 +2254,11 @@ fun pressEnterKey() {
         showToast("Scrolling left from specific position...", false)
         
         try {
-            // Create a path for the gesture (swipe from specified position to the right by the specified distance, to make content move left)
+            // Create a path for the gesture (swipe from specified position to the left by the specified distance)
             val swipePath = Path()
             val startX = x
             val startY = y
-            val endX = x + distance // Corrected: Swipe right to move content left
+            val endX = x - distance // Reverted: Swipe left to move content right (standard "scroll left")
             val endY = y
             swipePath.moveTo(startX, startY)
             swipePath.lineTo(endX, endY)
@@ -2315,10 +2315,10 @@ fun pressEnterKey() {
             val screenHeight = displayMetrics.heightPixels
             val screenWidth = displayMetrics.widthPixels
             
-            // Create a path for the gesture (swipe from middle-left to middle-right)
+            // Create a path for the gesture (swipe from right to left, content moves right)
             val swipePath = Path()
-            swipePath.moveTo(screenWidth * 0.3f, screenHeight / 2f) // Start from 30% across the screen
-            swipePath.lineTo(screenWidth * 0.7f, screenHeight / 2f) // Move to 70% across the screen
+            swipePath.moveTo(screenWidth * 0.7f, screenHeight / 2f) // Start from 70% across the screen
+            swipePath.lineTo(screenWidth * 0.3f, screenHeight / 2f) // Move to 30% across the screen
             
             // Create a gesture builder and add the swipe
             val gestureBuilder = GestureDescription.Builder()
@@ -2369,11 +2369,11 @@ fun pressEnterKey() {
         showToast("Scrolling right from specific position...", false)
         
         try {
-            // Create a path for the gesture (swipe from specified position to the left by the specified distance, to make content move right)
+            // Create a path for the gesture (swipe from specified position to the right by the specified distance)
             val swipePath = Path()
             val startX = x
             val startY = y
-            val endX = x - distance // Corrected: Swipe left to move content right
+            val endX = x + distance // Reverted: Swipe right to move content left (standard "scroll right")
             val endY = y
             swipePath.moveTo(startX, startY)
             swipePath.lineTo(endX, endY)
