@@ -5,7 +5,7 @@ import android.content.Intent
 import android.graphics.drawable.BitmapDrawable
 import android.net.Uri
 import android.provider.Settings
-import android.widget.Toast // Added for Toast message
+import android.widget.Toast 
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
@@ -20,22 +20,14 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.requiredSize
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.requiredSize
-import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyRow
-import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.items 
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -44,14 +36,18 @@ import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Send
 import androidx.compose.material.icons.outlined.Person
 import androidx.compose.material.icons.rounded.Add
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Divider
+import androidx.compose.material3.Checkbox
+import androidx.compose.material3.CheckboxDefaults
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
@@ -99,8 +95,14 @@ import com.google.ai.sample.util.Command
 import com.google.ai.sample.util.SystemMessageEntry
 import com.google.ai.sample.util.SystemMessageEntryPreferences
 import com.google.ai.sample.util.UriSaver
+import com.google.ai.sample.util.shareTextFile
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import kotlinx.serialization.builtins.ListSerializer
+import kotlinx.serialization.json.Json 
 import android.util.Log
+import kotlinx.serialization.SerializationException
 
 // Define Colors
 val DarkYellow1 = Color(0xFFF0A500) // A darker yellow
@@ -122,32 +124,20 @@ internal fun PhotoReasoningRoute(
     val context = LocalContext.current
     val mainActivity = context as? MainActivity
 
-    // Observe the accessibility service status from MainActivity
     val isAccessibilityServiceEffectivelyEnabled by mainActivity?.isAccessibilityServiceEnabledFlow?.collectAsState() ?: mutableStateOf(false)
     val isKeyboardOpen by mainActivity?.isKeyboardOpen?.collectAsState() ?: mutableStateOf(false)
 
-    // Launcher for opening accessibility settings
     val accessibilitySettingsLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.StartActivityForResult()
     ) {
-        // This block is called when the settings activity returns.
-        // Re-check the accessibility service status in MainActivity, which will update the flow.
-        Log.d("PhotoReasoningRoute", "Returned from Accessibility Settings. Refreshing status.")
         mainActivity?.refreshAccessibilityServiceStatus()
     }
 
     DisposableEffect(viewModel, mainActivity) {
         mainActivity?.setPhotoReasoningViewModel(viewModel)
-        Log.d("PhotoReasoningRoute", "ViewModel shared with MainActivity: ${mainActivity != null}")
-
-        // Initial check of accessibility service status when the composable enters
         mainActivity?.refreshAccessibilityServiceStatus()
         viewModel.loadSystemMessage(context)
-
-        onDispose {
-            // Optional: clear the reference when navigating away
-            // mainActivity?.clearPhotoReasoningViewModel()
-        }
+        onDispose { }
     }
 
     PhotoReasoningScreen(
@@ -160,29 +150,14 @@ internal fun PhotoReasoningRoute(
             viewModel.updateSystemMessage(message, context)
         },
         onReasonClicked = { inputText, selectedItems ->
-            coroutineScope.launch {
-                Log.d("PhotoReasoningScreen", "Go button clicked, processing images")
+            coroutineScope.launch { 
                 val bitmaps = selectedItems.mapNotNull {
-                    Log.d("PhotoReasoningScreen", "Processing image: $it")
-                    val imageRequest = imageRequestBuilder
-                        .data(it)
-                        .precision(Precision.EXACT)
-                        .build()
+                    val imageRequest = imageRequestBuilder.data(it).precision(Precision.EXACT).build()
                     try {
                         val result = imageLoader.execute(imageRequest)
-                        if (result is SuccessResult) {
-                            Log.d("PhotoReasoningScreen", "Successfully processed image")
-                            return@mapNotNull (result.drawable as BitmapDrawable).bitmap
-                        } else {
-                            Log.e("PhotoReasoningScreen", "Failed to process image: result is not SuccessResult")
-                            return@mapNotNull null
-                        }
-                    } catch (e: Exception) {
-                        Log.e("PhotoReasoningScreen", "Error processing image: ${e.message}")
-                        return@mapNotNull null
-                    }
+                        if (result is SuccessResult) (result.drawable as BitmapDrawable).bitmap else null
+                    } catch (e: Exception) { null }
                 }
-                Log.d("PhotoReasoningScreen", "Processed ${bitmaps.size} images")
                 viewModel.reason(inputText, bitmaps)
             }
         },
@@ -192,19 +167,13 @@ internal fun PhotoReasoningRoute(
                 val intent = it.getAccessibilitySettingsIntent()
                 try {
                     accessibilitySettingsLauncher.launch(intent)
-                    // Removed the toast from here as it's now handled by the send button
-                    // and the dedicated "activate" button on the warning card.
                 } catch (e: Exception) {
-                    Log.e("PhotoReasoningRoute", "Error opening accessibility settings", e)
                     it.updateStatusMessage("Error opening Accessibility Settings.", true)
                 }
             }
         },
         onClearChatHistory = {
-            mainActivity?.let {
-                val vm = it.getPhotoReasoningViewModel()
-                vm?.clearChatHistory(context)
-            }
+            mainActivity?.getPhotoReasoningViewModel()?.clearChatHistory(context)
         },
         isKeyboardOpen = isKeyboardOpen
     )
@@ -235,13 +204,18 @@ fun PhotoReasoningScreen(
     var systemMessageEntries by rememberSaveable { mutableStateOf(emptyList<SystemMessageEntry>()) }
     val focusManager = LocalFocusManager.current
 
-    LaunchedEffect(Unit) { // Load entries when the screen is first composed
+    LaunchedEffect(Unit) { 
         systemMessageEntries = SystemMessageEntryPreferences.loadEntries(context)
+    }
+     LaunchedEffect(showDatabaseListPopup) { 
+        if (showDatabaseListPopup) {
+            systemMessageEntries = SystemMessageEntryPreferences.loadEntries(context)
+        }
     }
 
     BackHandler(enabled = isSystemMessageFocused && !isKeyboardOpen) {
-        focusManager.clearFocus() // Clear focus first
-        isSystemMessageFocused = false // Then update the state that controls height
+        focusManager.clearFocus() 
+        isSystemMessageFocused = false 
     }
 
     val pickMedia = rememberLauncherForActivityResult(
@@ -256,25 +230,13 @@ fun PhotoReasoningScreen(
         }
     }
 
-    Column(
-        modifier = Modifier
-            .padding(all = 16.dp)
-    ) {
+    Column(modifier = Modifier.padding(all = 16.dp)) {
         Card(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(bottom = 16.dp),
-            colors = CardDefaults.cardColors(
-                containerColor = MaterialTheme.colorScheme.primaryContainer
-            )
+            modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)
         ) {
-            Column(
-                modifier = Modifier.padding(16.dp)
-            ) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
+            Column(modifier = Modifier.padding(16.dp)) {
+                Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                     Text(
                         text = "System Message",
                         style = MaterialTheme.typography.titleMedium,
@@ -283,18 +245,17 @@ fun PhotoReasoningScreen(
                     )
                     Button(
                         onClick = { showDatabaseListPopup = true },
-                        shape = CircleShape, // More rounded
+                        shape = CircleShape,
                         colors = ButtonDefaults.buttonColors(
                             containerColor = Color.Transparent,
                             contentColor = MaterialTheme.colorScheme.onPrimaryContainer
-                        )
-                    ) {
-                        Text("Database")
-                    }
+                        ),
+                        border = BorderStroke(1.dp, Color.Black)
+                    ) { Text("Database") }
                 }
                 Spacer(modifier = Modifier.height(8.dp))
                 val systemMessageHeight = when {
-                    isSystemMessageFocused && isKeyboardOpen -> 450.dp // Changed from 600.dp
+                    isSystemMessageFocused && isKeyboardOpen -> 450.dp
                     isSystemMessageFocused && !isKeyboardOpen -> 1000.dp
                     else -> 120.dp
                 }
@@ -304,9 +265,7 @@ fun PhotoReasoningScreen(
                     value = systemMessage,
                     onValueChange = onSystemMessageChanged,
                     placeholder = { Text("Enter a system message here that will be sent with every request") },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(systemMessageHeight)
+                    modifier = Modifier.fillMaxWidth().height(systemMessageHeight)
                         .onFocusChanged { focusState -> isSystemMessageFocused = focusState.isFocused },
                     minLines = currentMinLines,
                     maxLines = currentMaxLines
@@ -316,242 +275,91 @@ fun PhotoReasoningScreen(
 
         if (!isAccessibilityServiceEnabled) {
             Card(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(bottom = 16.dp),
-                colors = CardDefaults.cardColors(
-                    containerColor = MaterialTheme.colorScheme.errorContainer
-                )
+                modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer)
             ) {
-                Column(
-                    modifier = Modifier.padding(16.dp)
-                ) {
-                    Text(
-                        text = "Accessibility Service is not enabled",
-                        color = MaterialTheme.colorScheme.error,
-                        style = MaterialTheme.typography.titleMedium
-                    )
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Text("Accessibility Service is not enabled", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.titleMedium)
                     Spacer(modifier = Modifier.height(8.dp))
-                    Text(
-                        text = "The click functionality requires the Accessibility Service. Please enable it in the settings.",
-                        color = MaterialTheme.colorScheme.error
-                    )
+                    Text("The click functionality requires the Accessibility Service. Please enable it in the settings.", color = MaterialTheme.colorScheme.error)
                     Spacer(modifier = Modifier.height(8.dp))
-                    TextButton(
-                        onClick = {
-                            onEnableAccessibilityService()
-                            // Optionally, show a toast here as well if the user clicks this specific button
-                            Toast.makeText(context, "Open Accessibility Settings...", Toast.LENGTH_SHORT).show()
-                        }
-                    ) {
-                        Text("Activate Accessibility Service")
-                    }
+                    TextButton(onClick = {
+                        onEnableAccessibilityService()
+                        Toast.makeText(context, "Open Accessibility Settings..." as CharSequence, Toast.LENGTH_SHORT).show()
+                    }) { Text("Activate Accessibility Service") }
                 }
             }
         }
 
-        LazyColumn(
-            state = listState,
-            modifier = Modifier
-                .fillMaxWidth()
-                .weight(1f)
-        ) {
+        LazyColumn(state = listState, modifier = Modifier.fillMaxWidth().weight(1f)) {
             items(chatMessages) { message ->
                 when (message.participant) {
-                    PhotoParticipant.USER -> {
-                        UserChatBubble(
-                            text = message.text,
-                            isPending = message.isPending,
-                            imageUris = message.imageUris
-                        )
-                    }
-                    PhotoParticipant.MODEL -> {
-                        ModelChatBubble(
-                            text = message.text,
-                            isPending = message.isPending
-                        )
-                    }
-                    PhotoParticipant.ERROR -> {
-                        ErrorChatBubble(
-                            text = message.text
-                        )
-                    }
+                    PhotoParticipant.USER -> UserChatBubble(message.text, message.isPending, message.imageUris)
+                    PhotoParticipant.MODEL -> ModelChatBubble(message.text, message.isPending)
+                    PhotoParticipant.ERROR -> ErrorChatBubble(message.text)
                 }
             }
         }
 
-        Card(
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            Row(
-                modifier = Modifier.padding(top = 16.dp)
-            ) {
-                Column(
-                    modifier = Modifier
-                        .padding(all = 4.dp)
-                        .align(Alignment.CenterVertically)
-                ) {
-                    IconButton(
-                        onClick = {
-                            pickMedia.launch(
-                                PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
-                            )
-                        },
-                        modifier = Modifier
-                            .padding(bottom = 4.dp)
-                    ) {
-                        Icon(
-                            Icons.Rounded.Add,
-                            contentDescription = stringResource(R.string.add_image),
-                        )
+        Card(modifier = Modifier.fillMaxWidth()) {
+            Row(modifier = Modifier.padding(top = 16.dp)) {
+                Column(modifier = Modifier.padding(all = 4.dp).align(Alignment.CenterVertically)) {
+                    IconButton(onClick = { pickMedia.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) }, modifier = Modifier.padding(bottom = 4.dp)) {
+                        Icon(Icons.Rounded.Add, stringResource(R.string.add_image))
                     }
-                    IconButton(
-                        onClick = {
-                            onClearChatHistory()
-                        },
-                        modifier = Modifier
-                            .padding(top = 4.dp)
-                            .drawBehind {
-                                drawCircle(
-                                    color = Color.Black,
-                                    radius = size.minDimension / 2,
-                                    style = androidx.compose.ui.graphics.drawscope.Stroke(
-                                        width = 1.dp.toPx()
-                                    )
-                                )
-                            }
-                    ) {
-                        Text(
-                            text = "New",
-                            style = MaterialTheme.typography.labelMedium,
-                            color = MaterialTheme.colorScheme.primary
-                        )
-                    }
+                    IconButton(onClick = onClearChatHistory, modifier = Modifier.padding(top = 4.dp).drawBehind {
+                        drawCircle(color = Color.Black, radius = size.minDimension / 2, style = androidx.compose.ui.graphics.drawscope.Stroke(width = 1.dp.toPx()))
+                    }) { Text("New", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary) }
                 }
                 OutlinedTextField(
                     value = userQuestion,
                     label = { Text(stringResource(R.string.reason_label)) },
                     placeholder = { Text(stringResource(R.string.reason_hint)) },
                     onValueChange = { userQuestion = it },
-                    modifier = Modifier
-                        .weight(1f)
-                        .padding(end = 8.dp)
+                    modifier = Modifier.weight(1f).padding(end = 8.dp)
                 )
-                IconButton(
-                    onClick = {
-                        // START: Updated Send button logic
-                        if (isAccessibilityServiceEnabled) {
-                            if (userQuestion.isNotBlank()) {
-                                onReasonClicked(userQuestion, imageUris.toList())
-                                userQuestion = "" // Clear input after sending
-                            }
-                        } else {
-                            // Accessibility service is not enabled
-                            onEnableAccessibilityService() // Open settings
-                            Toast.makeText(context, "Enable the Accessibility service for Screen Operator", Toast.LENGTH_LONG).show()
+                IconButton(onClick = {
+                    if (isAccessibilityServiceEnabled) {
+                        if (userQuestion.isNotBlank()) {
+                            onReasonClicked(userQuestion, imageUris.toList())
+                            userQuestion = ""
                         }
-                        // END: Updated Send button logic
-                    },
-                    modifier = Modifier
-                        .padding(all = 4.dp)
-                        .align(Alignment.CenterVertically)
-                ) {
-                    Icon(
-                        Icons.Default.Send,
-                        contentDescription = stringResource(R.string.action_go),
-                        tint = MaterialTheme.colorScheme.primary
-                    )
+                    } else {
+                        onEnableAccessibilityService()
+                        Toast.makeText(context, "Enable the Accessibility service for Screen Operator" as CharSequence, Toast.LENGTH_LONG).show()
+                    }
+                }, modifier = Modifier.padding(all = 4.dp).align(Alignment.CenterVertically)) {
+                    Icon(Icons.Default.Send, stringResource(R.string.action_go), tint = MaterialTheme.colorScheme.primary)
                 }
             }
-            LazyRow(
-                modifier = Modifier.padding(all = 8.dp)
-            ) {
-                items(imageUris) { imageUri ->
-                    AsyncImage(
-                        model = imageUri,
-                        contentDescription = null,
-                        modifier = Modifier
-                            .padding(4.dp)
-                            .requiredSize(72.dp)
-                    )
-                }
+            LazyRow(modifier = Modifier.padding(all = 8.dp)) {
+                items(imageUris) { uri -> AsyncImage(uri, null, Modifier.padding(4.dp).requiredSize(72.dp)) }
             }
         }
 
         if (commandExecutionStatus.isNotEmpty()) {
-            Card(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(vertical = 8.dp),
-                colors = CardDefaults.cardColors(
-                    containerColor = MaterialTheme.colorScheme.secondaryContainer
-                )
-            ) {
-                Column(
-                    modifier = Modifier.padding(16.dp)
-                ) {
-                    Text(
-                        text = "Command Status:",
-                        style = MaterialTheme.typography.titleMedium
-                    )
-                    Spacer(modifier = Modifier.height(4.dp))
-                    Text(
-                        text = commandExecutionStatus,
-                        color = MaterialTheme.colorScheme.onSecondaryContainer
-                    )
+            Card(modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer)) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Text("Command Status:", style = MaterialTheme.typography.titleMedium)
+                    Spacer(Modifier.height(4.dp))
+                    Text(commandExecutionStatus, color = MaterialTheme.colorScheme.onSecondaryContainer)
                 }
             }
         }
-
         if (detectedCommands.isNotEmpty()) {
-            Card(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(vertical = 8.dp),
-                colors = CardDefaults.cardColors(
-                    containerColor = MaterialTheme.colorScheme.tertiaryContainer
-                )
-            ) {
-                Column(
-                    modifier = Modifier.padding(16.dp)
-                ) {
-                    Text(
-                        text = "Detected Commands:",
-                        style = MaterialTheme.typography.titleMedium
-                    )
-                    Spacer(modifier = Modifier.height(4.dp))
+            Card(modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.tertiaryContainer)) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Text("Detected Commands:", style = MaterialTheme.typography.titleMedium)
+                    Spacer(Modifier.height(4.dp))
                     detectedCommands.forEachIndexed { index, command ->
                         val commandText = when (command) {
                             is Command.ClickButton -> "Click on button: \"${command.buttonText}\""
                             is Command.TapCoordinates -> "Tap coordinates: (${command.x}, ${command.y})"
                             is Command.TakeScreenshot -> "Take screenshot"
-                            is Command.PressHomeButton -> "Press Home button"
-                            is Command.PressBackButton -> "Press Back button"
-                            is Command.ShowRecentApps -> "Open recent apps overview"
-                            is Command.ScrollDown -> "Scroll down"
-                            is Command.ScrollUp -> "Scroll up"
-                            is Command.ScrollLeft -> "Scroll left"
-                            is Command.ScrollRight -> "Scroll right"
-                            is Command.ScrollDownFromCoordinates -> "Scroll down from position (${command.x}, ${command.y}) with distance ${command.distance}px and duration ${command.duration}ms"
-                            is Command.ScrollUpFromCoordinates -> "Scroll up from position (${command.x}, ${command.y}) with distance ${command.distance}px and duration ${command.duration}ms"
-                            is Command.ScrollLeftFromCoordinates -> "Scroll left from position (${command.x}, ${command.y}) with distance ${command.distance}px and duration ${command.duration}ms"
-                            is Command.ScrollRightFromCoordinates -> "Scroll right from position (${command.x}, ${command.y}) with distance ${command.distance}px and duration ${command.duration}ms"
-                            is Command.OpenApp -> "Open app: \"${command.packageName}\""
-                            is Command.WriteText -> "Write text: \"${command.text}\""
-                            is Command.UseHighReasoningModel -> "Switch to more powerful model (gemini-2.5-pro-preview-03-25)"
-                            is Command.UseLowReasoningModel -> "Switch to faster model (gemini-2.0-flash-lite)"
-                            is Command.PressEnterKey -> "Enter command detected"
+                            else -> command::class.simpleName ?: "Unknown Command"
                         }
-                        Text(
-                            text = "${index + 1}. $commandText",
-                            color = MaterialTheme.colorScheme.onTertiaryContainer
-                        )
-                        if (index < detectedCommands.size - 1) {
-                            Divider(
-                                modifier = Modifier.padding(vertical = 4.dp),
-                                color = MaterialTheme.colorScheme.onTertiaryContainer.copy(alpha = 0.2f)
-                            )
-                        }
+                        Text("${index + 1}. $commandText", color = MaterialTheme.colorScheme.onTertiaryContainer)
+                        if (index < detectedCommands.size - 1) Divider(Modifier.padding(vertical = 4.dp), color = MaterialTheme.colorScheme.onTertiaryContainer.copy(alpha = 0.2f))
                     }
                 }
             }
@@ -562,19 +370,19 @@ fun PhotoReasoningScreen(
                 onDismissRequest = { showDatabaseListPopup = false },
                 entries = systemMessageEntries,
                 onNewClicked = {
-                    entryToEdit = null // For a new entry
+                    entryToEdit = null 
                     showEditEntryPopup = true
-                    Log.d("PhotoReasoningScreen", "New clicked, opening edit popup")
                 },
                 onEntryClicked = { entry ->
-                    entryToEdit = entry // For editing an existing entry
+                    entryToEdit = entry 
                     showEditEntryPopup = true
-                    Log.d("PhotoReasoningScreen", "Entry clicked: ${entry.title}, opening edit popup")
                 },
                 onDeleteClicked = { entry ->
-                    Log.d("PhotoReasoningScreen", "Delete clicked in popup for: ${entry.title}")
                     SystemMessageEntryPreferences.deleteEntry(context, entry)
-                    systemMessageEntries = SystemMessageEntryPreferences.loadEntries(context) // Refresh list
+                    systemMessageEntries = SystemMessageEntryPreferences.loadEntries(context) 
+                },
+                onImportCompleted = { 
+                    systemMessageEntries = SystemMessageEntryPreferences.loadEntries(context)
                 }
             )
         }
@@ -584,33 +392,30 @@ fun PhotoReasoningScreen(
                 entry = entryToEdit,
                 onDismissRequest = { showEditEntryPopup = false },
                 onSaveClicked = { title, guide, originalEntry ->
-                    val currentEntry = SystemMessageEntry(title.trim(), guide.trim()) // Trim inputs
-                    if (title.isBlank() || guide.isBlank()) { // Basic validation
-                        Toast.makeText(context, "Title and Guide cannot be empty.", Toast.LENGTH_SHORT).show()
+                    val currentEntry = SystemMessageEntry(title.trim(), guide.trim()) 
+                    if (title.isBlank() || guide.isBlank()) { 
+                        Toast.makeText(context, "Title and Guide cannot be empty." as CharSequence, Toast.LENGTH_SHORT).show()
                         return@EditEntryPopup
                     }
-
-                    if (originalEntry == null) { // New entry
+                    if (originalEntry == null) { 
                         val existingEntry = systemMessageEntries.find { it.title.equals(currentEntry.title, ignoreCase = true) }
                         if (existingEntry == null) {
                             SystemMessageEntryPreferences.addEntry(context, currentEntry)
-                            Log.d("PhotoReasoningScreen", "Saved new entry: ${currentEntry.title}")
                             showEditEntryPopup = false
-                            systemMessageEntries = SystemMessageEntryPreferences.loadEntries(context) // Refresh list
+                            systemMessageEntries = SystemMessageEntryPreferences.loadEntries(context) 
                         } else {
-                            Toast.makeText(context, "An entry with this title already exists.", Toast.LENGTH_SHORT).show()
-                            return@EditEntryPopup // Prevent adding duplicate and keep popup open
+                            Toast.makeText(context, "An entry with this title already exists." as CharSequence, Toast.LENGTH_SHORT).show()
+                            return@EditEntryPopup 
                         }
-                    } else { // Updating existing entry
+                    } else { 
                         val existingEntryWithNewTitle = systemMessageEntries.find { it.title.equals(currentEntry.title, ignoreCase = true) && it.guide != originalEntry.guide }
                         if (existingEntryWithNewTitle != null && originalEntry.title != currentEntry.title) {
-                            Toast.makeText(context, "Another entry with this new title already exists.", Toast.LENGTH_SHORT).show()
-                            return@EditEntryPopup // Prevent update if new title clashes
+                            Toast.makeText(context, "Another entry with this new title already exists." as CharSequence, Toast.LENGTH_SHORT).show()
+                            return@EditEntryPopup 
                         }
                         SystemMessageEntryPreferences.updateEntry(context, originalEntry, currentEntry)
-                        Log.d("PhotoReasoningScreen", "Updated entry: ${originalEntry.title} to ${currentEntry.title}")
                         showEditEntryPopup = false
-                        systemMessageEntries = SystemMessageEntryPreferences.loadEntries(context) // Refresh list
+                        systemMessageEntries = SystemMessageEntryPreferences.loadEntries(context) 
                     }
                 }
             )
@@ -624,9 +429,204 @@ fun DatabaseListPopup(
     entries: List<SystemMessageEntry>,
     onNewClicked: () -> Unit,
     onEntryClicked: (SystemMessageEntry) -> Unit,
-    onDeleteClicked: (SystemMessageEntry) -> Unit
+    onDeleteClicked: (SystemMessageEntry) -> Unit,
+    onImportCompleted: () -> Unit
 ) {
+    val TAG_IMPORT_PROCESS = "ImportProcess"
+    val scope = rememberCoroutineScope()
     var entryMenuToShow: SystemMessageEntry? by remember { mutableStateOf(null) }
+    var selectionModeActive by rememberSaveable { mutableStateOf(false) }
+    var selectedEntryTitles by rememberSaveable { mutableStateOf(emptySet<String>()) }
+    var selectAllChecked by rememberSaveable { mutableStateOf(false) }
+    val context = LocalContext.current
+
+    var entryToConfirmOverwrite by remember { mutableStateOf<Pair<SystemMessageEntry, SystemMessageEntry>?>(null) }
+    var remainingEntriesToImport by remember { mutableStateOf<List<SystemMessageEntry>>(emptyList()) }
+    var skipAllDuplicates by remember { mutableStateOf(false) }
+
+    // processImportedEntries is defined within DatabaseListPopup, so it has access to context, onImportCompleted, etc.
+    fun processImportedEntries( 
+        imported: List<SystemMessageEntry>,
+        currentSystemEntries: List<SystemMessageEntry>
+    ) {
+        val TAG_IMPORT_PROCESS_FUNCTION = "ImportProcessFunction" 
+        Log.d(TAG_IMPORT_PROCESS_FUNCTION, "Starting processImportedEntries. Imported: ${imported.size}, Current: ${currentSystemEntries.size}, SkipAll: $skipAllDuplicates")
+
+        var newCount = 0
+        var updatedCount = 0 
+        var skippedCount = 0
+        val entriesToProcess = imported.toMutableList()
+
+        while (entriesToProcess.isNotEmpty()) {
+            val newEntry = entriesToProcess.removeAt(0)
+            Log.d(TAG_IMPORT_PROCESS_FUNCTION, "Processing entry: Title='${newEntry.title}'. Remaining in batch: ${entriesToProcess.size}")
+            val existingEntry = currentSystemEntries.find { it.title.equals(newEntry.title, ignoreCase = true) }
+
+            if (existingEntry != null) {
+                Log.d(TAG_IMPORT_PROCESS_FUNCTION, "Duplicate found for title: '${newEntry.title}'. Existing guide: '${existingEntry.guide.take(50)}', New guide: '${newEntry.guide.take(50)}'")
+                if (skipAllDuplicates) {
+                    Log.d(TAG_IMPORT_PROCESS_FUNCTION, "Skipping duplicate '${newEntry.title}' due to skipAllDuplicates flag.")
+                    skippedCount++
+                    continue
+                }
+                Log.d(TAG_IMPORT_PROCESS_FUNCTION, "Calling askForOverwrite for '${newEntry.title}'.")
+                entryToConfirmOverwrite = Pair(existingEntry, newEntry) 
+                remainingEntriesToImport = entriesToProcess.toList() 
+                return 
+            } else {
+                Log.i(TAG_IMPORT_PROCESS_FUNCTION, "Adding new entry: Title='${newEntry.title}'")
+                SystemMessageEntryPreferences.addEntry(context, newEntry)
+                newCount++
+            }
+        }
+        Log.i(TAG_IMPORT_PROCESS_FUNCTION, "Finished processing batch. newCount=$newCount, updatedCount=$updatedCount, skippedCount=$skippedCount")
+        val summary = "Import finished: $newCount added, $updatedCount updated, $skippedCount skipped."
+        Toast.makeText(context, summary as CharSequence, Toast.LENGTH_LONG).show()
+        onImportCompleted() 
+        skipAllDuplicates = false 
+    }
+
+
+    val filePickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.GetContent(),
+        onResult = { uri: Uri? ->
+            Log.d(TAG_IMPORT_PROCESS, "FilePickerLauncher onResult triggered.")
+            if (uri == null) {
+                Log.w(TAG_IMPORT_PROCESS, "URI is null, no file selected or operation cancelled.")
+                scope.launch(Dispatchers.Main) {
+                    Toast.makeText(context, "No file selected." as CharSequence, Toast.LENGTH_SHORT).show()
+                }
+                return@rememberLauncherForActivityResult
+            }
+
+            Log.i(TAG_IMPORT_PROCESS, "Selected file URI: $uri")
+            scope.launch(Dispatchers.Main) {
+                Toast.makeText(context, "File selected: $uri. Starting import..." as CharSequence, Toast.LENGTH_SHORT).show()
+            }
+
+            scope.launch(Dispatchers.IO) { 
+                try {
+                    Log.d(TAG_IMPORT_PROCESS, "Attempting to open InputStream for URI: $uri on thread: ${Thread.currentThread().name}")
+                    
+                    var fileSize = -1L
+                    try {
+                        context.contentResolver.openFileDescriptor(uri, "r")?.use { pfd ->
+                            fileSize = pfd.statSize
+                        }
+                        Log.i(TAG_IMPORT_PROCESS, "Estimated file size: $fileSize bytes.")
+                    } catch (e: Exception) {
+                        Log.w(TAG_IMPORT_PROCESS, "Could not determine file size for URI: $uri. Will proceed without size check.", e)
+                    }
+
+                    val MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024 
+                    if (fileSize != -1L && fileSize > MAX_FILE_SIZE_BYTES) {
+                        Log.e(TAG_IMPORT_PROCESS, "File size ($fileSize bytes) exceeds limit of $MAX_FILE_SIZE_BYTES bytes.")
+                        withContext(Dispatchers.Main) {
+                            Toast.makeText(context, "File is too large (max 10MB)." as CharSequence, Toast.LENGTH_LONG).show()
+                        }
+                        return@launch 
+                    }
+                     if (fileSize == 0L) { 
+                         Log.w(TAG_IMPORT_PROCESS, "Imported file is empty (0 bytes).")
+                        withContext(Dispatchers.Main) {
+                            Toast.makeText(context, "Imported file is empty." as CharSequence, Toast.LENGTH_LONG).show()
+                        }
+                        return@launch 
+                    }
+
+                    context.contentResolver.openInputStream(uri)?.use { inputStream ->
+                        Log.i(TAG_IMPORT_PROCESS, "InputStream opened. Reading text on thread: ${Thread.currentThread().name}")
+                        val jsonString = inputStream.bufferedReader().readText() 
+                        Log.i(TAG_IMPORT_PROCESS, "File content read. Size: ${jsonString.length} chars.")
+                        Log.v(TAG_IMPORT_PROCESS, "File content snippet: ${jsonString.take(500)}")
+
+                        if (jsonString.isBlank()) {
+                            Log.w(TAG_IMPORT_PROCESS, "Imported file content is blank.")
+                            withContext(Dispatchers.Main) {
+                                Toast.makeText(context, "Imported file content is blank." as CharSequence, Toast.LENGTH_LONG).show()
+                            }
+                            return@use 
+                        }
+
+                        Log.d(TAG_IMPORT_PROCESS, "Attempting to parse JSON string on thread: ${Thread.currentThread().name}")
+                        val parsedEntries = Json.decodeFromString(ListSerializer(SystemMessageEntry.serializer()), jsonString)
+                        Log.i(TAG_IMPORT_PROCESS, "JSON parsed. Found ${parsedEntries.size} entries.")
+
+                        val currentSystemEntries = SystemMessageEntryPreferences.loadEntries(context) 
+                        Log.d(TAG_IMPORT_PROCESS, "Current system entries loaded: ${currentSystemEntries.size} entries.")
+
+                        withContext(Dispatchers.Main) { 
+                            Log.d(TAG_IMPORT_PROCESS, "Switching to Main thread for processImportedEntries: ${Thread.currentThread().name}")
+                            skipAllDuplicates = false 
+                            processImportedEntries(
+                                imported = parsedEntries,
+                                currentSystemEntries = currentSystemEntries
+                            )
+                        }
+                    } ?: Log.w(TAG_IMPORT_PROCESS, "ContentResolver.openInputStream returned null for URI: $uri (second check).")
+                } catch (e: Exception) {
+                    Log.e(TAG_IMPORT_PROCESS, "Error during file import for URI: $uri on thread: ${Thread.currentThread().name}", e)
+                    withContext(Dispatchers.Main) {
+                        val errorMessage = if (e is OutOfMemoryError) {
+                            "Out of memory. File may be too large or contain too many entries."
+                        } else {
+                            e.message ?: "Unknown error during import."
+                        }
+                        Toast.makeText(context, "Error importing file: $errorMessage" as CharSequence, Toast.LENGTH_LONG).show()
+                    }
+                }
+            }
+        }
+    )
+
+    if (entryToConfirmOverwrite != null) {
+        val (existingEntry, newEntry) = entryToConfirmOverwrite!!
+        OverwriteConfirmationDialog(
+            entryTitle = newEntry.title,
+            onConfirm = {
+                Log.d(TAG_IMPORT_PROCESS, "Overwrite confirmed for title: '${newEntry.title}'")
+                SystemMessageEntryPreferences.updateEntry(context, existingEntry, newEntry)
+                Toast.makeText(context, "Entry '${newEntry.title}' overwritten." as CharSequence, Toast.LENGTH_SHORT).show()
+                entryToConfirmOverwrite = null
+                val currentSystemEntriesAfterUpdate = SystemMessageEntryPreferences.loadEntries(context) 
+                Log.d(TAG_IMPORT_PROCESS, "Continuing with remaining ${remainingEntriesToImport.size} entries after dialog (Confirm).")
+                processImportedEntries( 
+                    imported = remainingEntriesToImport,
+                    currentSystemEntries = currentSystemEntriesAfterUpdate
+                )
+            },
+            onDeny = { 
+                Log.d(TAG_IMPORT_PROCESS, "Overwrite denied for title: '${newEntry.title}'")
+                entryToConfirmOverwrite = null
+                val currentSystemEntriesAfterDeny = SystemMessageEntryPreferences.loadEntries(context) 
+                Log.d(TAG_IMPORT_PROCESS, "Continuing with remaining ${remainingEntriesToImport.size} entries after dialog (Deny).")
+                processImportedEntries( 
+                    imported = remainingEntriesToImport,
+                    currentSystemEntries = currentSystemEntriesAfterDeny
+                )
+            },
+            onSkipAll = { 
+                Log.d(TAG_IMPORT_PROCESS, "Skip All selected for title: '${newEntry.title}'")
+                skipAllDuplicates = true
+                entryToConfirmOverwrite = null
+                val currentSystemEntriesAfterSkipAll = SystemMessageEntryPreferences.loadEntries(context) 
+                Log.d(TAG_IMPORT_PROCESS, "Continuing with remaining ${remainingEntriesToImport.size} entries after dialog (SkipAll).")
+                processImportedEntries( 
+                    imported = remainingEntriesToImport,
+                    currentSystemEntries = currentSystemEntriesAfterSkipAll
+                )
+            },
+            onDismiss = { 
+                Log.d(TAG_IMPORT_PROCESS, "Overwrite dialog dismissed for title: '${entryToConfirmOverwrite?.second?.title}'. Import process for this batch might halt.")
+                entryToConfirmOverwrite = null 
+                remainingEntriesToImport = emptyList() 
+                skipAllDuplicates = false
+                Toast.makeText(context, "Import cancelled for remaining items." as CharSequence, Toast.LENGTH_SHORT).show()
+                onImportCompleted() 
+            }
+        )
+    }
+
 
     Dialog(
         onDismissRequest = onDismissRequest,
@@ -634,105 +634,184 @@ fun DatabaseListPopup(
     ) {
         Card(
             modifier = Modifier
-                .fillMaxWidth(0.95f) // Fill 95% of screen width
-                .fillMaxHeight(0.85f), // Fill 85% of screen height
+                .fillMaxWidth(0.95f) 
+                .fillMaxHeight(0.85f), 
             shape = RoundedCornerShape(16.dp),
             colors = CardDefaults.cardColors(containerColor = DarkYellow1)
         ) {
             Column(
                 modifier = Modifier
-                    .padding(16.dp) // Padding for content *inside* the card
+                    .padding(16.dp) 
                     .fillMaxSize()
             ) {
                 val displayRowCount = 15
-                val newButtonRowIndex = entries.size // This is the index where the 'New' button row will appear
+                val newButtonRowIndex = entries.size 
 
-                LazyColumn(modifier = Modifier.weight(1f)) { // Ensure LazyColumn takes available space
+                LazyColumn(modifier = Modifier.weight(1f)) { 
                     items(displayRowCount) { rowIndex ->
                         val currentAlternatingColor = if (rowIndex % 2 == 0) DarkYellow1 else DarkYellow2
 
                         when {
-                            // Case 1: This row is for an actual entry
                             rowIndex < entries.size -> {
                                 val entry = entries[rowIndex]
+                                val isSelected = selectedEntryTitles.contains(entry.title)
+
                                 Row(
                                     modifier = Modifier
                                         .fillMaxWidth()
                                         .background(currentAlternatingColor)
-                                        .padding(horizontal = 16.dp, vertical = 8.dp) // Consistent padding
-                                        .clickable { onEntryClicked(entry) },
+                                        .clickable {
+                                            if (selectionModeActive) {
+                                                val entryTitle = entry.title
+                                                val isCurrentlySelected = selectedEntryTitles.contains(entryTitle)
+                                                selectedEntryTitles = if (isCurrentlySelected) {
+                                                    selectedEntryTitles - entryTitle
+                                                } else {
+                                                    selectedEntryTitles + entryTitle
+                                                }
+                                                selectAllChecked = if (selectedEntryTitles.size == entries.size && entries.isNotEmpty()) true else if (selectedEntryTitles.isEmpty()) false else false
+                                            } else {
+                                                onEntryClicked(entry) 
+                                            }
+                                        }
+                                        .padding(horizontal = 8.dp, vertical = 4.dp),
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    Text(
-                                        text = entry.title,
-                                        modifier = Modifier.weight(1f),
-                                        color = Color.Black,
-                                        style = MaterialTheme.typography.bodyLarge // Slightly larger text for entries
-                                    )
-                                    Box { // Anchor for DropdownMenu
-                                        IconButton(onClick = { entryMenuToShow = entry }) { // entryMenuToShow state
-                                            Icon(Icons.Filled.MoreVert, contentDescription = "More options", tint = Color.Black)
-                                        }
-                                        DropdownMenu(
-                                            expanded = entryMenuToShow == entry, // entryMenuToShow state
-                                            onDismissRequest = { entryMenuToShow = null } // entryMenuToShow state
-                                        ) {
-                                            DropdownMenuItem(
-                                                text = { Text("Delete") },
-                                                onClick = {
-                                                    onDeleteClicked(entry)
-                                                    entryMenuToShow = null // entryMenuToShow state
+                                    if (selectionModeActive) {
+                                        Checkbox(
+                                            checked = isSelected,
+                                            onCheckedChange = { isChecked ->
+                                                val entryTitle = entry.title
+                                                selectedEntryTitles = if (isChecked) {
+                                                    selectedEntryTitles + entryTitle
+                                                } else {
+                                                    selectedEntryTitles - entryTitle
                                                 }
-                                            )
+                                                selectAllChecked = if (selectedEntryTitles.size == entries.size && entries.isNotEmpty()) true else if (selectedEntryTitles.isEmpty()) false else false
+                                            },
+                                            modifier = Modifier.padding(end = 8.dp),
+                                            colors = CheckboxDefaults.colors(checkedColor = MaterialTheme.colorScheme.primary)
+                                        )
+                                    }
+                                    Box(
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            .border(BorderStroke(1.dp, Color.Black), shape = RoundedCornerShape(12.dp))
+                                            .padding(horizontal = 12.dp, vertical = 8.dp),
+                                        contentAlignment = Alignment.CenterStart
+                                    ) {
+                                        Text(entry.title, color = Color.Black, style = MaterialTheme.typography.bodyLarge)
+                                    }
+                                    if (!selectionModeActive) {
+                                        Box {
+                                            IconButton(onClick = { entryMenuToShow = entry }) {
+                                                Icon(Icons.Filled.MoreVert, "More options", tint = Color.Black)
+                                            }
+                                            DropdownMenu(
+                                                expanded = entryMenuToShow == entry,
+                                                onDismissRequest = { entryMenuToShow = null }
+                                            ) {
+                                                DropdownMenuItem(
+                                                    text = { Text("Delete") },
+                                                    onClick = {
+                                                        onDeleteClicked(entry)
+                                                        entryMenuToShow = null
+                                                    }
+                                                )
+                                            }
                                         }
+                                    } else {
+                                        Spacer(modifier = Modifier.width(48.dp)) 
                                     }
                                 }
                             }
-
-                            // Case 2: This row is the "New" button row
                             rowIndex == newButtonRowIndex -> {
                                 Row(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .background(currentAlternatingColor)
-                                        .padding(8.dp) // Slightly less vertical padding for button row
-                                        .clickable(onClick = onNewClicked),
-                                    verticalAlignment = Alignment.CenterVertically
+                                    modifier = Modifier.fillMaxWidth().background(currentAlternatingColor)
+                                        .padding(8.dp).clickable(onClick = onNewClicked),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.End 
                                 ) {
-                                    Button(
-                                        onClick = onNewClicked,
-                                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
-                                        modifier = Modifier.padding(end = 8.dp)
-                                    ) {
+                                    Text("Add a new system message guide", color = Color.Black.copy(alpha = 0.6f), style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+                                    Button(onClick = onNewClicked, colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary), modifier = Modifier.padding(start = 8.dp)) {
                                         Text("New")
                                     }
-                                    Text(
-                                        "Add a new system message guide",
-                                        color = Color.Black.copy(alpha = 0.6f),
-                                        style = MaterialTheme.typography.bodyMedium
-                                    )
                                 }
                             }
-
-                            // Case 3: This is an empty placeholder row
                             else -> {
-                                Box(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .height(56.dp) // Maintain consistent row height
-                                        .background(currentAlternatingColor)
-                                        .padding(16.dp) // Keep padding for visual consistency
-                                ) {
-                                    // Empty, or a very subtle placeholder if desired
-                                }
+                                Box(modifier = Modifier.fillMaxWidth().height(56.dp).background(currentAlternatingColor).padding(16.dp)) {}
                             }
                         }
+                    }
+                }
+                Spacer(modifier = Modifier.height(8.dp))
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                    if (selectionModeActive) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Checkbox(
+                                checked = selectAllChecked,
+                                onCheckedChange = { isChecked ->
+                                    selectAllChecked = isChecked
+                                    selectedEntryTitles = if (isChecked) entries.map { it.title }.toSet() else emptySet()
+                                },
+                                colors = CheckboxDefaults.colors(checkedColor = MaterialTheme.colorScheme.primary)
+                            )
+                            Text("All", color = Color.Black, style = MaterialTheme.typography.bodyMedium)
+                        }
+                    } else {
+                        Spacer(modifier = Modifier.width(80.dp)) // Placeholder for alignment
+                    }
+
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Button(onClick = { filePickerLauncher.launch("*/*") }, colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary), modifier = Modifier.padding(end = 8.dp)) { Text("Import") }
+                        Button(
+                            onClick = {
+                                if (selectionModeActive) { 
+                                    if (selectedEntryTitles.isEmpty()) {
+                                        Toast.makeText(context, "No entries selected for export." as CharSequence, Toast.LENGTH_SHORT).show()
+                                    } else {
+                                        val entriesToExport = entries.filter { selectedEntryTitles.contains(it.title) }
+                                        val jsonString = Json.encodeToString(ListSerializer(SystemMessageEntry.serializer()), entriesToExport)
+                                        shareTextFile(context, "system_messages_export.txt", jsonString)
+                                    }
+                                    selectionModeActive = false
+                                    selectedEntryTitles = emptySet()
+                                    selectAllChecked = false
+                                } else { 
+                                    selectionModeActive = true
+                                }
+                            },
+                            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
+                        ) { Text("Export") } // Text is now always "Export"
                     }
                 }
             }
         }
     }
 }
+
+
+@Composable
+fun OverwriteConfirmationDialog(
+    entryTitle: String,
+    onConfirm: () -> Unit,
+    onDeny: () -> Unit,
+    onSkipAll: () -> Unit, 
+    onDismiss: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Confirm Overwrite") },
+        text = { Text("An entry with the title \"$entryTitle\" already exists. Do you want to overwrite its guide?") },
+        confirmButton = {
+            TextButton(onClick = onConfirm) { Text("Yes") }
+        },
+        dismissButton = {
+            TextButton(onClick = onDeny) { Text("No") }
+        }
+    )
+}
+
 
 @Composable
 fun UserChatBubble(
@@ -866,11 +945,10 @@ fun ErrorChatBubble(
     }
 }
 
-// Adjusted Preview to avoid issues with LocalContext if SystemMessageEntryPreferences were used directly
 @Preview
 @Composable
 fun PhotoReasoningScreenPreviewWithContent() {
-    MaterialTheme { // Wrap in MaterialTheme for proper theming
+    MaterialTheme { 
         PhotoReasoningScreen(
             uiState = PhotoReasoningUiState.Success("This is a preview of the photo reasoning screen."),
             commandExecutionStatus = "Command executed: Take screenshot",
@@ -880,14 +958,8 @@ fun PhotoReasoningScreenPreviewWithContent() {
             ),
             systemMessage = "This is a system message for the AI",
             chatMessages = listOf(
-                PhotoReasoningMessage(
-                    text = "Hello, how can I help you?",
-                    participant = PhotoParticipant.USER
-                ),
-                PhotoReasoningMessage(
-                    text = "I am here to help you. What do you want to know?",
-                    participant = PhotoParticipant.MODEL
-                )
+                PhotoReasoningMessage(text = "Hello, how can I help you?", participant = PhotoParticipant.USER),
+                PhotoReasoningMessage(text = "I am here to help you. What do you want to know?", participant = PhotoParticipant.MODEL)
             ),
             isKeyboardOpen = false
         )
@@ -902,81 +974,58 @@ fun EditEntryPopup(
 ) {
     Dialog(
         onDismissRequest = onDismissRequest,
-        properties = DialogProperties(usePlatformDefaultWidth = false) // Allows custom sizing
+        properties = DialogProperties(usePlatformDefaultWidth = false) 
     ) {
         Card(
-            modifier = Modifier
-                .fillMaxWidth(0.9f)  // Dialog width relative to screen
-                .fillMaxHeight(0.7f) // Dialog height relative to screen
-                .padding(16.dp), // Overall padding *around* the card content, effectively margin from dialog edge
+            modifier = Modifier.fillMaxWidth(0.9f).fillMaxHeight(0.7f).padding(16.dp), 
             shape = RoundedCornerShape(16.dp),
-            colors = CardDefaults.cardColors(containerColor = DarkYellow1) // Set Card's own background
+            colors = CardDefaults.cardColors(containerColor = DarkYellow1) 
         ) {
-            Column(
-                modifier = Modifier
-                    .padding(16.dp) // Padding for the content *inside* the card
-                    .fillMaxSize()
-            ) {
+            Column(modifier = Modifier.padding(16.dp).fillMaxSize()) {
                 var titleInput by rememberSaveable { mutableStateOf(entry?.title ?: "") }
                 var guideInput by rememberSaveable { mutableStateOf(entry?.guide ?: "") }
 
-                // Title Field
-                Text("Title", style = MaterialTheme.typography.labelMedium, color = Color.Black.copy(alpha = 0.7f)) // Custom label
+                Text("Title", style = MaterialTheme.typography.labelMedium, color = Color.Black.copy(alpha = 0.7f)) 
                 Spacer(modifier = Modifier.height(4.dp))
                 OutlinedTextField(
                     value = titleInput,
                     onValueChange = { titleInput = it },
-                    // label = { Text("Title") }, // REMOVE LABEL
                     placeholder = { Text("App/Task", color = Color.Gray) },
                     modifier = Modifier.fillMaxWidth(),
-                    colors = TextFieldDefaults.colors(
+                    colors = TextFieldDefaults.colors( 
                         focusedContainerColor = Color.White,
                         unfocusedContainerColor = Color.White,
                         disabledContainerColor = Color.White,
-                        cursorColor = Color.Black, // Ensure cursor is visible
+                        cursorColor = Color.Black, 
                         focusedTextColor = Color.Black,
                         unfocusedTextColor = Color.Black,
-                        // focusedLabelColor = MaterialTheme.colorScheme.primary, // Not needed without label
-                        // unfocusedLabelColor = Color.Gray // Not needed without label
                     ),
                     singleLine = true
                 )
-
                 Spacer(modifier = Modifier.height(8.dp))
-
-                // Guide Field
-                Text("Guide", style = MaterialTheme.typography.labelMedium, color = Color.Black.copy(alpha = 0.7f)) // Custom label
+                Text("Guide", style = MaterialTheme.typography.labelMedium, color = Color.Black.copy(alpha = 0.7f)) 
                 Spacer(modifier = Modifier.height(4.dp))
                 OutlinedTextField(
                     value = guideInput,
                     onValueChange = { guideInput = it },
-                    // label = { Text("Guide") }, // REMOVE LABEL
                     placeholder = { Text("Write a guide for an LLM on how it should perform certain tasks to be successful", color = Color.Gray) },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .weight(1f),
+                    modifier = Modifier.fillMaxWidth().weight(1f),
                     colors = TextFieldDefaults.colors(
                         focusedContainerColor = Color.White,
                         unfocusedContainerColor = Color.White,
                         disabledContainerColor = Color.White,
-                        cursorColor = Color.Black, // Ensure cursor is visible
+                        cursorColor = Color.Black, 
                         focusedTextColor = Color.Black,
                         unfocusedTextColor = Color.Black,
-                        // focusedLabelColor = MaterialTheme.colorScheme.primary, // Not needed without label
-                        // unfocusedLabelColor = Color.Gray // Not needed without label
                     ),
                     minLines = 5
                 )
-
                 Spacer(modifier = Modifier.height(16.dp))
-
                 Button(
                     onClick = { onSaveClicked(titleInput, guideInput, entry) },
                     modifier = Modifier.align(Alignment.End),
                     colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
-                ) {
-                    Text("Save")
-                }
+                ) { Text("Save") }
             }
         }
     }
@@ -986,11 +1035,7 @@ fun EditEntryPopup(
 @Composable
 fun EditEntryPopupNewPreview() {
     MaterialTheme {
-        EditEntryPopup(
-            entry = null,
-            onDismissRequest = {},
-            onSaveClicked = { _, _, _ -> }
-        )
+        EditEntryPopup(entry = null, onDismissRequest = {}, onSaveClicked = { _, _, _ -> })
     }
 }
 
@@ -998,40 +1043,23 @@ fun EditEntryPopupNewPreview() {
 @Composable
 fun EditEntryPopupEditPreview() {
     MaterialTheme {
-        EditEntryPopup(
-            entry = SystemMessageEntry("Existing Title", "Existing Guide"),
-            onDismissRequest = {},
-            onSaveClicked = { _, _, _ -> }
-        )
+        EditEntryPopup(entry = SystemMessageEntry("Existing Title", "Existing Guide"), onDismissRequest = {}, onSaveClicked = { _, _, _ -> })
     }
 }
 
-// Saver for SystemMessageEntry
 val SystemMessageEntrySaver = Saver<SystemMessageEntry?, List<String?>>(
-    save = { entry ->
-        if (entry == null) {
-            listOf(null, null)
-        } else {
-            listOf(entry.title, entry.guide)
-        }
-    },
+    save = { entry -> if (entry == null) listOf(null, null) else listOf(entry.title, entry.guide) },
     restore = { list ->
         val title = list[0]
         val guide = list[1]
-        if (title != null && guide != null) {
-            SystemMessageEntry(title, guide)
-        } else {
-            null
-        }
+        if (title != null && guide != null) SystemMessageEntry(title, guide) else null
     }
 )
 
 @Composable
 @Preview(showSystemUi = true)
 fun PhotoReasoningScreenPreviewEmpty() {
-    MaterialTheme { // Wrap in MaterialTheme for proper theming
-        PhotoReasoningScreen(isKeyboardOpen = false)
-    }
+    MaterialTheme { PhotoReasoningScreen(isKeyboardOpen = false) }
 }
 
 @Preview(showBackground = true)
@@ -1043,11 +1071,12 @@ fun DatabaseListPopupPreview() {
             entries = listOf(
                 SystemMessageEntry("Title 1", "Guide for prompt 1"),
                 SystemMessageEntry("Title 2", "Another guide for prompt 2"),
-                SystemMessageEntry("Title 3", "Yet another guide for prompt 3. This one is a bit longer to see how it wraps or truncates if not handled.")
+                SystemMessageEntry("Title 3", "Yet another guide for prompt 3.")
             ),
             onNewClicked = {},
             onEntryClicked = {},
-            onDeleteClicked = {}
+            onDeleteClicked = {},
+            onImportCompleted = {}
         )
     }
 }
@@ -1056,13 +1085,6 @@ fun DatabaseListPopupPreview() {
 @Composable
 fun DatabaseListPopupEmptyPreview() {
     MaterialTheme {
-        DatabaseListPopup(
-            onDismissRequest = {},
-            entries = emptyList(),
-            onNewClicked = {},
-            onEntryClicked = {},
-            onDeleteClicked = {}
-        )
+        DatabaseListPopup(onDismissRequest = {}, entries = emptyList(), onNewClicked = {}, onEntryClicked = {}, onDeleteClicked = {}, onImportCompleted = {})
     }
 }
-
