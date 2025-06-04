@@ -507,13 +507,15 @@ class PhotoReasoningViewModel(
                     _commandExecutionStatus.value = "Commands detected: $commandDescriptions"
                     
                     // Execute the commands
-                    for (command in commands) {
-                        try {
-                            ScreenOperatorAccessibilityService.executeCommand(command)
-                        } catch (e: Exception) {
-                            Log.e(TAG, "Error executing command: ${e.message}", e)
-                            _commandExecutionStatus.value = "Error during command execution: ${e.message}"
+                    try {
+                        if (commands.isNotEmpty()) { // Ensure there are commands before calling
+                            ScreenOperatorAccessibilityService.executeCommands(commands)
                         }
+                    } catch (e: Exception) {
+                        // This catch block might be less relevant if executeCommands itself
+                        // doesn't throw exceptions upwards, but good to keep for safety.
+                        Log.e(TAG, "Error enqueuing commands: ${e.message}", e)
+                        _commandExecutionStatus.value = "Error enqueuing commands: ${e.message}"
                     }
                 }
             } catch (e: Exception) {
