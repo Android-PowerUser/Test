@@ -11,6 +11,7 @@ object SystemMessageEntryPreferences {
     private const val TAG = "SystemMessageEntryPrefs"
     private const val PREFS_NAME = "system_message_entry_prefs"
     private const val KEY_SYSTEM_MESSAGE_ENTRIES = "system_message_entries"
+    private const val KEY_DEFAULT_DB_ENTRIES_POPULATED = "default_db_entries_populated" // Added constant
 
     private fun getSharedPreferences(context: Context): SharedPreferences {
         return context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
@@ -31,7 +32,33 @@ object SystemMessageEntryPreferences {
 
     fun loadEntries(context: Context): List<SystemMessageEntry> {
         try {
-            val jsonString = getSharedPreferences(context).getString(KEY_SYSTEM_MESSAGE_ENTRIES, null)
+            val prefs = getSharedPreferences(context)
+            val defaultsPopulated = prefs.getBoolean(KEY_DEFAULT_DB_ENTRIES_POPULATED, false)
+
+            if (!defaultsPopulated) {
+                Log.d(TAG, "Default entries not populated. Populating now.")
+                val defaultEntries = listOf(
+                    SystemMessageEntry(
+                        title = "Example Task: Web Browsing",
+                        guide = "// TODO: Define a detailed guide for the AI on how to perform web browsing tasks. \n// Example: \"To search the web, first click on the search bar (element_id: 'search_bar'), then type your query using writeText('your query'), then click the search button (element_id: 'search_button').\""
+                    ),
+                    SystemMessageEntry(
+                        title = "Example Task: Sending an Email",
+                        guide = "// TODO: Provide step-by-step instructions for composing and sending an email. \n// Specify UI elements to interact with (e.g., compose button, recipient field, subject field, body field, send button).\""
+                    ),
+                    SystemMessageEntry(
+                        title = "General App Navigation Guide",
+                        guide = "// TODO: Describe common navigation patterns within this app or general Android OS that the AI should know. \n// Example: \"To go to settings, click on the 'Settings' icon. To return to the previous screen, use the back button.\""
+                    )
+                )
+                saveEntries(context, defaultEntries) // This saves them to KEY_SYSTEM_MESSAGE_ENTRIES
+                prefs.edit().putBoolean(KEY_DEFAULT_DB_ENTRIES_POPULATED, true).apply()
+                Log.d(TAG, "Populated and saved default database entries.")
+                // The logic will now fall through to load these just-saved entries.
+            }
+
+            // Existing logic to load entries from KEY_SYSTEM_MESSAGE_ENTRIES:
+            val jsonString = prefs.getString(KEY_SYSTEM_MESSAGE_ENTRIES, null)
             if (jsonString != null) {
                 // Log.v(TAG, "Loaded JSON: $jsonString") // Verbose
                 val loadedEntries = Json.decodeFromString(ListSerializer(SystemMessageEntry.serializer()), jsonString)
