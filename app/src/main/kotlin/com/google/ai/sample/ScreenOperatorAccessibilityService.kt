@@ -2254,11 +2254,11 @@ fun pressEnterKey() {
         showToast("Scrolling left from specific position...", false)
         
         try {
-            // Create a path for the gesture (swipe from specified position to the left by the specified distance)
+            // Create a path for the gesture (swipe L-R, content moves Left)
             val swipePath = Path()
             val startX = x
             val startY = y
-            val endX = x - distance // Reverted: Swipe left to move content right (standard "scroll left")
+            val endX = x + distance // Finger swipes L-R, content moves Left
             val endY = y
             swipePath.moveTo(startX, startY)
             swipePath.lineTo(endX, endY)
@@ -2369,11 +2369,11 @@ fun pressEnterKey() {
         showToast("Scrolling right from specific position...", false)
         
         try {
-            // Create a path for the gesture (swipe from specified position to the right by the specified distance)
+            // Create a path for the gesture (swipe R-L, content moves Right)
             val swipePath = Path()
             val startX = x
             val startY = y
-            val endX = x + distance // Reverted: Swipe right to move content left (standard "scroll right")
+            val endX = x - distance // Finger swipes R-L, content moves Right
             val endY = y
             swipePath.moveTo(startX, startY)
             swipePath.lineTo(endX, endY)
