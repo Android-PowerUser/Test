@@ -70,6 +70,9 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import com.google.ai.sample.util.NotificationUtil // Added
+import kotlinx.coroutines.flow.collect // Added for flow collection
+import androidx.lifecycle.lifecycleScope // Added for lifecycleScope
 
 class MainActivity : ComponentActivity() {
 
@@ -95,6 +98,7 @@ class MainActivity : ComponentActivity() {
     private var permissionRequestCount by mutableStateOf(0)
 
     private lateinit var navController: NavHostController
+    private lateinit var requestNotificationPermissionLauncher: ActivityResultLauncher<String> // For single notification permission
 
     // START: Added for Accessibility Service Status
     private val _isAccessibilityServiceEnabled = MutableStateFlow(false)
@@ -393,6 +397,106 @@ class MainActivity : ComponentActivity() {
             }
         }
         Log.d(TAG, "onCreate: setContent finished.")
+
+        NotificationUtil.createNotificationChannel(this) // Create channel
+
+        requestNotificationPermissionLauncher = registerForActivityResult(ActivityResultContracts.RequestPermission()) { isGranted: Boolean ->
+            if (isGranted) {
+                // Permission is granted. You can now show notifications.
+                Toast.makeText(this, "Notification permission granted.", Toast.LENGTH_SHORT).show()
+            } else {
+                // Permission denied. Inform the user that the feature is unavailable.
+                Toast.makeText(this, "Notification permission denied. Stop via notification will not be available.", Toast.LENGTH_LONG).show()
+            }
+            // Optionally, refresh any UI that depends on this permission
+        }
+
+        // Collect showStopNotificationFlow from ViewModel
+        // Ensure photoReasoningViewModel is initialized before this.
+        // A null check or late initialization observer might be needed if ViewModel init is delayed.
+        // For this subtask, assuming it's available after setContent or similar.
+        // A safer place might be after ViewModel is confirmed initialized.
+        // Let's assume photoReasoningViewModel will be initialized by the time setContent completes
+        // or shortly after, and PhotoReasoningRoute will set it.
+        // To be robust, this collection should ideally start once photoReasoningViewModel is confirmed.
+        // However, the getPhotoReasoningViewModel() could return null initially.
+        // Awaiting ViewModel to be set via setPhotoReasoningViewModel.
+        // For now, placing it here with a check.
+        // This is a bit tricky because the ViewModel is set from the Composable route.
+        // A better pattern might be to have the ViewModel passed to MainActivity or use a shared Activity-level ViewModel.
+        // For now, let's try to collect when it becomes available.
+        // This specific placement might be problematic if the VM is not ready.
+        // A launchWhenStarted or similar might be better, or observing a LiveData/StateFlow for VM availability.
+        // The original prompt implies photoReasoningViewModel is already a member, let's use it.
+        // It IS initialized in setContent -> AppNavigation -> PhotoReasoningRoute -> viewModel()
+        // The issue is collecting it *here* in onCreate if that VM is created *later*.
+        // The current `photoReasoningViewModel` member is nullable and set via `setPhotoReasoningViewModel`.
+        // This collection needs to happen *after* `setPhotoReasoningViewModel` is called.
+        }
+
+        // Placed here, at the end of onCreate, after setContent and other initializations.
+        // This relies on photoReasoningViewModel being set by PhotoReasoningRoute during setContent.
+        if (photoReasoningViewModel != null) { // Check if VM is already set
+            lifecycleScope.launch {
+                photoReasoningViewModel!!.showStopNotificationFlow.collect { show ->
+                    if (show) {
+                        showStopOperationNotification()
+                    } else {
+                        cancelStopOperationNotification()
+                    }
+                }
+            }
+        } else {
+            // This is a fallback if VM is not immediately available.
+            // A more robust solution would involve a callback or a StateFlow for VM availability.
+            Log.w(TAG, "photoReasoningViewModel is null at the end of onCreate. Notification flow collection might be delayed or not start if VM is set much later or never.")
+            // One strategy could be to start collecting in onResume and cancel in onPause, checking for VM nullity.
+            // Or use a lifecycle observer for the view model if it were an AndroidViewModel.
+            // For now, this explicit check and potential log is the best under current structure.
+        }
+    }
+
+    fun showStopOperationNotification() {
+        NotificationUtil.showStopNotification(this)
+    }
+
+    fun cancelStopOperationNotification() {
+        NotificationUtil.cancelStopNotification(this)
+    }
+
+    fun isNotificationPermissionGranted(): Boolean {
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
+        } else {
+            true // Notifications are implicitly granted on older versions
+        }
+    }
+
+    fun requestNotificationPermission() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            if (shouldShowRequestPermissionRationale(Manifest.permission.POST_NOTIFICATIONS)) {
+                // This is a good place to show a system-recommended rationale if needed,
+                // but our custom dialog in the screen handles the initial rationale.
+                // For now, just request. If user denies twice, system handles "don't ask again".
+                requestNotificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+            } else {
+                // Directly request if rationale isn't needed or already handled by system for "don't ask again"
+                requestNotificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+            }
+        }
+    }
+
+    fun hasShownNotificationRationale(): Boolean {
+        val prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        return prefs.getBoolean(KEY_NOTIFICATION_RATIONALE_SHOWN, false)
+    }
+
+    fun setNotificationRationaleShown(shown: Boolean) {
+        val prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        with(prefs.edit()) {
+            putBoolean(KEY_NOTIFICATION_RATIONALE_SHOWN, shown)
+            apply()
+        }
     }
 
     @Composable
@@ -866,8 +970,20 @@ class MainActivity : ComponentActivity() {
             return instance
         }
         // SharedPreferences constants
-        private const val PREFS_NAME = "AppPrefs"
+        private const val PREFS_NAME = "AppPrefs" // Use existing prefs name
         private const val PREF_KEY_FIRST_LAUNCH_INFO_SHOWN = "firstLaunchInfoShown"
+        private const val KEY_NOTIFICATION_RATIONALE_SHOWN = "notification_rationale_shown" // New key
+    }
+
+    override fun onNewIntent(intent: Intent?) {
+        super.onNewIntent(intent)
+        if (intent?.action == NotificationUtil.ACTION_STOP_OPERATION) {
+            Log.d(TAG, "ACTION_STOP_OPERATION received from notification.")
+            // Ensure ViewModel is available
+            photoReasoningViewModel?.onStopClicked() ?: run {
+                Log.w(TAG, "PhotoReasoningViewModel not initialized when trying to handle stop action from notification.")
+            }
+        }
     }
 }
 

@@ -50,12 +50,23 @@ import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CheckboxDefaults
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.AlertDialog // Added
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Divider
+import androidx.compose.material3.Checkbox
+import androidx.compose.material3.CheckboxDefaults
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
+import androidx.compose.material3.TextButton // Existing, ensure it's not duplicated
 import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -130,6 +141,8 @@ internal fun PhotoReasoningRoute(
     val detectedCommands by viewModel.detectedCommands.collectAsState()
     val systemMessage by viewModel.systemMessage.collectAsState()
     val chatMessages by viewModel.chatMessagesFlow.collectAsState()
+
+    var showNotificationRationaleDialog by rememberSaveable { mutableStateOf(false) } // Added
 
     val coroutineScope = rememberCoroutineScope()
     val imageRequestBuilder = ImageRequest.Builder(LocalContext.current)
@@ -339,14 +352,37 @@ fun PhotoReasoningScreen(
                         modifier = Modifier.weight(1f).padding(end = 8.dp)
                     )
                     IconButton(onClick = {
-                        if (isAccessibilityServiceEnabled) {
-                            if (userQuestion.isNotBlank()) {
-                                onReasonClicked(userQuestion, imageUris.toList())
-                                userQuestion = ""
+                        val activity = context as? MainActivity
+                        if (activity != null && !activity.isNotificationPermissionGranted()) {
+                            if (!activity.hasShownNotificationRationale()) {
+                                showNotificationRationaleDialog = true
+                            } else {
+                                // Rationale already shown, or user previously denied.
+                                // Directly request permission or decide if reasoning should be blocked.
+                                // For now, let's request again. System handles "don't ask again".
+                                activity.requestNotificationPermission()
+                                // Optionally, delay onReasonClicked until permission result,
+                                // but for now, let it proceed as notification is a value-add.
+                                 if (isAccessibilityServiceEnabled) {
+                                    if (userQuestion.isNotBlank()) {
+                                        onReasonClicked(userQuestion, imageUris.toList())
+                                        userQuestion = ""
+                                    }
+                                } else {
+                                    onEnableAccessibilityService()
+                                    Toast.makeText(context, "Enable the Accessibility service for Screen Operator", Toast.LENGTH_LONG).show()
+                                }
                             }
-                        } else {
-                            onEnableAccessibilityService()
-                            Toast.makeText(context, "Enable the Accessibility service for Screen Operator" as CharSequence, Toast.LENGTH_LONG).show()
+                        } else { // Permission granted or not needed (older OS)
+                            if (isAccessibilityServiceEnabled) {
+                                if (userQuestion.isNotBlank()) {
+                                    onReasonClicked(userQuestion, imageUris.toList())
+                                    userQuestion = ""
+                                }
+                            } else {
+                                onEnableAccessibilityService()
+                                Toast.makeText(context, "Enable the Accessibility service for Screen Operator", Toast.LENGTH_LONG).show()
+                            }
                         }
                     }, modifier = Modifier.padding(all = 4.dp).align(Alignment.CenterVertically)) {
                         Icon(Icons.Default.Send, stringResource(R.string.action_go), tint = MaterialTheme.colorScheme.primary)
@@ -441,6 +477,41 @@ fun PhotoReasoningScreen(
                 }
             )
         }
+    }
+
+    if (showNotificationRationaleDialog) {
+        AlertDialog(
+            onDismissRequest = { showNotificationRationaleDialog = false },
+            title = { Text("Notification Permission") },
+            text = { Text("You can grant notification permission if you want to be able to stop Screen Operator via notifications.") },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        showNotificationRationaleDialog = false
+                        val activity = context as? MainActivity
+                        activity?.setNotificationRationaleShown(true)
+                        activity?.requestNotificationPermission()
+                        // Proceed with reasonClicked after user acknowledges rationale and permission is requested
+                        // This is a choice: either proceed or wait for permission result.
+                        // For simplicity and as it's a value-add, let's allow proceeding.
+                        if (isAccessibilityServiceEnabled) {
+                            if (userQuestion.isNotBlank()) { // Check again, user might have cleared it
+                                onReasonClicked(userQuestion, imageUris.toList())
+                                userQuestion = ""
+                            }
+                        } else {
+                           onEnableAccessibilityService()
+                           Toast.makeText(context, "Enable the Accessibility service for Screen Operator", Toast.LENGTH_LONG).show()
+                        }
+                    }
+                ) {
+                    Text("OK")
+                }
+            },
+            dismissButton = {
+                 TextButton(onClick = { showNotificationRationaleDialog = false }) { Text("Cancel") }
+            }
+        )
     }
 }
 
