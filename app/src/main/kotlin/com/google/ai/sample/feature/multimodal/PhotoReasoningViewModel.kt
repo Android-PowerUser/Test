@@ -31,10 +31,11 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.isActive
+// import kotlinx.coroutines.isActive // Removed as we will use job.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.IOException
+// import kotlin.coroutines.coroutineContext // Removed if not used
 import java.util.concurrent.atomic.AtomicBoolean
 
 class PhotoReasoningViewModel(
@@ -132,16 +133,16 @@ class PhotoReasoningViewModel(
         currentReasoningJob = PhotoReasoningApplication.applicationScope.launch(Dispatchers.IO) {
             // Create content with the current images and prompt
             val inputContent = content {
-                if (!coroutineContext.isActive) return@launch // Check for cancellation
+                if (currentReasoningJob?.isActive != true) return@launch // Check for cancellation
                 for (bitmap in selectedImages) {
-                    if (!coroutineContext.isActive) return@launch // Check for cancellation
+                    if (currentReasoningJob?.isActive != true) return@launch // Check for cancellation
                     image(bitmap)
                 }
-                if (!coroutineContext.isActive) return@launch // Check for cancellation
+                if (currentReasoningJob?.isActive != true) return@launch // Check for cancellation
                 text(prompt)
             }
 
-            if (!coroutineContext.isActive) return@launch // Check for cancellation
+            if (currentReasoningJob?.isActive != true) return@launch // Check for cancellation
             sendMessageWithRetry(inputContent, 0)
         }
     }
@@ -192,7 +193,7 @@ class PhotoReasoningViewModel(
      * @param retryCount The current retry count
      */
     private suspend fun sendMessageWithRetry(inputContent: Content, retryCount: Int) {
-        if (!coroutineContext.isActive || stopExecutionFlag.get()) { // Check for cancellation
+        if (currentReasoningJob?.isActive != true || stopExecutionFlag.get()) { // Check for cancellation
             _uiState.value = PhotoReasoningUiState.Success("Operation cancelled before sending.")
             updateAiMessage("Operation cancelled.")
             return
@@ -200,7 +201,7 @@ class PhotoReasoningViewModel(
         try {
             // Send the message to the chat to maintain context
             val response = chat.sendMessage(inputContent)
-            if (!coroutineContext.isActive || stopExecutionFlag.get()) { // Check for cancellation
+            if (currentReasoningJob?.isActive != true || stopExecutionFlag.get()) { // Check for cancellation
                 _uiState.value = PhotoReasoningUiState.Success("Operation cancelled after sending.")
                 updateAiMessage("Operation cancelled.")
                 return
@@ -212,13 +213,13 @@ class PhotoReasoningViewModel(
             response.text?.let { modelResponse ->
                 outputContent = modelResponse
 
-                if (!coroutineContext.isActive || stopExecutionFlag.get()) { // Check for cancellation
+                if (currentReasoningJob?.isActive != true || stopExecutionFlag.get()) { // Check for cancellation
                      _uiState.value = PhotoReasoningUiState.Success("Operation cancelled during response processing.")
                     updateAiMessage("Operation cancelled.")
                     return
                 }
                 withContext(Dispatchers.Main) {
-                     if (!coroutineContext.isActive || stopExecutionFlag.get()) { // Check for cancellation
+                     if (currentReasoningJob?.isActive != true || stopExecutionFlag.get()) { // Check for cancellation
                         _uiState.value = PhotoReasoningUiState.Success("Operation cancelled.")
                         updateAiMessage("Operation cancelled.")
                         return@withContext
@@ -234,13 +235,13 @@ class PhotoReasoningViewModel(
             }
 
             // Save chat history after successful response
-            if (coroutineContext.isActive && !stopExecutionFlag.get()) {
+            if (currentReasoningJob?.isActive == true && !stopExecutionFlag.get()) {
                 withContext(Dispatchers.Main) {
                     saveChatHistory(MainActivity.getInstance()?.applicationContext)
                 }
             }
         } catch (e: Exception) {
-            if (!coroutineContext.isActive || stopExecutionFlag.get()) { // Check for cancellation during exception handling
+            if (currentReasoningJob?.isActive != true || stopExecutionFlag.get()) { // Check for cancellation during exception handling
                 _uiState.value = PhotoReasoningUiState.Error("Operation cancelled during error handling.")
                 updateAiMessage("Operation cancelled during error handling.")
                 return
@@ -249,22 +250,22 @@ class PhotoReasoningViewModel(
 
             // Check specifically for quota exceeded errors first
             if (isQuotaExceededError(e) && apiKeyManager != null) {
-                if (!coroutineContext.isActive || stopExecutionFlag.get()) return // Check for cancellation
+                if (currentReasoningJob?.isActive != true || stopExecutionFlag.get()) return // Check for cancellation
                 handleQuotaExceededError(e, inputContent, retryCount)
                 return
             }
 
             // Check for other 503 errors
             if (is503Error(e) && apiKeyManager != null) {
-                if (!coroutineContext.isActive || stopExecutionFlag.get()) return // Check for cancellation
+                if (currentReasoningJob?.isActive != true || stopExecutionFlag.get()) return // Check for cancellation
                 handle503Error(e, inputContent, retryCount)
                 return
             }
 
             // If we get here, it's not a 503 error or quota exceeded error
-            if (coroutineContext.isActive && !stopExecutionFlag.get()) {
+            if (currentReasoningJob?.isActive == true && !stopExecutionFlag.get()) {
                 withContext(Dispatchers.Main) {
-                     if (!coroutineContext.isActive || stopExecutionFlag.get()) return@withContext// Check for cancellation
+                     if (currentReasoningJob?.isActive != true || stopExecutionFlag.get()) return@withContext// Check for cancellation
                     _uiState.value = PhotoReasoningUiState.Error(e.localizedMessage ?: "Unknown error")
                     _commandExecutionStatus.value = "Error during generation: ${e.localizedMessage}"
 
@@ -335,7 +336,7 @@ class PhotoReasoningViewModel(
      * Handle quota exceeded errors specifically
      */
     private suspend fun handleQuotaExceededError(e: Exception, inputContent: Content, retryCount: Int) {
-        if (!coroutineContext.isActive || stopExecutionFlag.get()) return // Check for cancellation
+        if (currentReasoningJob?.isActive != true || stopExecutionFlag.get()) return // Check for cancellation
         // Mark the current API key as failed
         val currentKey = MainActivity.getInstance()?.getCurrentApiKey()
         if (currentKey != null && apiKeyManager != null) {
@@ -412,7 +413,7 @@ class PhotoReasoningViewModel(
                     )
                     
                     // Retry the request with the new API key
-                    if (!coroutineContext.isActive || stopExecutionFlag.get()) return // Check for cancellation
+                    if (currentReasoningJob?.isActive != true || stopExecutionFlag.get()) return // Check for cancellation
                     sendMessageWithRetry(inputContent, retryCount + 1)
                     return
                 }
@@ -424,7 +425,7 @@ class PhotoReasoningViewModel(
      * Handle 503 errors (excluding quota exceeded errors)
      */
     private suspend fun handle503Error(e: Exception, inputContent: Content, retryCount: Int) {
-        if (!coroutineContext.isActive || stopExecutionFlag.get()) return // Check for cancellation
+        if (currentReasoningJob?.isActive != true || stopExecutionFlag.get()) return // Check for cancellation
         // Mark the current API key as failed
         val currentKey = MainActivity.getInstance()?.getCurrentApiKey()
         if (currentKey != null && apiKeyManager != null) {
@@ -498,7 +499,7 @@ class PhotoReasoningViewModel(
                     )
                     
                     // Retry the request with the new API key
-                    if (!coroutineContext.isActive || stopExecutionFlag.get()) return // Check for cancellation
+                    if (currentReasoningJob?.isActive != true || stopExecutionFlag.get()) return // Check for cancellation
                     sendMessageWithRetry(inputContent, retryCount + 1)
                     return
                 }
@@ -589,13 +590,13 @@ class PhotoReasoningViewModel(
     private fun processCommands(text: String) {
         commandProcessingJob?.cancel() // Cancel any previous command processing
         commandProcessingJob = PhotoReasoningApplication.applicationScope.launch(Dispatchers.Main) {
-            if (!coroutineContext.isActive || stopExecutionFlag.get()) return@launch // Check for cancellation
+            if (commandProcessingJob?.isActive != true || stopExecutionFlag.get()) return@launch // Check for cancellation
             try {
                 // Parse commands from the text
                 val commands = CommandParser.parseCommands(text)
 
                 if (commands.isNotEmpty()) {
-                    if (!coroutineContext.isActive || stopExecutionFlag.get()) return@launch
+                    if (commandProcessingJob?.isActive != true || stopExecutionFlag.get()) return@launch
                     Log.d(TAG, "Found ${commands.size} commands in response")
 
                     // Update the detected commands
@@ -611,7 +612,7 @@ class PhotoReasoningViewModel(
 
                     // Execute the commands
                     for (command in commands) {
-                        if (!coroutineContext.isActive || stopExecutionFlag.get()) { // Check for cancellation before executing each command
+                        if (commandProcessingJob?.isActive != true || stopExecutionFlag.get()) { // Check for cancellation before executing each command
                             Log.d(TAG, "Command execution stopped before executing: $command")
                             _commandExecutionStatus.value = "Command execution stopped."
                             break // Exit loop if cancelled
@@ -626,7 +627,7 @@ class PhotoReasoningViewModel(
                                 break
                             }
                         } catch (e: Exception) {
-                            if (!coroutineContext.isActive || stopExecutionFlag.get()) break // Exit loop if cancelled during error handling
+                            if (commandProcessingJob?.isActive != true || stopExecutionFlag.get()) break // Exit loop if cancelled during error handling
                             Log.e(TAG, "Error executing command: ${e.message}", e)
                             _commandExecutionStatus.value = "Error during command execution: ${e.message}"
                         }
@@ -636,7 +637,7 @@ class PhotoReasoningViewModel(
                     }
                 }
             } catch (e: Exception) {
-                 if (!coroutineContext.isActive || stopExecutionFlag.get()) return@launch
+                 if (commandProcessingJob?.isActive != true || stopExecutionFlag.get()) return@launch
                 Log.e(TAG, "Error processing commands: ${e.message}", e)
                 _commandExecutionStatus.value = "Error during command processing: ${e.message}"
             } finally {
