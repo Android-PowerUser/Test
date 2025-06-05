@@ -198,6 +198,8 @@ class PhotoReasoningViewModel(
             updateAiMessage("Operation cancelled.")
             return
         }
+        var shouldProceed = true // Flag to control further processing
+
         try {
             // Send the message to the chat to maintain context
             val response = chat.sendMessage(inputContent)
@@ -214,30 +216,43 @@ class PhotoReasoningViewModel(
                 outputContent = modelResponse
 
                 if (currentReasoningJob?.isActive != true || stopExecutionFlag.get()) { // Check for cancellation
-                     _uiState.value = PhotoReasoningUiState.Success("Operation cancelled during response processing.")
+                    _uiState.value = PhotoReasoningUiState.Success("Operation cancelled during response processing.")
                     updateAiMessage("Operation cancelled.")
-                    return@let
-                }
-                withContext(Dispatchers.Main) {
-                     if (currentReasoningJob?.isActive != true || stopExecutionFlag.get()) { // Check for cancellation
-                        _uiState.value = PhotoReasoningUiState.Success("Operation cancelled.")
-                        updateAiMessage("Operation cancelled.")
-                        return@withContext
-                    }
-                    _uiState.value = PhotoReasoningUiState.Success(outputContent)
-
-                    // Update the AI message in chat history
-                    updateAiMessage(outputContent)
-
-                    // Parse and execute commands from the response
-                    processCommands(modelResponse)
+                    shouldProceed = false // Signal to skip further processing
                 }
             }
 
-            // Save chat history after successful response
-            if (currentReasoningJob?.isActive == true && !stopExecutionFlag.get()) {
+            if (shouldProceed) { // Only proceed if not cancelled in the 'let' block
                 withContext(Dispatchers.Main) {
-                    saveChatHistory(MainActivity.getInstance()?.applicationContext)
+                    if (currentReasoningJob?.isActive != true || stopExecutionFlag.get()) { // Re-check for cancellation
+                        _uiState.value = PhotoReasoningUiState.Success("Operation cancelled.")
+                        updateAiMessage("Operation cancelled.")
+                        // No return@withContext, logic will naturally skip due to outer 'if (shouldProceed)' and this check
+                    } else {
+                        _uiState.value = PhotoReasoningUiState.Success(outputContent)
+
+                        // Update the AI message in chat history
+                        updateAiMessage(outputContent)
+
+                        // Parse and execute commands from the response
+                        // Ensure modelResponse is accessible or passed correctly if needed here
+                        // Assuming outputContent is what's needed for processCommands if modelResponse was scoped to 'let'
+                        response.text?.let { modelResponse -> // Re-access modelResponse safely
+                            processCommands(modelResponse)
+                        }
+                    }
+                }
+            }
+
+
+            // Save chat history after successful response
+            // Ensure this runs only if processing was successful and not cancelled
+            if (shouldProceed && currentReasoningJob?.isActive == true && !stopExecutionFlag.get()) {
+                withContext(Dispatchers.Main) {
+                    // Ensure we are still active before saving
+                    if (currentReasoningJob?.isActive == true && !stopExecutionFlag.get()) {
+                        saveChatHistory(MainActivity.getInstance()?.applicationContext)
+                    }
                 }
             }
         } catch (e: Exception) {
@@ -265,22 +280,25 @@ class PhotoReasoningViewModel(
             // If we get here, it's not a 503 error or quota exceeded error
             if (currentReasoningJob?.isActive == true && !stopExecutionFlag.get()) {
                 withContext(Dispatchers.Main) {
-                     if (currentReasoningJob?.isActive != true || stopExecutionFlag.get()) return@withContext// Check for cancellation
-                    _uiState.value = PhotoReasoningUiState.Error(e.localizedMessage ?: "Unknown error")
-                    _commandExecutionStatus.value = "Error during generation: ${e.localizedMessage}"
+                     if (currentReasoningJob?.isActive != true || stopExecutionFlag.get()) {
+                        // If cancelled, potentially update UI or log, but don't proceed with error state for this exception
+                     } else {
+                        _uiState.value = PhotoReasoningUiState.Error(e.localizedMessage ?: "Unknown error")
+                        _commandExecutionStatus.value = "Error during generation: ${e.localizedMessage}"
 
-                    // Update chat with error message
-                    _chatState.replaceLastPendingMessage()
-                    _chatState.addMessage(
-                        PhotoReasoningMessage(
-                            text = e.localizedMessage ?: "Unknown error",
-                            participant = PhotoParticipant.ERROR
+                        // Update chat with error message
+                        _chatState.replaceLastPendingMessage()
+                        _chatState.addMessage(
+                            PhotoReasoningMessage(
+                                text = e.localizedMessage ?: "Unknown error",
+                                participant = PhotoParticipant.ERROR
+                            )
                         )
-                    )
-                    _chatMessagesFlow.value = chatMessages
+                        _chatMessagesFlow.value = chatMessages
 
-                    // Save chat history even after error
-                    saveChatHistory(MainActivity.getInstance()?.applicationContext)
+                        // Save chat history even after error
+                        saveChatHistory(MainActivity.getInstance()?.applicationContext)
+                    }
                 }
             } else {
                  _uiState.value = PhotoReasoningUiState.Error("Operation cancelled during error processing.")
