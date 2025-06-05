@@ -44,4 +44,9 @@ sealed interface PhotoReasoningUiState {
     data class Error(
         val errorMessage: String
     ): PhotoReasoningUiState
+
+    /**
+     * Operation was stopped by the user
+     */
+    data object Stopped: PhotoReasoningUiState
 }

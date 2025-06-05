@@ -100,13 +100,26 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.builtins.ListSerializer
-import kotlinx.serialization.json.Json 
+import kotlinx.serialization.json.Json
 import android.util.Log
 import kotlinx.serialization.SerializationException
 
 // Define Colors
 val DarkYellow1 = Color(0xFFF0A500) // A darker yellow
 val DarkYellow2 = Color(0xFFF3C100) // A slightly lighter dark yellow
+
+@Composable
+fun StopButton(onClick: () -> Unit) {
+    Button(
+        onClick = onClick,
+        colors = ButtonDefaults.buttonColors(containerColor = Color.Red),
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(8.dp)
+    ) {
+        Text("Stop", color = Color.White)
+    }
+}
 
 @Composable
 internal fun PhotoReasoningRoute(
@@ -175,7 +188,8 @@ internal fun PhotoReasoningRoute(
         onClearChatHistory = {
             mainActivity?.getPhotoReasoningViewModel()?.clearChatHistory(context)
         },
-        isKeyboardOpen = isKeyboardOpen
+        isKeyboardOpen = isKeyboardOpen,
+        onStopClicked = { viewModel.onStopClicked() }
     )
 }
 
@@ -191,7 +205,8 @@ fun PhotoReasoningScreen(
     isAccessibilityServiceEnabled: Boolean = false,
     onEnableAccessibilityService: () -> Unit = {},
     onClearChatHistory: () -> Unit = {},
-    isKeyboardOpen: Boolean
+    isKeyboardOpen: Boolean,
+    onStopClicked: () -> Unit = {}
 ) {
     var userQuestion by rememberSaveable { mutableStateOf("") }
     val imageUris = rememberSaveable(saver = UriSaver()) { mutableStateListOf() }
@@ -301,39 +316,45 @@ fun PhotoReasoningScreen(
             }
         }
 
-        Card(modifier = Modifier.fillMaxWidth()) {
-            Row(modifier = Modifier.padding(top = 16.dp)) {
-                Column(modifier = Modifier.padding(all = 4.dp).align(Alignment.CenterVertically)) {
-                    IconButton(onClick = { pickMedia.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) }, modifier = Modifier.padding(bottom = 4.dp)) {
-                        Icon(Icons.Rounded.Add, stringResource(R.string.add_image))
-                    }
-                    IconButton(onClick = onClearChatHistory, modifier = Modifier.padding(top = 4.dp).drawBehind {
-                        drawCircle(color = Color.Black, radius = size.minDimension / 2, style = androidx.compose.ui.graphics.drawscope.Stroke(width = 1.dp.toPx()))
-                    }) { Text("New", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary) }
-                }
-                OutlinedTextField(
-                    value = userQuestion,
-                    label = { Text(stringResource(R.string.reason_label)) },
-                    placeholder = { Text(stringResource(R.string.reason_hint)) },
-                    onValueChange = { userQuestion = it },
-                    modifier = Modifier.weight(1f).padding(end = 8.dp)
-                )
-                IconButton(onClick = {
-                    if (isAccessibilityServiceEnabled) {
-                        if (userQuestion.isNotBlank()) {
-                            onReasonClicked(userQuestion, imageUris.toList())
-                            userQuestion = ""
+        val showStopButton = uiState is PhotoReasoningUiState.Loading || commandExecutionStatus.isNotEmpty()
+
+        if (showStopButton) {
+            StopButton(onClick = onStopClicked)
+        } else {
+            Card(modifier = Modifier.fillMaxWidth()) {
+                Row(modifier = Modifier.padding(top = 16.dp)) {
+                    Column(modifier = Modifier.padding(all = 4.dp).align(Alignment.CenterVertically)) {
+                        IconButton(onClick = { pickMedia.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) }, modifier = Modifier.padding(bottom = 4.dp)) {
+                            Icon(Icons.Rounded.Add, stringResource(R.string.add_image))
                         }
-                    } else {
-                        onEnableAccessibilityService()
-                        Toast.makeText(context, "Enable the Accessibility service for Screen Operator" as CharSequence, Toast.LENGTH_LONG).show()
+                        IconButton(onClick = onClearChatHistory, modifier = Modifier.padding(top = 4.dp).drawBehind {
+                            drawCircle(color = Color.Black, radius = size.minDimension / 2, style = androidx.compose.ui.graphics.drawscope.Stroke(width = 1.dp.toPx()))
+                        }) { Text("New", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary) }
                     }
-                }, modifier = Modifier.padding(all = 4.dp).align(Alignment.CenterVertically)) {
-                    Icon(Icons.Default.Send, stringResource(R.string.action_go), tint = MaterialTheme.colorScheme.primary)
+                    OutlinedTextField(
+                        value = userQuestion,
+                        label = { Text(stringResource(R.string.reason_label)) },
+                        placeholder = { Text(stringResource(R.string.reason_hint)) },
+                        onValueChange = { userQuestion = it },
+                        modifier = Modifier.weight(1f).padding(end = 8.dp)
+                    )
+                    IconButton(onClick = {
+                        if (isAccessibilityServiceEnabled) {
+                            if (userQuestion.isNotBlank()) {
+                                onReasonClicked(userQuestion, imageUris.toList())
+                                userQuestion = ""
+                            }
+                        } else {
+                            onEnableAccessibilityService()
+                            Toast.makeText(context, "Enable the Accessibility service for Screen Operator" as CharSequence, Toast.LENGTH_LONG).show()
+                        }
+                    }, modifier = Modifier.padding(all = 4.dp).align(Alignment.CenterVertically)) {
+                        Icon(Icons.Default.Send, stringResource(R.string.action_go), tint = MaterialTheme.colorScheme.primary)
+                    }
                 }
-            }
-            LazyRow(modifier = Modifier.padding(all = 8.dp)) {
-                items(imageUris) { uri -> AsyncImage(uri, null, Modifier.padding(4.dp).requiredSize(72.dp)) }
+                LazyRow(modifier = Modifier.padding(all = 8.dp)) {
+                    items(imageUris) { uri -> AsyncImage(uri, null, Modifier.padding(4.dp).requiredSize(72.dp)) }
+                }
             }
         }
 
@@ -948,7 +969,7 @@ fun ErrorChatBubble(
 @Preview
 @Composable
 fun PhotoReasoningScreenPreviewWithContent() {
-    MaterialTheme { 
+    MaterialTheme {
         PhotoReasoningScreen(
             uiState = PhotoReasoningUiState.Success("This is a preview of the photo reasoning screen."),
             commandExecutionStatus = "Command executed: Take screenshot",
@@ -961,7 +982,8 @@ fun PhotoReasoningScreenPreviewWithContent() {
                 PhotoReasoningMessage(text = "Hello, how can I help you?", participant = PhotoParticipant.USER),
                 PhotoReasoningMessage(text = "I am here to help you. What do you want to know?", participant = PhotoParticipant.MODEL)
             ),
-            isKeyboardOpen = false
+            isKeyboardOpen = false,
+            onStopClicked = {}
         )
     }
 }
@@ -1059,7 +1081,7 @@ val SystemMessageEntrySaver = Saver<SystemMessageEntry?, List<String?>>(
 @Composable
 @Preview(showSystemUi = true)
 fun PhotoReasoningScreenPreviewEmpty() {
-    MaterialTheme { PhotoReasoningScreen(isKeyboardOpen = false) }
+    MaterialTheme { PhotoReasoningScreen(isKeyboardOpen = false, onStopClicked = {}) }
 }
 
 @Preview(showBackground = true)
@@ -1086,5 +1108,13 @@ fun DatabaseListPopupPreview() {
 fun DatabaseListPopupEmptyPreview() {
     MaterialTheme {
         DatabaseListPopup(onDismissRequest = {}, entries = emptyList(), onNewClicked = {}, onEntryClicked = {}, onDeleteClicked = {}, onImportCompleted = {})
+    }
+}
+
+@Preview(showBackground = true, name = "Stop Button Preview")
+@Composable
+fun StopButtonPreview() {
+    MaterialTheme {
+        StopButton {}
     }
 }
