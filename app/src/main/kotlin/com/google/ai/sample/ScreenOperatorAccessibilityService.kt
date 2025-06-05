@@ -176,7 +176,7 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
         showToast("Accessibility Service is enabled and connected", false)
     }
 
-    private fun continueProcessingQueueAfterDelay() {
+    private fun scheduleNextCommandProcessing() {
         val nextCommandDelay = if (commandQueue.peek() is Command.TakeScreenshot) {
             Log.d(TAG, "Next command in queue is TakeScreenshot, scheduling with 850ms delay.")
             850L
@@ -349,11 +349,11 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
             val commandWasAsync = executeSingleCommand(command) // executeSingleCommand now returns Boolean
             if (!commandWasAsync) {
                 // If the command was synchronous, schedule the next one directly.
-                // For async commands, they will call continueProcessingQueueAfterDelay themselves via callbacks.
-                continueProcessingQueueAfterDelay()
+                // For async commands, they will call scheduleNextCommandProcessing themselves via callbacks.
+                scheduleNextCommandProcessing()
             }
             // If commandWasAsync is true, executeSingleCommand (or the methods it calls)
-            // is responsible for calling continueProcessingQueueAfterDelay upon completion.
+            // is responsible for calling scheduleNextCommandProcessing upon completion.
         } else {
             Log.d(TAG, "Polled null command from queue, stopping processing.")
             isProcessingQueue.set(false)
@@ -670,7 +670,7 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
         if (rootNode == null) {
             Log.e(TAG, "Root node is null, cannot find button")
             showToast("Error: Root node is not available", true)
-            continueProcessingQueueAfterDelay() // Continue queue if rootNode is null
+            scheduleNextCommandProcessing() // Continue queue if rootNode is null
             return
         }
         
@@ -699,11 +699,11 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
                 
                 // Recycle the node
                 node.recycle()
-                continueProcessingQueueAfterDelay()
+                scheduleNextCommandProcessing()
             }, 200)
         } else {
             Log.e(TAG, "Could not find node with text: $buttonText, trying content description.")
-            // findAndClickButtonByContentDescription will call continueProcessingQueueAfterDelay
+            // findAndClickButtonByContentDescription will call scheduleNextCommandProcessing
             findAndClickButtonByContentDescription(buttonText)
         }
     }
@@ -739,7 +739,7 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
         if (rootNode == null) {
             Log.e(TAG, "Root node is null, cannot find button by content description")
             showToast("Error: Root node is not available", true)
-            continueProcessingQueueAfterDelay() // Continue queue if rootNode is null
+            scheduleNextCommandProcessing() // Continue queue if rootNode is null
             return
         }
         
@@ -768,11 +768,11 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
                 
                 // Recycle the node
                 node.recycle()
-                continueProcessingQueueAfterDelay()
+                scheduleNextCommandProcessing()
             }, 200)
         } else {
             Log.e(TAG, "Could not find node with content description: $description, trying ID.")
-            // findAndClickButtonById will call continueProcessingQueueAfterDelay
+            // findAndClickButtonById will call scheduleNextCommandProcessing
             findAndClickButtonById(description)
         }
     }
@@ -788,7 +788,7 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
         if (rootNode == null) {
             Log.e(TAG, "Root node is null, cannot find button by ID")
             showToast("Error: Root node is not available", true)
-            continueProcessingQueueAfterDelay() // Continue queue if rootNode is null
+            scheduleNextCommandProcessing() // Continue queue if rootNode is null
             return
         }
         
@@ -817,12 +817,12 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
                 
                 // Recycle the node
                 node.recycle()
-                continueProcessingQueueAfterDelay()
+                scheduleNextCommandProcessing()
             }, 200)
         } else {
             Log.e(TAG, "Could not find node with ID: $id")
             showToast("Button with ID \"$id\" not found", true)
-            continueProcessingQueueAfterDelay() // End of find chain
+            scheduleNextCommandProcessing() // End of find chain
         }
     }
     
@@ -1007,7 +1007,7 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.N) {
             Log.e(TAG, "Gesture API is not available on this Android version")
             showToast("Gesture API is not available on this Android version", true)
-            continueProcessingQueueAfterDelay() // Continue queue if API not available
+            scheduleNextCommandProcessing() // Continue queue if API not available
             return
         }
         
@@ -1026,14 +1026,14 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
                     super.onCompleted(gestureDescription)
                     Log.d(TAG, "Tap gesture completed")
                     showToast("Tapped coordinates ($x, $y) successfully", false)
-                    continueProcessingQueueAfterDelay()
+                    scheduleNextCommandProcessing()
                 }
                 
                 override fun onCancelled(gestureDescription: GestureDescription) {
                     super.onCancelled(gestureDescription)
                     Log.e(TAG, "Tap gesture cancelled")
                     showToast("Tap at coordinates ($x, $y) cancelled, trying longer duration", true)
-                    // Try with longer duration, which will then call continueProcessingQueueAfterDelay
+                    // Try with longer duration, which will then call scheduleNextCommandProcessing
                     tapAtCoordinatesWithLongerDuration(x, y)
                 }
             }, null)
@@ -1041,13 +1041,13 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
             if (!dispatchResult) {
                 Log.e(TAG, "Failed to dispatch tap gesture")
                 showToast("Error dispatching tap gesture, trying longer duration", true)
-                // Try with longer duration, which will then call continueProcessingQueueAfterDelay
+                // Try with longer duration, which will then call scheduleNextCommandProcessing
                 tapAtCoordinatesWithLongerDuration(x, y)
             }
         } catch (e: Exception) {
             Log.e(TAG, "Error tapping at coordinates: ${e.message}")
             showToast("Error tapping at coordinates: ${e.message}", true)
-            continueProcessingQueueAfterDelay()
+            scheduleNextCommandProcessing()
         }
     }
     
@@ -1061,7 +1061,7 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.N) {
             Log.e(TAG, "Gesture API is not available on this Android version")
             showToast("Gesture API is not available on this Android version", true)
-            continueProcessingQueueAfterDelay() // Continue queue
+            scheduleNextCommandProcessing() // Continue queue
             return
         }
         
@@ -1080,26 +1080,26 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
                     super.onCompleted(gestureDescription)
                     Log.d(TAG, "Long tap gesture completed")
                     showToast("Tapped with longer duration at coordinates ($x, $y) successfully", false)
-                    continueProcessingQueueAfterDelay()
+                    scheduleNextCommandProcessing()
                 }
                 
                 override fun onCancelled(gestureDescription: GestureDescription) {
                     super.onCancelled(gestureDescription)
                     Log.e(TAG, "Long tap gesture cancelled")
                     showToast("Tap with longer duration at coordinates ($x, $y) cancelled", true)
-                    continueProcessingQueueAfterDelay()
+                    scheduleNextCommandProcessing()
                 }
             }, null)
             
             if (!dispatchResult) {
                 Log.e(TAG, "Failed to dispatch long tap gesture")
                 showToast("Error dispatching tap gesture with longer duration", true)
-                continueProcessingQueueAfterDelay()
+                scheduleNextCommandProcessing()
             }
         } catch (e: Exception) {
             Log.e(TAG, "Error tapping at coordinates with longer duration: ${e.message}")
             showToast("Error tapping with longer duration at coordinates: ${e.message}", true)
-            continueProcessingQueueAfterDelay()
+            scheduleNextCommandProcessing()
         }
     }
 
@@ -1135,26 +1135,26 @@ fun pressEnterKey() {
                 super.onCompleted(gestureDescription)
                 Log.d(TAG, "Enter key tap gesture completed")
                 showToast("Enter key pressed successfully", false)
-                continueProcessingQueueAfterDelay() // Continue queue after completion
+                scheduleNextCommandProcessing() // Continue queue after completion
             }
             
             override fun onCancelled(gestureDescription: GestureDescription) {
                 super.onCancelled(gestureDescription)
                 Log.e(TAG, "Enter key tap gesture cancelled")
                 showToast("Enter key gesture cancelled", true)
-                continueProcessingQueueAfterDelay() // Continue queue even if cancelled
+                scheduleNextCommandProcessing() // Continue queue even if cancelled
             }
         }, null)
 
         if (!result) {
             Log.e(TAG, "Failed to dispatch Enter key tap gesture")
             showToast("Error pressing Enter key", true)
-            continueProcessingQueueAfterDelay() // Continue queue if dispatch failed immediately
+            scheduleNextCommandProcessing() // Continue queue if dispatch failed immediately
         }
     } catch (e: Exception) {
         Log.e(TAG, "Error pressing Enter key: ${e.message}")
         showToast("Error pressing Enter key: ${e.message}", true)
-        continueProcessingQueueAfterDelay()
+        scheduleNextCommandProcessing()
     }
 }
     
@@ -2079,14 +2079,14 @@ fun pressEnterKey() {
                         super.onCompleted(gestureDescription)
                         Log.d(TAG, "Scroll down gesture completed")
                         showToast("Successfully scrolled down", false)
-                        continueProcessingQueueAfterDelay()
+                        scheduleNextCommandProcessing()
                     }
                     
                     override fun onCancelled(gestureDescription: GestureDescription) {
                         super.onCancelled(gestureDescription)
                         Log.e(TAG, "Scroll down gesture cancelled")
                         showToast("Scroll down cancelled", true)
-                        continueProcessingQueueAfterDelay()
+                        scheduleNextCommandProcessing()
                     }
                 },
                 null // handler
@@ -2095,12 +2095,12 @@ fun pressEnterKey() {
             if (!result) {
                 Log.e(TAG, "Failed to dispatch scroll down gesture")
                 showToast("Error scrolling down", true)
-                continueProcessingQueueAfterDelay()
+                scheduleNextCommandProcessing()
             }
         } catch (e: Exception) {
             Log.e(TAG, "Error scrolling down: ${e.message}")
             showToast("Error scrolling down: ${e.message}", true)
-            continueProcessingQueueAfterDelay()
+            scheduleNextCommandProcessing()
         }
     }
     
@@ -2144,14 +2144,14 @@ fun pressEnterKey() {
                         super.onCompleted(gestureDescription)
                         Log.d(TAG, "scrollDown method: Gesture completed for path from ($startX, $startY) to ($endX, $endY)")
                         showToast("Successfully scrolled down from position ($startX, $startY)", false)
-                        continueProcessingQueueAfterDelay()
+                        scheduleNextCommandProcessing()
                     }
                     
                     override fun onCancelled(gestureDescription: GestureDescription) {
                         super.onCancelled(gestureDescription)
                         Log.e(TAG, "scrollDown method: Gesture CANCELLED for path from ($startX, $startY) to ($endX, $endY). GestureDescription: $gestureDescription")
                         showToast("Scroll down from position ($startX, $startY) cancelled", true)
-                        continueProcessingQueueAfterDelay()
+                        scheduleNextCommandProcessing()
                     }
                 },
                 null // handler
@@ -2160,12 +2160,12 @@ fun pressEnterKey() {
             if (!result) {
                 Log.e(TAG, "Failed to dispatch coordinate-based scroll down gesture for path from ($startX, $startY) to ($endX, $endY)")
                 showToast("Error scrolling down from position ($startX, $startY)", true)
-                continueProcessingQueueAfterDelay()
+                scheduleNextCommandProcessing()
             }
         } catch (e: Exception) {
             Log.e(TAG, "Error scrolling down from coordinates: ${e.message}")
             showToast("Error scrolling down from position ($x, $y): ${e.message}", true)
-            continueProcessingQueueAfterDelay()
+            scheduleNextCommandProcessing()
         }
     }
     
@@ -2204,14 +2204,14 @@ fun pressEnterKey() {
                         super.onCompleted(gestureDescription)
                         Log.d(TAG, "Scroll up gesture completed")
                         showToast("Successfully scrolled up", false)
-                        continueProcessingQueueAfterDelay()
+                        scheduleNextCommandProcessing()
                     }
                     
                     override fun onCancelled(gestureDescription: GestureDescription) {
                         super.onCancelled(gestureDescription)
                         Log.e(TAG, "Scroll up gesture cancelled")
                         showToast("Scroll up cancelled", true)
-                        continueProcessingQueueAfterDelay()
+                        scheduleNextCommandProcessing()
                     }
                 },
                 null // handler
@@ -2220,12 +2220,12 @@ fun pressEnterKey() {
             if (!result) {
                 Log.e(TAG, "Failed to dispatch scroll up gesture")
                 showToast("Error scrolling up", true)
-                continueProcessingQueueAfterDelay()
+                scheduleNextCommandProcessing()
             }
         } catch (e: Exception) {
             Log.e(TAG, "Error scrolling up: ${e.message}")
             showToast("Error scrolling up: ${e.message}", true)
-            continueProcessingQueueAfterDelay()
+            scheduleNextCommandProcessing()
         }
     }
     
@@ -2269,14 +2269,14 @@ fun pressEnterKey() {
                         super.onCompleted(gestureDescription)
                         Log.d(TAG, "scrollUp method: Gesture completed for path from ($startX, $startY) to ($endX, $endY)")
                         showToast("Successfully scrolled up from position ($startX, $startY)", false)
-                        continueProcessingQueueAfterDelay()
+                        scheduleNextCommandProcessing()
                     }
                     
                     override fun onCancelled(gestureDescription: GestureDescription) {
                         super.onCancelled(gestureDescription)
                         Log.e(TAG, "scrollUp method: Gesture CANCELLED for path from ($startX, $startY) to ($endX, $endY). GestureDescription: $gestureDescription")
                         showToast("Scroll up from position ($startX, $startY) cancelled", true)
-                        continueProcessingQueueAfterDelay()
+                        scheduleNextCommandProcessing()
                     }
                 },
                 null // handler
@@ -2285,12 +2285,12 @@ fun pressEnterKey() {
             if (!result) {
                 Log.e(TAG, "Failed to dispatch coordinate-based scroll up gesture for path from ($startX, $startY) to ($endX, $endY)")
                 showToast("Error scrolling up from position ($startX, $startY)", true)
-                continueProcessingQueueAfterDelay()
+                scheduleNextCommandProcessing()
             }
         } catch (e: Exception) {
             Log.e(TAG, "Error scrolling up from coordinates: ${e.message}")
             showToast("Error scrolling up from position ($x, $y): ${e.message}", true)
-            continueProcessingQueueAfterDelay()
+            scheduleNextCommandProcessing()
         }
     }
     
@@ -2329,14 +2329,14 @@ fun pressEnterKey() {
                         super.onCompleted(gestureDescription)
                         Log.d(TAG, "Scroll left gesture completed")
                         showToast("Successfully scrolled left", false)
-                        continueProcessingQueueAfterDelay()
+                        scheduleNextCommandProcessing()
                     }
                     
                     override fun onCancelled(gestureDescription: GestureDescription) {
                         super.onCancelled(gestureDescription)
                         Log.e(TAG, "Scroll left gesture cancelled")
                         showToast("Scroll left cancelled", true)
-                        continueProcessingQueueAfterDelay()
+                        scheduleNextCommandProcessing()
                     }
                 },
                 null // handler
@@ -2345,12 +2345,12 @@ fun pressEnterKey() {
             if (!result) {
                 Log.e(TAG, "Failed to dispatch scroll left gesture")
                 showToast("Error scrolling left", true)
-                continueProcessingQueueAfterDelay()
+                scheduleNextCommandProcessing()
             }
         } catch (e: Exception) {
             Log.e(TAG, "Error scrolling left: ${e.message}")
             showToast("Error scrolling left: ${e.message}", true)
-            continueProcessingQueueAfterDelay()
+            scheduleNextCommandProcessing()
         }
     }
     
@@ -2394,14 +2394,14 @@ fun pressEnterKey() {
                         super.onCompleted(gestureDescription)
                         Log.d(TAG, "scrollLeft method: Gesture completed for path from ($startX, $startY) to ($endX, $endY)")
                         showToast("Successfully scrolled left from position ($startX, $startY)", false)
-                        continueProcessingQueueAfterDelay()
+                        scheduleNextCommandProcessing()
                     }
                     
                     override fun onCancelled(gestureDescription: GestureDescription) {
                         super.onCancelled(gestureDescription)
                         Log.e(TAG, "scrollLeft method: Gesture CANCELLED for path from ($startX, $startY) to ($endX, $endY). GestureDescription: $gestureDescription")
                         showToast("Scroll left from position ($startX, $startY) cancelled", true)
-                        continueProcessingQueueAfterDelay()
+                        scheduleNextCommandProcessing()
                     }
                 },
                 null // handler
@@ -2410,12 +2410,12 @@ fun pressEnterKey() {
             if (!result) {
                 Log.e(TAG, "Failed to dispatch coordinate-based scroll left gesture for path from ($startX, $startY) to ($endX, $endY)")
                 showToast("Error scrolling left from position ($startX, $startY)", true)
-                continueProcessingQueueAfterDelay()
+                scheduleNextCommandProcessing()
             }
         } catch (e: Exception) {
             Log.e(TAG, "Error scrolling left from coordinates: ${e.message}")
             showToast("Error scrolling left from position ($x, $y): ${e.message}", true)
-            continueProcessingQueueAfterDelay()
+            scheduleNextCommandProcessing()
         }
     }
     
@@ -2454,14 +2454,14 @@ fun pressEnterKey() {
                         super.onCompleted(gestureDescription)
                         Log.d(TAG, "Scroll right gesture completed")
                         showToast("Successfully scrolled right", false)
-                        continueProcessingQueueAfterDelay()
+                        scheduleNextCommandProcessing()
                     }
                     
                     override fun onCancelled(gestureDescription: GestureDescription) {
                         super.onCancelled(gestureDescription)
                         Log.e(TAG, "Scroll right gesture cancelled")
                         showToast("Scroll right cancelled", true)
-                        continueProcessingQueueAfterDelay()
+                        scheduleNextCommandProcessing()
                     }
                 },
                 null // handler
@@ -2470,12 +2470,12 @@ fun pressEnterKey() {
             if (!result) {
                 Log.e(TAG, "Failed to dispatch scroll right gesture")
                 showToast("Error scrolling right", true)
-                continueProcessingQueueAfterDelay()
+                scheduleNextCommandProcessing()
             }
         } catch (e: Exception) {
             Log.e(TAG, "Error scrolling right: ${e.message}")
             showToast("Error scrolling right: ${e.message}", true)
-            continueProcessingQueueAfterDelay()
+            scheduleNextCommandProcessing()
         }
     }
     
@@ -2519,14 +2519,14 @@ fun pressEnterKey() {
                         super.onCompleted(gestureDescription)
                         Log.d(TAG, "scrollRight method: Gesture completed for path from ($startX, $startY) to ($endX, $endY)")
                         showToast("Successfully scrolled right from position ($startX, $startY)", false)
-                        continueProcessingQueueAfterDelay()
+                        scheduleNextCommandProcessing()
                     }
                     
                     override fun onCancelled(gestureDescription: GestureDescription) {
                         super.onCancelled(gestureDescription)
                         Log.e(TAG, "scrollRight method: Gesture CANCELLED for path from ($startX, $startY) to ($endX, $endY). GestureDescription: $gestureDescription")
                         showToast("Scroll right from position ($startX, $startY) cancelled", true)
-                        continueProcessingQueueAfterDelay()
+                        scheduleNextCommandProcessing()
                     }
                 },
                 null // handler
@@ -2535,12 +2535,12 @@ fun pressEnterKey() {
             if (!result) {
                 Log.e(TAG, "Failed to dispatch coordinate-based scroll right gesture for path from ($startX, $startY) to ($endX, $endY)")
                 showToast("Error scrolling right from position ($startX, $startY)", true)
-                continueProcessingQueueAfterDelay()
+                scheduleNextCommandProcessing()
             }
         } catch (e: Exception) {
             Log.e(TAG, "Error scrolling right from coordinates: ${e.message}")
             showToast("Error scrolling right from position ($x, $y): ${e.message}", true)
-            continueProcessingQueueAfterDelay()
+            scheduleNextCommandProcessing()
         }
     }
     
