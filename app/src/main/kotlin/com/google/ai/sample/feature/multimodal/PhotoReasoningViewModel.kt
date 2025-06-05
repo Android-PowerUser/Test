@@ -131,18 +131,42 @@ class PhotoReasoningViewModel(
 
         currentReasoningJob?.cancel() // Cancel any previous reasoning job
         currentReasoningJob = PhotoReasoningApplication.applicationScope.launch(Dispatchers.IO) {
+            var shouldContinueProcessing = true
             // Create content with the current images and prompt
             val inputContent = content {
                 // Ensure line for original request: 136
-                if (currentReasoningJob?.isActive != true) return@launch
-                for (bitmap in selectedImages) {
-                    // Ensure line for original request: 138
-                    if (currentReasoningJob?.isActive != true) return@launch
-                    image(bitmap)
+                if (currentReasoningJob?.isActive != true) {
+                    shouldContinueProcessing = false
+                    // No return here
                 }
-                // Ensure line for original request: 141
-                if (currentReasoningJob?.isActive != true) return@launch
-                text(prompt)
+                if (shouldContinueProcessing) { // Check flag before proceeding
+                    for (bitmap in selectedImages) {
+                        // Ensure line for original request: 138
+                        if (currentReasoningJob?.isActive != true) {
+                            shouldContinueProcessing = false
+                            break // Break from the for loop
+                        }
+                        if (!shouldContinueProcessing) break // Check flag again in case it was set by the outer check
+                        image(bitmap)
+                    }
+                }
+                if (shouldContinueProcessing) { // Check flag before proceeding
+                    // Ensure line for original request: 141
+                    if (currentReasoningJob?.isActive != true) {
+                        shouldContinueProcessing = false
+                        // No return here
+                    }
+                }
+                if (shouldContinueProcessing) { // Check flag before proceeding
+                    text(prompt)
+                }
+            }
+
+            if (!shouldContinueProcessing) {
+                // If processing should not continue, we might need to update UI state
+                // For now, the existing check below should handle it.
+                // If specific UI updates are needed here, they can be added.
+                return@launch
             }
 
             if (currentReasoningJob?.isActive != true) return@launch // Check for cancellation outside content block
