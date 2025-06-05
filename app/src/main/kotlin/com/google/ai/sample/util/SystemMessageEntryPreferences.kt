@@ -40,9 +40,7 @@ object SystemMessageEntryPreferences {
                 val defaultEntries = listOf(
                     SystemMessageEntry(
                         title = "Termux",
-                        guide = "//To write something in Termux you must be sure the ESC HOME banner is away. If not: `back()` `scrollRight(75%, 99%, 50%, 50)` `tapAtCoordinates(50%, 99%)` this in one message. Check if the banner has disappeared also at the bottom. To show the keyboard in Termux if the banner is gone: 
-`tapAtCoordinates(50%, 99%)`
-You must always `Enter()` twice.\""
+                        guide = "//To write something in Termux you must be sure the ESC HOME banner is away. If not: `back()` `scrollRight(75%, 99%, 50%, 50)` `tapAtCoordinates(50%, 99%)` this in one message. Check if the banner has disappeared also at the bottom. To show the keyboard in Termux if the banner is gone: `tapAtCoordinates(50%, 99%)` And you must always `Enter()` twice.\""
                     ),
                     SystemMessageEntry(
                         title = "Chromium-based Browser",
