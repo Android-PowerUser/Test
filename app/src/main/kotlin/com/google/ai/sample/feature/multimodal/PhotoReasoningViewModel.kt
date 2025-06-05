@@ -208,9 +208,9 @@ class PhotoReasoningViewModel(
 
 
         // _uiState.value = PhotoReasoningUiState.Stopped; // No longer setting this as the final state.
-        _commandExecutionStatus.value = "Stopped."
+        _commandExecutionStatus.value = "" // Set to empty string
         _detectedCommands.value = emptyList()
-        Log.d(TAG, "Stop clicked, operations cancelled.")
+        Log.d(TAG, "Stop clicked, operations cancelled, command status cleared.")
 
         // Set a success state to indicate the stop operation itself was successful
         // and the UI can return to an idle/interactive state.
