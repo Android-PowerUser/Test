@@ -33,8 +33,13 @@ import java.util.Date
 import java.util.Locale
 import java.util.concurrent.atomic.AtomicBoolean
 import java.lang.NumberFormatException
+import java.util.LinkedList
 
 class ScreenOperatorAccessibilityService : AccessibilityService() {
+    private val commandQueue = LinkedList<Command>()
+    private val isProcessingQueue = AtomicBoolean(false)
+    // private val handler = Handler(Looper.getMainLooper()) // Already exists at the class level
+
     companion object {
         private const val TAG = "ScreenOperatorService"
         
@@ -90,144 +95,31 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
          * Execute a command using the accessibility service
          */
         fun executeCommand(command: Command) {
-            Log.d(TAG, "Executing command: $command")
-            
-            // Check if service is available
-            if (!isServiceAvailable()) {
-                Log.e(TAG, "Service is not available, cannot execute command")
-                showToast("Accessibility Service is not available. Please enable the service in settings.", true)
+            Log.d(TAG, "Queueing command: $command")
+
+            if (!isServiceAvailable()) { // isServiceAvailable() is a static fun in companion
+                Log.e(TAG, "Service is not available, cannot queue command")
+                // Use Companion's mainHandler to post UI updates from static context
+                mainHandler.post {
+                    val mainActivity = MainActivity.getInstance()
+                    if (mainActivity != null) {
+                        mainActivity.updateStatusMessage("Accessibility Service is not available. Please enable the service in settings.", true)
+                    } else {
+                        Log.e(TAG, "MainActivity instance is null, cannot show toast for service unavailable status.")
+                    }
+                }
                 return
             }
 
-            val displayMetrics = serviceInstance!!.resources.displayMetrics
-            val screenWidth = displayMetrics.widthPixels
-            val screenHeight = displayMetrics.heightPixels
-            
-            // Execute the command
-            when (command) {
-                is Command.ClickButton -> {
-                    Log.d(TAG, "Clicking button with text: ${command.buttonText}")
-                    showToast("Trying to click button: \"${command.buttonText}\"", false)
-                    serviceInstance?.findAndClickButtonByText(command.buttonText)
-                }
-                is Command.TapCoordinates -> {
-                    val xPx = serviceInstance!!.convertCoordinate(command.x, screenWidth)
-                    val yPx = serviceInstance!!.convertCoordinate(command.y, screenHeight)
-                    Log.d(TAG, "Tapping at coordinates: (${command.x} -> $xPx, ${command.y} -> $yPx)")
-                    showToast("Trying to tap coordinates: ($xPx, $yPx)", false)
-                    serviceInstance?.tapAtCoordinates(xPx, yPx)
-                }
-                is Command.TakeScreenshot -> {
-                    Log.d(TAG, "Taking screenshot with 850ms delay")
-                    showToast("Trying to take screenshot (with 850ms delay)", false)
-                    // Add a 850ms delay before taking the screenshot, sure all commands executed before
-                    mainHandler.postDelayed({
-                        serviceInstance?.takeScreenshot()
-                    }, 850) // 850ms delay
-                }
-                is Command.PressHomeButton -> {
-                    Log.d(TAG, "Pressing home button")
-                    showToast("Trying to press Home button", false)
-                    serviceInstance?.pressHomeButton()
-                }
-                is Command.PressBackButton -> {
-                    Log.d(TAG, "Pressing back button")
-                    showToast("Trying to press Back button", false)
-                    serviceInstance?.pressBackButton()
-                }
-                is Command.ShowRecentApps -> {
-                    Log.d(TAG, "Showing recent apps")
-                    showToast("Trying to open recent apps overview", false)
-                    serviceInstance?.showRecentApps()
-                }
-                is Command.ScrollDown -> {
-                    Log.d(TAG, "Scrolling down")
-                    showToast("Trying to scroll down", false)
-                    serviceInstance?.scrollDown()
-                }
-                is Command.ScrollUp -> {
-                    Log.d(TAG, "Scrolling up")
-                    showToast("Trying to scroll up", false)
-                    serviceInstance?.scrollUp()
-                }
-                is Command.ScrollLeft -> {
-                    Log.d(TAG, "Scrolling left")
-                    showToast("Trying to scroll left", false)
-                    serviceInstance?.scrollLeft()
-                }
-                is Command.ScrollRight -> {
-                    Log.d(TAG, "Scrolling right")
-                    showToast("Trying to scroll right", false)
-                    serviceInstance?.scrollRight()
-                }
-                is Command.ScrollDownFromCoordinates -> {
-                    Log.d(TAG, "ScrollDownFromCoordinates: Original inputs x='${command.x}', y='${command.y}', distance='${command.distance}', duration='${command.duration}'")
-                    Log.d(TAG, "ScrollDownFromCoordinates: Using screenWidth=$screenWidth, screenHeight=$screenHeight for conversions (distance uses screenHeight).")
-                    val xPx = serviceInstance!!.convertCoordinate(command.x, screenWidth)
-                    val yPx = serviceInstance!!.convertCoordinate(command.y, screenHeight)
-                    val distancePx = serviceInstance!!.convertCoordinate(command.distance, screenHeight)
-                    Log.d(TAG, "ScrollDownFromCoordinates: Converted to xPx=$xPx, yPx=$yPx, distancePx=$distancePx")
-                    showToast("Trying to scroll down from position ($xPx, $yPx)", false)
-                    serviceInstance?.scrollDown(xPx, yPx, distancePx, command.duration)
-                }
-                is Command.ScrollUpFromCoordinates -> {
-                    Log.d(TAG, "ScrollUpFromCoordinates: Original inputs x='${command.x}', y='${command.y}', distance='${command.distance}', duration='${command.duration}'")
-                    Log.d(TAG, "ScrollUpFromCoordinates: Using screenWidth=$screenWidth, screenHeight=$screenHeight for conversions (distance uses screenHeight).")
-                    val xPx = serviceInstance!!.convertCoordinate(command.x, screenWidth)
-                    val yPx = serviceInstance!!.convertCoordinate(command.y, screenHeight)
-                    val distancePx = serviceInstance!!.convertCoordinate(command.distance, screenHeight)
-                    Log.d(TAG, "ScrollUpFromCoordinates: Converted to xPx=$xPx, yPx=$yPx, distancePx=$distancePx")
-                    showToast("Trying to scroll up from position ($xPx, $yPx)", false)
-                    serviceInstance?.scrollUp(xPx, yPx, distancePx, command.duration)
-                }
-                is Command.ScrollLeftFromCoordinates -> {
-                    Log.d(TAG, "ScrollLeftFromCoordinates: Original inputs x='${command.x}', y='${command.y}', distance='${command.distance}', duration='${command.duration}'")
-                    Log.d(TAG, "ScrollLeftFromCoordinates: Using screenWidth=$screenWidth, screenHeight=$screenHeight for conversions (distance uses screenWidth).")
-                    val xPx = serviceInstance!!.convertCoordinate(command.x, screenWidth)
-                    val yPx = serviceInstance!!.convertCoordinate(command.y, screenHeight)
-                    val distancePx = serviceInstance!!.convertCoordinate(command.distance, screenWidth)
-                    Log.d(TAG, "ScrollLeftFromCoordinates: Converted to xPx=$xPx, yPx=$yPx, distancePx=$distancePx")
-                    showToast("Trying to scroll left from position ($xPx, $yPx)", false)
-                    serviceInstance?.scrollLeft(xPx, yPx, distancePx, command.duration)
-                }
-                is Command.ScrollRightFromCoordinates -> {
-                    Log.d(TAG, "ScrollRightFromCoordinates: Original inputs x='${command.x}', y='${command.y}', distance='${command.distance}', duration='${command.duration}'")
-                    Log.d(TAG, "ScrollRightFromCoordinates: Using screenWidth=$screenWidth, screenHeight=$screenHeight for conversions (distance uses screenWidth).")
-                    val xPx = serviceInstance!!.convertCoordinate(command.x, screenWidth)
-                    val yPx = serviceInstance!!.convertCoordinate(command.y, screenHeight)
-                    val distancePx = serviceInstance!!.convertCoordinate(command.distance, screenWidth)
-                    Log.d(TAG, "ScrollRightFromCoordinates: Converted to xPx=$xPx, yPx=$yPx, distancePx=$distancePx")
-                    showToast("Trying to scroll right from position ($xPx, $yPx)", false)
-                    serviceInstance?.scrollRight(xPx, yPx, distancePx, command.duration)
-                }
-                is Command.OpenApp -> {
-                    Log.d(TAG, "Opening app: ${command.packageName}")
-                    showToast("Trying to open app: ${command.packageName}", false)
-                    serviceInstance?.openApp(command.packageName)
-                }
-                is Command.WriteText -> {
-                    Log.d(TAG, "Writing text: ${command.text}")
-                    showToast("Trying to write text: \"${command.text}\"", false)
-                    serviceInstance?.writeText(command.text)
-                }
-                is Command.UseHighReasoningModel -> {
-                    Log.d(TAG, "Switching to high reasoning model (gemini-2.5-pro-preview-03-25)")
-                    showToast("Switching to more powerful model (gemini-2.5-pro-preview-03-25)", false)
-                    GenerativeAiViewModelFactory.highReasoningModel()
-                }
-                is Command.UseLowReasoningModel -> {
-                    Log.d(TAG, "Switching to low reasoning model (gemini-2.0-flash-lite)")
-                    showToast("Switching to faster model (gemini-2.0-flash-lite)", false)
-                    GenerativeAiViewModelFactory.lowReasoningModel()
-                } 
-                    is Command.PressEnterKey -> {
-                    Log.d(TAG, "Pressing Enter key")
-                    showToast("Trying to press Enter key", false)
-                    serviceInstance?.pressEnterKey()
-                }
+            // serviceInstance is the static reference to the service
+            serviceInstance!!.commandQueue.add(command)
+            Log.d(TAG, "Command $command added to queue. Queue size: ${serviceInstance!!.commandQueue.size}")
+
+            if (!serviceInstance!!.isProcessingQueue.get()) {
+                 serviceInstance!!.processCommandQueue() // Call the instance method
             }
         }
-        
+
         /**
          * Show a toast message on the main thread
          */
@@ -250,8 +142,8 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
     private var lastRootNodeRefreshTime: Long = 0
     
     // Handler for delayed operations
-    private val handler = Handler(Looper.getMainLooper())
-    
+    private val handler = Handler(Looper.getMainLooper()) // Instance handler
+
     // App name to package mapper
     private lateinit var appNamePackageMapper: AppNamePackageMapper
     
@@ -282,6 +174,172 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
         
         // Show a toast to indicate the service is connected
         showToast("Accessibility Service is enabled and connected", false)
+    }
+
+    private fun executeSingleCommand(command: Command) {
+        val displayMetrics = this.resources.displayMetrics
+        val screenWidth = displayMetrics.widthPixels
+        val screenHeight = displayMetrics.heightPixels
+
+        // Execute the command
+        when (command) {
+            is Command.ClickButton -> {
+                Log.d(TAG, "Clicking button with text: ${command.buttonText}")
+                this.showToast("Trying to click button: \"${command.buttonText}\"", false)
+                this.findAndClickButtonByText(command.buttonText)
+            }
+            is Command.TapCoordinates -> {
+                val xPx = this.convertCoordinate(command.x, screenWidth)
+                val yPx = this.convertCoordinate(command.y, screenHeight)
+                Log.d(TAG, "Tapping at coordinates: (${command.x} -> $xPx, ${command.y} -> $yPx)")
+                this.showToast("Trying to tap coordinates: ($xPx, $yPx)", false)
+                this.tapAtCoordinates(xPx, yPx)
+            }
+            is Command.TakeScreenshot -> {
+                Log.d(TAG, "Taking screenshot with 850ms delay")
+                this.showToast("Trying to take screenshot (with 850ms delay)", false)
+                // Add a 850ms delay before taking the screenshot, sure all commands executed before
+                handler.postDelayed({ // uses instance handler
+                    this.takeScreenshot()
+                }, 850L)
+            }
+            is Command.PressHomeButton -> {
+                Log.d(TAG, "Pressing home button")
+                this.showToast("Trying to press Home button", false)
+                this.pressHomeButton()
+            }
+            is Command.PressBackButton -> {
+                Log.d(TAG, "Pressing back button")
+                this.showToast("Trying to press Back button", false)
+                this.pressBackButton()
+            }
+            is Command.ShowRecentApps -> {
+                Log.d(TAG, "Showing recent apps")
+                this.showToast("Trying to open recent apps overview", false)
+                this.showRecentApps()
+            }
+            is Command.ScrollDown -> {
+                Log.d(TAG, "Scrolling down")
+                this.showToast("Trying to scroll down", false)
+                this.scrollDown()
+            }
+            is Command.ScrollUp -> {
+                Log.d(TAG, "Scrolling up")
+                this.showToast("Trying to scroll up", false)
+                this.scrollUp()
+            }
+            is Command.ScrollLeft -> {
+                Log.d(TAG, "Scrolling left")
+                this.showToast("Trying to scroll left", false)
+                this.scrollLeft()
+            }
+            is Command.ScrollRight -> {
+                Log.d(TAG, "Scrolling right")
+                this.showToast("Trying to scroll right", false)
+                this.scrollRight()
+            }
+            is Command.ScrollDownFromCoordinates -> {
+                Log.d(TAG, "ScrollDownFromCoordinates: Original inputs x='${command.x}', y='${command.y}', distance='${command.distance}', duration='${command.duration}'")
+                Log.d(TAG, "ScrollDownFromCoordinates: Using screenWidth=$screenWidth, screenHeight=$screenHeight for conversions (distance uses screenHeight).")
+                val xPx = this.convertCoordinate(command.x, screenWidth)
+                val yPx = this.convertCoordinate(command.y, screenHeight)
+                val distancePx = this.convertCoordinate(command.distance, screenHeight)
+                Log.d(TAG, "ScrollDownFromCoordinates: Converted to xPx=$xPx, yPx=$yPx, distancePx=$distancePx")
+                this.showToast("Trying to scroll down from position ($xPx, $yPx)", false)
+                this.scrollDown(xPx, yPx, distancePx, command.duration)
+            }
+            is Command.ScrollUpFromCoordinates -> {
+                Log.d(TAG, "ScrollUpFromCoordinates: Original inputs x='${command.x}', y='${command.y}', distance='${command.distance}', duration='${command.duration}'")
+                Log.d(TAG, "ScrollUpFromCoordinates: Using screenWidth=$screenWidth, screenHeight=$screenHeight for conversions (distance uses screenHeight).")
+                val xPx = this.convertCoordinate(command.x, screenWidth)
+                val yPx = this.convertCoordinate(command.y, screenHeight)
+                val distancePx = this.convertCoordinate(command.distance, screenHeight)
+                Log.d(TAG, "ScrollUpFromCoordinates: Converted to xPx=$xPx, yPx=$yPx, distancePx=$distancePx")
+                this.showToast("Trying to scroll up from position ($xPx, $yPx)", false)
+                this.scrollUp(xPx, yPx, distancePx, command.duration)
+            }
+            is Command.ScrollLeftFromCoordinates -> {
+                Log.d(TAG, "ScrollLeftFromCoordinates: Original inputs x='${command.x}', y='${command.y}', distance='${command.distance}', duration='${command.duration}'")
+                Log.d(TAG, "ScrollLeftFromCoordinates: Using screenWidth=$screenWidth, screenHeight=$screenHeight for conversions (distance uses screenWidth).")
+                val xPx = this.convertCoordinate(command.x, screenWidth)
+                val yPx = this.convertCoordinate(command.y, screenHeight)
+                val distancePx = this.convertCoordinate(command.distance, screenWidth)
+                Log.d(TAG, "ScrollLeftFromCoordinates: Converted to xPx=$xPx, yPx=$yPx, distancePx=$distancePx")
+                this.showToast("Trying to scroll left from position ($xPx, $yPx)", false)
+                this.scrollLeft(xPx, yPx, distancePx, command.duration)
+            }
+            is Command.ScrollRightFromCoordinates -> {
+                Log.d(TAG, "ScrollRightFromCoordinates: Original inputs x='${command.x}', y='${command.y}', distance='${command.distance}', duration='${command.duration}'")
+                Log.d(TAG, "ScrollRightFromCoordinates: Using screenWidth=$screenWidth, screenHeight=$screenHeight for conversions (distance uses screenWidth).")
+                val xPx = this.convertCoordinate(command.x, screenWidth)
+                val yPx = this.convertCoordinate(command.y, screenHeight)
+                val distancePx = this.convertCoordinate(command.distance, screenWidth)
+                Log.d(TAG, "ScrollRightFromCoordinates: Converted to xPx=$xPx, yPx=$yPx, distancePx=$distancePx")
+                this.showToast("Trying to scroll right from position ($xPx, $yPx)", false)
+                this.scrollRight(xPx, yPx, distancePx, command.duration)
+            }
+            is Command.OpenApp -> {
+                Log.d(TAG, "Opening app: ${command.packageName}")
+                this.showToast("Trying to open app: ${command.packageName}", false)
+                this.openApp(command.packageName)
+            }
+            is Command.WriteText -> {
+                Log.d(TAG, "Writing text: ${command.text}")
+                this.showToast("Trying to write text: \"${command.text}\"", false)
+                this.writeText(command.text)
+            }
+            is Command.UseHighReasoningModel -> {
+                Log.d(TAG, "Switching to high reasoning model (gemini-2.5-pro-preview-03-25)")
+                this.showToast("Switching to more powerful model (gemini-2.5-pro-preview-03-25)", false)
+                GenerativeAiViewModelFactory.highReasoningModel()
+            }
+            is Command.UseLowReasoningModel -> {
+                Log.d(TAG, "Switching to low reasoning model (gemini-2.0-flash-lite)")
+                this.showToast("Switching to faster model (gemini-2.0-flash-lite)", false)
+                GenerativeAiViewModelFactory.lowReasoningModel()
+            }
+            is Command.PressEnterKey -> {
+                Log.d(TAG, "Pressing Enter key")
+                this.showToast("Trying to press Enter key", false)
+                this.pressEnterKey()
+            }
+        }
+    }
+
+    private fun processCommandQueue() {
+        if (!isProcessingQueue.compareAndSet(false, true)) {
+            Log.d(TAG, "Queue is already being processed.")
+            return
+        }
+
+        if (commandQueue.isEmpty()) {
+            Log.d(TAG, "Command queue is empty. Stopping processing.")
+            isProcessingQueue.set(false)
+            return
+        }
+
+        val command = commandQueue.poll()
+        Log.d(TAG, "Processing command: $command. Queue size after poll: ${commandQueue.size}")
+
+        if (command != null) {
+            executeSingleCommand(command)
+
+            val nextCommandDelay = if (commandQueue.peek() is Command.TakeScreenshot) {
+                Log.d(TAG, "Next command in queue is TakeScreenshot, scheduling with 850ms delay.")
+                850L
+            } else {
+                150L
+            }
+
+            handler.postDelayed({ // uses instance handler
+                isProcessingQueue.set(false)
+                processCommandQueue()
+            }, nextCommandDelay)
+
+        } else {
+            Log.d(TAG, "Polled null command from queue, stopping processing.")
+            isProcessingQueue.set(false)
+        }
     }
 
     private fun convertCoordinate(coordinateString: String, screenSize: Int): Float {
