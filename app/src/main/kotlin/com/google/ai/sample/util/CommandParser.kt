@@ -221,7 +221,8 @@ object CommandParser {
      * Process text to find commands
      */
     private fun processTextInternal(text: String): List<Command> {
-        val foundRawMatches = mutableListOf<Triple<Int, Int, Command>>()
+        data class ProcessedMatch(val startIndex: Int, val endIndex: Int, val command: Command, val type: CommandTypeEnum)
+        val foundRawMatches = mutableListOf<ProcessedMatch>()
         val finalCommands = mutableListOf<Command>()
         val addedSingleInstanceCommands = mutableSetOf<CommandTypeEnum>()
 
@@ -230,8 +231,9 @@ object CommandParser {
                 patternInfo.regex.findAll(text).forEach { matchResult ->
                     try {
                         val command = patternInfo.commandBuilder(matchResult)
-                        foundRawMatches.add(Triple(matchResult.range.first, matchResult.range.last, command))
-                        Log.d(TAG, "Found raw match: Start=${matchResult.range.first}, End=${matchResult.range.last}, Command=${command}, Pattern=${patternInfo.id}")
+                        // Store the commandType from the patternInfo that generated this command
+                        foundRawMatches.add(ProcessedMatch(matchResult.range.first, matchResult.range.last, command, patternInfo.commandType))
+                        Log.d(TAG, "Found raw match: Start=${matchResult.range.first}, End=${matchResult.range.last}, Command=${command}, Type=${patternInfo.commandType}, Pattern=${patternInfo.id}")
                     } catch (e: Exception) {
                         Log.e(TAG, "Error building command for pattern ${patternInfo.id} with match ${matchResult.value}: ${e.message}", e)
                     }
@@ -242,58 +244,43 @@ object CommandParser {
         }
 
         // Sort matches by start index
-        foundRawMatches.sortBy { it.first }
+        foundRawMatches.sortBy { it.startIndex }
         Log.d(TAG, "Sorted raw matches (${foundRawMatches.size}): $foundRawMatches")
 
         var currentPosition = 0
-        for ((startIndex, endIndex, command) in foundRawMatches) {
+        for (processedMatch in foundRawMatches) {
+            val (startIndex, endIndex, command, commandTypeFromMatch) = processedMatch // Destructure
             if (startIndex >= currentPosition) {
-                // Handle single-instance commands
-                val commandType = ALL_PATTERNS.find { it.commandBuilder(MatchResultPlaceholder) == command || (it.commandBuilder(MatchResultPlaceholder)::class == command::class && command is Command.WriteText) }?.commandType // This is a bit hacky for comparison
-
                 var canAdd = true
-                if (commandType != null) {
-                    val isSingleInstanceType = when (commandType) {
-                        CommandTypeEnum.TAKE_SCREENSHOT,
-                        CommandTypeEnum.PRESS_HOME,
-                        CommandTypeEnum.PRESS_BACK,
-                        CommandTypeEnum.SHOW_RECENT_APPS,
-                        CommandTypeEnum.USE_HIGH_REASONING_MODEL,
-                        CommandTypeEnum.USE_LOW_REASONING_MODEL,
-                        CommandTypeEnum.PRESS_ENTER_KEY -> true
-                        else -> false
-                    }
-                    if (isSingleInstanceType) {
-                        if (addedSingleInstanceCommands.contains(commandType)) {
-                            canAdd = false
-                            Log.d(TAG, "Skipping duplicate single-instance command: $command (Type: $commandType)")
-                        } else {
-                            addedSingleInstanceCommands.add(commandType)
-                        }
+                // Use commandTypeFromMatch directly here
+                val isSingleInstanceType = when (commandTypeFromMatch) {
+                    CommandTypeEnum.TAKE_SCREENSHOT,
+                    CommandTypeEnum.PRESS_HOME,
+                    CommandTypeEnum.PRESS_BACK,
+                    CommandTypeEnum.SHOW_RECENT_APPS,
+                    CommandTypeEnum.USE_HIGH_REASONING_MODEL,
+                    CommandTypeEnum.USE_LOW_REASONING_MODEL,
+                    CommandTypeEnum.PRESS_ENTER_KEY -> true
+                    else -> false
+                }
+                if (isSingleInstanceType) {
+                    if (addedSingleInstanceCommands.contains(commandTypeFromMatch)) {
+                        canAdd = false
+                        Log.d(TAG, "Skipping duplicate single-instance command: $command (Type: $commandTypeFromMatch)")
+                    } else {
+                        addedSingleInstanceCommands.add(commandTypeFromMatch)
                     }
                 }
 
-
                 if (canAdd) {
-                     // Basic duplicate check for parameterized commands based on content (already handled by some old logic, kept for safety)
-                    val isLikelyDuplicate = finalCommands.any {
-                        it::class == command::class && when(it) {
-                            is Command.ClickButton -> it.buttonText == (command as? Command.ClickButton)?.buttonText
-                            is Command.TapCoordinates -> it.x == (command as? Command.TapCoordinates)?.x && it.y == (command as? Command.TapCoordinates)?.y
-                            is Command.WriteText -> it.text == (command as? Command.WriteText)?.text
-                            is Command.OpenApp -> it.packageName == (command as? Command.OpenApp)?.packageName
-                            // Add more types if necessary
-                            else -> false // For non-parameterized or unique types, this won't prevent addition
-                        }
-                    }
-
-                    if (!isLikelyDuplicate || commandType == null || !addedSingleInstanceCommands.contains(commandType)) { // Ensure single instance types are not re-added due to this check
-                        finalCommands.add(command)
-                        currentPosition = endIndex + 1
-                        Log.d(TAG, "Added command: $command. New currentPosition: $currentPosition")
-                    } else if (isLikelyDuplicate) {
-                         Log.d(TAG, "Skipping likely duplicate parameterized command: $command")
-                    }
+                    // Simplified duplicate check: if it's not a single instance type, allow it.
+                    // More sophisticated duplicate checks for parameterized commands can be added here if needed.
+                    // For now, only single-instance types are strictly controlled for duplication.
+                    // The overlap filter (startIndex >= currentPosition) already prevents identical commands
+                    // from the exact same text span.
+                    finalCommands.add(command)
+                    currentPosition = endIndex + 1
+                    Log.d(TAG, "Added command: $command. New currentPosition: $currentPosition")
                 }
             } else {
                 Log.d(TAG, "Skipping overlapping command: $command (startIndex $startIndex < currentPosition $currentPosition)")
@@ -303,23 +290,12 @@ object CommandParser {
         return finalCommands
     }
 
-    // Placeholder for commandBuilder comparison, not used for actual matching.
-    private val MatchResultPlaceholder by lazy {
-        Regex("").find("")!!
-    }
-
-
     /**
      * Process text to find commands
      */
     private fun processText(text: String, commands: MutableList<Command>) {
         val extractedCommands = processTextInternal(text)
         commands.addAll(extractedCommands)
-    }
-
-    // Placeholder for commandBuilder comparison, not used for actual matching.
-    private val MatchResultPlaceholder by lazy {
-        Regex("").find("")!!
     }
 
     /**
