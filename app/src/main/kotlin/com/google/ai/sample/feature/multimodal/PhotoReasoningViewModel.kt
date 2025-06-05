@@ -207,10 +207,15 @@ class PhotoReasoningViewModel(
         _chatMessagesFlow.value = chatMessages
 
 
-        _uiState.value = PhotoReasoningUiState.Stopped
+        // _uiState.value = PhotoReasoningUiState.Stopped; // No longer setting this as the final state.
         _commandExecutionStatus.value = "Stopped."
         _detectedCommands.value = emptyList()
-        Log.d(TAG, "Stop clicked, operations cancelled, UI updated to Stopped state.")
+        Log.d(TAG, "Stop clicked, operations cancelled.")
+
+        // Set a success state to indicate the stop operation itself was successful
+        // and the UI can return to an idle/interactive state.
+        _uiState.value = PhotoReasoningUiState.Success("Operation stopped.")
+        Log.d(TAG, "UI updated to Success state after stop.")
     }
 
     /**
@@ -220,20 +225,32 @@ class PhotoReasoningViewModel(
      * @param retryCount The current retry count
      */
     private suspend fun sendMessageWithRetry(inputContent: Content, retryCount: Int) {
-        if (currentReasoningJob?.isActive != true || stopExecutionFlag.get()) { // Check for cancellation
-            _uiState.value = PhotoReasoningUiState.Success("Operation cancelled before sending.")
-            updateAiMessage("Operation cancelled.")
-            return
+        if (currentReasoningJob?.isActive != true || stopExecutionFlag.get()) {
+            if (stopExecutionFlag.get()) {
+                // User initiated stop, onStopClicked will handle UI and message
+                return
+            } else {
+                // Cancellation not by user stop button
+                _uiState.value = PhotoReasoningUiState.Error("Operation cancelled unexpectedly before sending.")
+                updateAiMessage("Operation cancelled unexpectedly.")
+                return
+            }
         }
         var shouldProceed = true // Flag to control further processing
 
         try {
             // Send the message to the chat to maintain context
             val response = chat.sendMessage(inputContent)
-            if (currentReasoningJob?.isActive != true || stopExecutionFlag.get()) { // Check for cancellation
-                _uiState.value = PhotoReasoningUiState.Success("Operation cancelled after sending.")
-                updateAiMessage("Operation cancelled.")
-                return
+            if (currentReasoningJob?.isActive != true || stopExecutionFlag.get()) {
+                if (stopExecutionFlag.get()) {
+                    // User initiated stop, onStopClicked will handle UI and message
+                    return
+                } else {
+                    // Cancellation not by user stop button
+                    _uiState.value = PhotoReasoningUiState.Error("Operation cancelled unexpectedly after sending.")
+                    updateAiMessage("Operation cancelled unexpectedly.")
+                    return
+                }
             }
 
             var outputContent = ""
@@ -242,19 +259,32 @@ class PhotoReasoningViewModel(
             response.text?.let { modelResponse ->
                 outputContent = modelResponse
 
-                if (currentReasoningJob?.isActive != true || stopExecutionFlag.get()) { // Check for cancellation
-                    _uiState.value = PhotoReasoningUiState.Success("Operation cancelled during response processing.")
-                    updateAiMessage("Operation cancelled.")
-                    shouldProceed = false // Signal to skip further processing
+                if (currentReasoningJob?.isActive != true || stopExecutionFlag.get()) {
+                    if (stopExecutionFlag.get()) {
+                        // User initiated stop, onStopClicked will handle UI and message
+                        shouldProceed = false // Signal to skip further processing
+                    } else {
+                        // Cancellation not by user stop button
+                        _uiState.value = PhotoReasoningUiState.Error("Operation cancelled unexpectedly during response processing.")
+                        updateAiMessage("Operation cancelled unexpectedly.")
+                        shouldProceed = false // Signal to skip further processing
+                    }
                 }
             }
 
             if (shouldProceed) { // Only proceed if not cancelled in the 'let' block
                 withContext(Dispatchers.Main) {
                     if (currentReasoningJob?.isActive != true || stopExecutionFlag.get()) { // Re-check for cancellation
-                        _uiState.value = PhotoReasoningUiState.Success("Operation cancelled.")
-                        updateAiMessage("Operation cancelled.")
+                        if (stopExecutionFlag.get()) {
+                            // User initiated stop, onStopClicked will handle UI and message
+                            // No action needed here, shouldProceed will prevent further execution if already false
+                            // or the outer checks in this function will catch it.
+                        } else {
+                            _uiState.value = PhotoReasoningUiState.Error("Operation cancelled unexpectedly before UI update.")
+                            updateAiMessage("Operation cancelled unexpectedly.")
+                        }
                         // No return@withContext, logic will naturally skip due to outer 'if (shouldProceed)' and this check
+                        // or if shouldProceed was set to false earlier.
                     } else {
                         _uiState.value = PhotoReasoningUiState.Success(outputContent)
 
@@ -283,32 +313,49 @@ class PhotoReasoningViewModel(
                 }
             }
         } catch (e: Exception) {
-            if (currentReasoningJob?.isActive != true || stopExecutionFlag.get()) { // Check for cancellation during exception handling
-                _uiState.value = PhotoReasoningUiState.Error("Operation cancelled during error handling.")
-                updateAiMessage("Operation cancelled during error handling.")
+            if (stopExecutionFlag.get()) {
+                // If user already stopped, just log the error and return.
+                // Do not update UI or send chat messages as onStopClicked handles this.
+                Log.w(TAG, "Exception caught after stop flag was set: ${e.message}", e)
                 return
             }
+            // If the stop flag is not set, but the job is inactive (cancelled by other means)
+            if (currentReasoningJob?.isActive != true) {
+                _uiState.value = PhotoReasoningUiState.Error("Operation cancelled and then an error occurred.") // Or a more fitting message
+                updateAiMessage("Operation cancelled, error during cleanup: ${e.message}")
+                Log.e(TAG, "Error generating content after job was cancelled: ${e.message}", e)
+                return
+            }
+
+            // If stopExecutionFlag is false AND currentReasoningJob is active, proceed with normal error handling.
             Log.e(TAG, "Error generating content: ${e.message}", e)
 
             // Check specifically for quota exceeded errors first
             if (isQuotaExceededError(e) && apiKeyManager != null) {
-                if (currentReasoningJob?.isActive != true || stopExecutionFlag.get()) return // Check for cancellation
+                // The check currentReasoningJob?.isActive != true is still relevant if the job gets cancelled
+                // by other means after the top checks in this catch block.
+                // stopExecutionFlag.get() is less likely to be true here due to the top check, but kept for defense.
+                if (currentReasoningJob?.isActive != true || stopExecutionFlag.get()) return
                 handleQuotaExceededError(e, inputContent, retryCount)
                 return
             }
 
             // Check for other 503 errors
             if (is503Error(e) && apiKeyManager != null) {
-                if (currentReasoningJob?.isActive != true || stopExecutionFlag.get()) return // Check for cancellation
+                if (currentReasoningJob?.isActive != true || stopExecutionFlag.get()) return
                 handle503Error(e, inputContent, retryCount)
                 return
             }
 
             // If we get here, it's not a 503 error or quota exceeded error
+            // The stopExecutionFlag.get() check here is mostly redundant due to the top check,
+            // but currentReasoningJob?.isActive is still a valid check.
             if (currentReasoningJob?.isActive == true && !stopExecutionFlag.get()) {
                 withContext(Dispatchers.Main) {
                      if (currentReasoningJob?.isActive != true || stopExecutionFlag.get()) {
-                        // If cancelled, potentially update UI or log, but don't proceed with error state for this exception
+                        // If cancelled (possibly between the outer check and here, or due to job inactivity)
+                        // Potentially log or update UI to reflect this specific state if desired.
+                        // For now, this means the error e won't be set as the primary UI state.
                      } else {
                         _uiState.value = PhotoReasoningUiState.Error(e.localizedMessage ?: "Unknown error")
                         _commandExecutionStatus.value = "Error during generation: ${e.localizedMessage}"
@@ -328,8 +375,16 @@ class PhotoReasoningViewModel(
                     }
                 }
             } else {
-                 _uiState.value = PhotoReasoningUiState.Error("Operation cancelled during error processing.")
-                 updateAiMessage("Operation cancelled during error processing.")
+                 // This branch could be reached if:
+                 // 1. stopExecutionFlag was set by another thread between the top check and here.
+                 // 2. currentReasoningJob became inactive for reasons other than the stop flag.
+                 // If stopExecutionFlag is true, onStopClicked handles the message.
+                 // If only job inactive, a general "cancelled during error processing" might be okay,
+                 // but the specific check for job inactivity at the top of the catch block should handle most cases.
+                 if (!stopExecutionFlag.get()) {
+                    _uiState.value = PhotoReasoningUiState.Error("Operation error processing or cancelled.")
+                    updateAiMessage("Operation error processing or cancelled.")
+                 }
             }
         }
     }
