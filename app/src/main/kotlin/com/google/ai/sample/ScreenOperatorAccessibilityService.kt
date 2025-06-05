@@ -33,8 +33,13 @@ import java.util.Date
 import java.util.Locale
 import java.util.concurrent.atomic.AtomicBoolean
 import java.lang.NumberFormatException
+import java.util.LinkedList
 
 class ScreenOperatorAccessibilityService : AccessibilityService() {
+    private val commandQueue = LinkedList<Command>()
+    private val isProcessingQueue = AtomicBoolean(false)
+    // private val handler = Handler(Looper.getMainLooper()) // Already exists at the class level
+
     companion object {
         private const val TAG = "ScreenOperatorService"
         
@@ -90,144 +95,32 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
          * Execute a command using the accessibility service
          */
         fun executeCommand(command: Command) {
-            Log.d(TAG, "Executing command: $command")
-            
-            // Check if service is available
-            if (!isServiceAvailable()) {
-                Log.e(TAG, "Service is not available, cannot execute command")
-                showToast("Accessibility Service is not available. Please enable the service in settings.", true)
+            Log.d(TAG, "Queueing command: $command")
+
+            if (!isServiceAvailable()) { // isServiceAvailable() is a static fun in companion
+                Log.e(TAG, "Service is not available, cannot queue command")
+                // Use Companion's mainHandler to post UI updates from static context
+                mainHandler.post {
+                    val mainActivity = MainActivity.getInstance()
+                    if (mainActivity != null) {
+                        mainActivity.updateStatusMessage("Accessibility Service is not available. Please enable the service in settings.", true)
+                    } else {
+                        Log.e(TAG, "MainActivity instance is null, cannot show toast for service unavailable status.")
+                    }
+                }
                 return
             }
 
-            val displayMetrics = serviceInstance!!.resources.displayMetrics
-            val screenWidth = displayMetrics.widthPixels
-            val screenHeight = displayMetrics.heightPixels
-            
-            // Execute the command
-            when (command) {
-                is Command.ClickButton -> {
-                    Log.d(TAG, "Clicking button with text: ${command.buttonText}")
-                    showToast("Trying to click button: \"${command.buttonText}\"", false)
-                    serviceInstance?.findAndClickButtonByText(command.buttonText)
-                }
-                is Command.TapCoordinates -> {
-                    val xPx = serviceInstance!!.convertCoordinate(command.x, screenWidth)
-                    val yPx = serviceInstance!!.convertCoordinate(command.y, screenHeight)
-                    Log.d(TAG, "Tapping at coordinates: (${command.x} -> $xPx, ${command.y} -> $yPx)")
-                    showToast("Trying to tap coordinates: ($xPx, $yPx)", false)
-                    serviceInstance?.tapAtCoordinates(xPx, yPx)
-                }
-                is Command.TakeScreenshot -> {
-                    Log.d(TAG, "Taking screenshot with 850ms delay")
-                    showToast("Trying to take screenshot (with 850ms delay)", false)
-                    // Add a 850ms delay before taking the screenshot, sure all commands executed before
-                    mainHandler.postDelayed({
-                        serviceInstance?.takeScreenshot()
-                    }, 850) // 850ms delay
-                }
-                is Command.PressHomeButton -> {
-                    Log.d(TAG, "Pressing home button")
-                    showToast("Trying to press Home button", false)
-                    serviceInstance?.pressHomeButton()
-                }
-                is Command.PressBackButton -> {
-                    Log.d(TAG, "Pressing back button")
-                    showToast("Trying to press Back button", false)
-                    serviceInstance?.pressBackButton()
-                }
-                is Command.ShowRecentApps -> {
-                    Log.d(TAG, "Showing recent apps")
-                    showToast("Trying to open recent apps overview", false)
-                    serviceInstance?.showRecentApps()
-                }
-                is Command.ScrollDown -> {
-                    Log.d(TAG, "Scrolling down")
-                    showToast("Trying to scroll down", false)
-                    serviceInstance?.scrollDown()
-                }
-                is Command.ScrollUp -> {
-                    Log.d(TAG, "Scrolling up")
-                    showToast("Trying to scroll up", false)
-                    serviceInstance?.scrollUp()
-                }
-                is Command.ScrollLeft -> {
-                    Log.d(TAG, "Scrolling left")
-                    showToast("Trying to scroll left", false)
-                    serviceInstance?.scrollLeft()
-                }
-                is Command.ScrollRight -> {
-                    Log.d(TAG, "Scrolling right")
-                    showToast("Trying to scroll right", false)
-                    serviceInstance?.scrollRight()
-                }
-                is Command.ScrollDownFromCoordinates -> {
-                    Log.d(TAG, "ScrollDownFromCoordinates: Original inputs x='${command.x}', y='${command.y}', distance='${command.distance}', duration='${command.duration}'")
-                    Log.d(TAG, "ScrollDownFromCoordinates: Using screenWidth=$screenWidth, screenHeight=$screenHeight for conversions (distance uses screenHeight).")
-                    val xPx = serviceInstance!!.convertCoordinate(command.x, screenWidth)
-                    val yPx = serviceInstance!!.convertCoordinate(command.y, screenHeight)
-                    val distancePx = serviceInstance!!.convertCoordinate(command.distance, screenHeight)
-                    Log.d(TAG, "ScrollDownFromCoordinates: Converted to xPx=$xPx, yPx=$yPx, distancePx=$distancePx")
-                    showToast("Trying to scroll down from position ($xPx, $yPx)", false)
-                    serviceInstance?.scrollDown(xPx, yPx, distancePx, command.duration)
-                }
-                is Command.ScrollUpFromCoordinates -> {
-                    Log.d(TAG, "ScrollUpFromCoordinates: Original inputs x='${command.x}', y='${command.y}', distance='${command.distance}', duration='${command.duration}'")
-                    Log.d(TAG, "ScrollUpFromCoordinates: Using screenWidth=$screenWidth, screenHeight=$screenHeight for conversions (distance uses screenHeight).")
-                    val xPx = serviceInstance!!.convertCoordinate(command.x, screenWidth)
-                    val yPx = serviceInstance!!.convertCoordinate(command.y, screenHeight)
-                    val distancePx = serviceInstance!!.convertCoordinate(command.distance, screenHeight)
-                    Log.d(TAG, "ScrollUpFromCoordinates: Converted to xPx=$xPx, yPx=$yPx, distancePx=$distancePx")
-                    showToast("Trying to scroll up from position ($xPx, $yPx)", false)
-                    serviceInstance?.scrollUp(xPx, yPx, distancePx, command.duration)
-                }
-                is Command.ScrollLeftFromCoordinates -> {
-                    Log.d(TAG, "ScrollLeftFromCoordinates: Original inputs x='${command.x}', y='${command.y}', distance='${command.distance}', duration='${command.duration}'")
-                    Log.d(TAG, "ScrollLeftFromCoordinates: Using screenWidth=$screenWidth, screenHeight=$screenHeight for conversions (distance uses screenWidth).")
-                    val xPx = serviceInstance!!.convertCoordinate(command.x, screenWidth)
-                    val yPx = serviceInstance!!.convertCoordinate(command.y, screenHeight)
-                    val distancePx = serviceInstance!!.convertCoordinate(command.distance, screenWidth)
-                    Log.d(TAG, "ScrollLeftFromCoordinates: Converted to xPx=$xPx, yPx=$yPx, distancePx=$distancePx")
-                    showToast("Trying to scroll left from position ($xPx, $yPx)", false)
-                    serviceInstance?.scrollLeft(xPx, yPx, distancePx, command.duration)
-                }
-                is Command.ScrollRightFromCoordinates -> {
-                    Log.d(TAG, "ScrollRightFromCoordinates: Original inputs x='${command.x}', y='${command.y}', distance='${command.distance}', duration='${command.duration}'")
-                    Log.d(TAG, "ScrollRightFromCoordinates: Using screenWidth=$screenWidth, screenHeight=$screenHeight for conversions (distance uses screenWidth).")
-                    val xPx = serviceInstance!!.convertCoordinate(command.x, screenWidth)
-                    val yPx = serviceInstance!!.convertCoordinate(command.y, screenHeight)
-                    val distancePx = serviceInstance!!.convertCoordinate(command.distance, screenWidth)
-                    Log.d(TAG, "ScrollRightFromCoordinates: Converted to xPx=$xPx, yPx=$yPx, distancePx=$distancePx")
-                    showToast("Trying to scroll right from position ($xPx, $yPx)", false)
-                    serviceInstance?.scrollRight(xPx, yPx, distancePx, command.duration)
-                }
-                is Command.OpenApp -> {
-                    Log.d(TAG, "Opening app: ${command.packageName}")
-                    showToast("Trying to open app: ${command.packageName}", false)
-                    serviceInstance?.openApp(command.packageName)
-                }
-                is Command.WriteText -> {
-                    Log.d(TAG, "Writing text: ${command.text}")
-                    showToast("Trying to write text: \"${command.text}\"", false)
-                    serviceInstance?.writeText(command.text)
-                }
-                is Command.UseHighReasoningModel -> {
-                    Log.d(TAG, "Switching to high reasoning model (gemini-2.5-pro-preview-03-25)")
-                    showToast("Switching to more powerful model (gemini-2.5-pro-preview-03-25)", false)
-                    GenerativeAiViewModelFactory.highReasoningModel()
-                }
-                is Command.UseLowReasoningModel -> {
-                    Log.d(TAG, "Switching to low reasoning model (gemini-2.0-flash-lite)")
-                    showToast("Switching to faster model (gemini-2.0-flash-lite)", false)
-                    GenerativeAiViewModelFactory.lowReasoningModel()
-                } 
-                    is Command.PressEnterKey -> {
-                    Log.d(TAG, "Pressing Enter key")
-                    showToast("Trying to press Enter key", false)
-                    serviceInstance?.pressEnterKey()
-                }
+            // serviceInstance is the static reference to the service
+            serviceInstance!!.commandQueue.add(command)
+            Log.d(TAG, "Command $command added to queue. Queue size: ${serviceInstance!!.commandQueue.size}")
+
+            // Ensure processCommandQueue is called on the service's handler thread
+            serviceInstance!!.handler.post {
+                serviceInstance!!.processCommandQueue()
             }
         }
-        
+
         /**
          * Show a toast message on the main thread
          */
@@ -250,8 +143,8 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
     private var lastRootNodeRefreshTime: Long = 0
     
     // Handler for delayed operations
-    private val handler = Handler(Looper.getMainLooper())
-    
+    private val handler = Handler(Looper.getMainLooper()) // Instance handler
+
     // App name to package mapper
     private lateinit var appNamePackageMapper: AppNamePackageMapper
     
@@ -282,6 +175,190 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
         
         // Show a toast to indicate the service is connected
         showToast("Accessibility Service is enabled and connected", false)
+    }
+
+    private fun scheduleNextCommandProcessing() {
+        val nextCommandDelay = if (commandQueue.peek() is Command.TakeScreenshot) {
+            Log.d(TAG, "Next command in queue is TakeScreenshot, scheduling with 850ms delay.")
+            850L
+        } else {
+            500L
+        }
+
+        handler.postDelayed({
+            isProcessingQueue.set(false) // Release the lock before the next cycle
+            processCommandQueue()        // Try to process the next command
+        }, nextCommandDelay)
+    }
+
+    private fun executeSingleCommand(command: Command): Boolean {
+        val displayMetrics = this.resources.displayMetrics
+        val screenWidth = displayMetrics.widthPixels
+        val screenHeight = displayMetrics.heightPixels
+
+        // Execute the command
+        return when (command) {
+            is Command.ClickButton -> {
+                Log.d(TAG, "Clicking button with text: ${command.buttonText}")
+                this.showToast("Trying to click button: \"${command.buttonText}\"", false)
+                this.findAndClickButtonByText(command.buttonText)
+                true // Asynchronous
+            }
+            is Command.TapCoordinates -> {
+                val xPx = this.convertCoordinate(command.x, screenWidth)
+                val yPx = this.convertCoordinate(command.y, screenHeight)
+                Log.d(TAG, "Tapping at coordinates: (${command.x} -> $xPx, ${command.y} -> $yPx)")
+                this.showToast("Trying to tap coordinates: ($xPx, $yPx)", false)
+                this.tapAtCoordinates(xPx, yPx)
+                true // Asynchronous
+            }
+            is Command.TakeScreenshot -> {
+                Log.d(TAG, "Taking screenshot with 850ms delay")
+                this.showToast("Trying to take screenshot (with 850ms delay)", false)
+                handler.postDelayed({ // uses instance handler
+                    this.takeScreenshot()
+                }, 850L)
+                false // Synchronous for queue progression
+            }
+            is Command.PressHomeButton -> {
+                Log.d(TAG, "Pressing home button")
+                this.showToast("Trying to press Home button", false)
+                this.pressHomeButton()
+                false // Synchronous
+            }
+            is Command.PressBackButton -> {
+                Log.d(TAG, "Pressing back button")
+                this.showToast("Trying to press Back button", false)
+                this.pressBackButton()
+                false // Synchronous
+            }
+            is Command.ShowRecentApps -> {
+                Log.d(TAG, "Showing recent apps")
+                this.showToast("Trying to open recent apps overview", false)
+                this.showRecentApps()
+                false // Synchronous
+            }
+            is Command.ScrollDown -> {
+                Log.d(TAG, "Scrolling down")
+                this.showToast("Trying to scroll down", false)
+                this.scrollDown()
+                true // Asynchronous
+            }
+            is Command.ScrollUp -> {
+                Log.d(TAG, "Scrolling up")
+                this.showToast("Trying to scroll up", false)
+                this.scrollUp()
+                true // Asynchronous
+            }
+            is Command.ScrollLeft -> {
+                Log.d(TAG, "Scrolling left")
+                this.showToast("Trying to scroll left", false)
+                this.scrollLeft()
+                true // Asynchronous
+            }
+            is Command.ScrollRight -> {
+                Log.d(TAG, "Scrolling right")
+                this.showToast("Trying to scroll right", false)
+                this.scrollRight()
+                true // Asynchronous
+            }
+            is Command.ScrollDownFromCoordinates -> {
+                Log.d(TAG, "ScrollDownFromCoordinates: Original inputs x='${command.x}', y='${command.y}', distance='${command.distance}', duration='${command.duration}'")
+                val xPx = this.convertCoordinate(command.x, screenWidth)
+                val yPx = this.convertCoordinate(command.y, screenHeight)
+                val distancePx = this.convertCoordinate(command.distance, screenHeight)
+                this.showToast("Trying to scroll down from position ($xPx, $yPx)", false)
+                this.scrollDown(xPx, yPx, distancePx, command.duration)
+                true // Asynchronous
+            }
+            is Command.ScrollUpFromCoordinates -> {
+                Log.d(TAG, "ScrollUpFromCoordinates: Original inputs x='${command.x}', y='${command.y}', distance='${command.distance}', duration='${command.duration}'")
+                val xPx = this.convertCoordinate(command.x, screenWidth)
+                val yPx = this.convertCoordinate(command.y, screenHeight)
+                val distancePx = this.convertCoordinate(command.distance, screenHeight)
+                this.showToast("Trying to scroll up from position ($xPx, $yPx)", false)
+                this.scrollUp(xPx, yPx, distancePx, command.duration)
+                true // Asynchronous
+            }
+            is Command.ScrollLeftFromCoordinates -> {
+                Log.d(TAG, "ScrollLeftFromCoordinates: Original inputs x='${command.x}', y='${command.y}', distance='${command.distance}', duration='${command.duration}'")
+                val xPx = this.convertCoordinate(command.x, screenWidth)
+                val yPx = this.convertCoordinate(command.y, screenHeight)
+                val distancePx = this.convertCoordinate(command.distance, screenWidth)
+                this.showToast("Trying to scroll left from position ($xPx, $yPx)", false)
+                this.scrollLeft(xPx, yPx, distancePx, command.duration)
+                true // Asynchronous
+            }
+            is Command.ScrollRightFromCoordinates -> {
+                Log.d(TAG, "ScrollRightFromCoordinates: Original inputs x='${command.x}', y='${command.y}', distance='${command.distance}', duration='${command.duration}'")
+                val xPx = this.convertCoordinate(command.x, screenWidth)
+                val yPx = this.convertCoordinate(command.y, screenHeight)
+                val distancePx = this.convertCoordinate(command.distance, screenWidth)
+                this.showToast("Trying to scroll right from position ($xPx, $yPx)", false)
+                this.scrollRight(xPx, yPx, distancePx, command.duration)
+                true // Asynchronous
+            }
+            is Command.OpenApp -> {
+                Log.d(TAG, "Opening app: ${command.packageName}")
+                this.showToast("Trying to open app: ${command.packageName}", false)
+                this.openApp(command.packageName)
+                false // Synchronous
+            }
+            is Command.WriteText -> {
+                Log.d(TAG, "Writing text: ${command.text}")
+                this.showToast("Trying to write text: \"${command.text}\"", false)
+                this.writeText(command.text)
+                false // Synchronous for now
+            }
+            is Command.UseHighReasoningModel -> {
+                Log.d(TAG, "Switching to high reasoning model (gemini-2.5-pro-preview-03-25)")
+                this.showToast("Switching to more powerful model (gemini-2.5-pro-preview-03-25)", false)
+                GenerativeAiViewModelFactory.highReasoningModel()
+                false // Synchronous
+            }
+            is Command.UseLowReasoningModel -> {
+                Log.d(TAG, "Switching to low reasoning model (gemini-2.0-flash-lite)")
+                this.showToast("Switching to faster model (gemini-2.0-flash-lite)", false)
+                GenerativeAiViewModelFactory.lowReasoningModel()
+                false // Synchronous
+            }
+            is Command.PressEnterKey -> {
+                Log.d(TAG, "Pressing Enter key")
+                this.showToast("Trying to press Enter key", false)
+                this.pressEnterKey()
+                true // Asynchronous
+            }
+        }
+    }
+
+    private fun processCommandQueue() {
+        if (!isProcessingQueue.compareAndSet(false, true)) {
+            Log.d(TAG, "Queue is already being processed.")
+            return
+        }
+
+        if (commandQueue.isEmpty()) {
+            Log.d(TAG, "Command queue is empty. Stopping processing.")
+            isProcessingQueue.set(false)
+            return
+        }
+
+        val command = commandQueue.poll()
+        Log.d(TAG, "Processing command: $command. Queue size after poll: ${commandQueue.size}")
+
+        if (command != null) {
+            val commandWasAsync = executeSingleCommand(command) // executeSingleCommand now returns Boolean
+            if (!commandWasAsync) {
+                // If the command was synchronous, schedule the next one directly.
+                // For async commands, they will call scheduleNextCommandProcessing themselves via callbacks.
+                scheduleNextCommandProcessing()
+            }
+            // If commandWasAsync is true, executeSingleCommand (or the methods it calls)
+            // is responsible for calling scheduleNextCommandProcessing upon completion.
+        } else {
+            Log.d(TAG, "Polled null command from queue, stopping processing.")
+            isProcessingQueue.set(false)
+        }
     }
 
     private fun convertCoordinate(coordinateString: String, screenSize: Int): Float {
@@ -594,6 +671,7 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
         if (rootNode == null) {
             Log.e(TAG, "Root node is null, cannot find button")
             showToast("Error: Root node is not available", true)
+            scheduleNextCommandProcessing() // Continue queue if rootNode is null
             return
         }
         
@@ -622,12 +700,11 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
                 
                 // Recycle the node
                 node.recycle()
-            }, 200) // 200ms delay
+                scheduleNextCommandProcessing()
+            }, 200)
         } else {
-            Log.e(TAG, "Could not find node with text: $buttonText")
-            showToast("Button with text \"$buttonText\" not found, trying alternative search", true)
-            
-            // Try to find by content description
+            Log.e(TAG, "Could not find node with text: $buttonText, trying content description.")
+            // findAndClickButtonByContentDescription will call scheduleNextCommandProcessing
             findAndClickButtonByContentDescription(buttonText)
         }
     }
@@ -663,6 +740,7 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
         if (rootNode == null) {
             Log.e(TAG, "Root node is null, cannot find button by content description")
             showToast("Error: Root node is not available", true)
+            scheduleNextCommandProcessing() // Continue queue if rootNode is null
             return
         }
         
@@ -691,12 +769,11 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
                 
                 // Recycle the node
                 node.recycle()
-            }, 200) // 200ms delay
+                scheduleNextCommandProcessing()
+            }, 200)
         } else {
-            Log.e(TAG, "Could not find node with content description: $description")
-            showToast("Button with description \"$description\" not found, trying search by ID", true)
-            
-            // Try to find by ID
+            Log.e(TAG, "Could not find node with content description: $description, trying ID.")
+            // findAndClickButtonById will call scheduleNextCommandProcessing
             findAndClickButtonById(description)
         }
     }
@@ -712,6 +789,7 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
         if (rootNode == null) {
             Log.e(TAG, "Root node is null, cannot find button by ID")
             showToast("Error: Root node is not available", true)
+            scheduleNextCommandProcessing() // Continue queue if rootNode is null
             return
         }
         
@@ -740,10 +818,12 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
                 
                 // Recycle the node
                 node.recycle()
-            }, 200) // 200ms delay
+                scheduleNextCommandProcessing()
+            }, 200)
         } else {
             Log.e(TAG, "Could not find node with ID: $id")
             showToast("Button with ID \"$id\" not found", true)
+            scheduleNextCommandProcessing() // End of find chain
         }
     }
     
@@ -928,6 +1008,7 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.N) {
             Log.e(TAG, "Gesture API is not available on this Android version")
             showToast("Gesture API is not available on this Android version", true)
+            scheduleNextCommandProcessing() // Continue queue if API not available
             return
         }
         
@@ -946,14 +1027,14 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
                     super.onCompleted(gestureDescription)
                     Log.d(TAG, "Tap gesture completed")
                     showToast("Tapped coordinates ($x, $y) successfully", false)
+                    scheduleNextCommandProcessing()
                 }
                 
                 override fun onCancelled(gestureDescription: GestureDescription) {
                     super.onCancelled(gestureDescription)
                     Log.e(TAG, "Tap gesture cancelled")
                     showToast("Tap at coordinates ($x, $y) cancelled, trying longer duration", true)
-                    
-                    // Try with longer duration
+                    // Try with longer duration, which will then call scheduleNextCommandProcessing
                     tapAtCoordinatesWithLongerDuration(x, y)
                 }
             }, null)
@@ -961,13 +1042,13 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
             if (!dispatchResult) {
                 Log.e(TAG, "Failed to dispatch tap gesture")
                 showToast("Error dispatching tap gesture, trying longer duration", true)
-                
-                // Try with longer duration
+                // Try with longer duration, which will then call scheduleNextCommandProcessing
                 tapAtCoordinatesWithLongerDuration(x, y)
             }
         } catch (e: Exception) {
             Log.e(TAG, "Error tapping at coordinates: ${e.message}")
             showToast("Error tapping at coordinates: ${e.message}", true)
+            scheduleNextCommandProcessing()
         }
     }
     
@@ -981,6 +1062,7 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.N) {
             Log.e(TAG, "Gesture API is not available on this Android version")
             showToast("Gesture API is not available on this Android version", true)
+            scheduleNextCommandProcessing() // Continue queue
             return
         }
         
@@ -999,22 +1081,26 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
                     super.onCompleted(gestureDescription)
                     Log.d(TAG, "Long tap gesture completed")
                     showToast("Tapped with longer duration at coordinates ($x, $y) successfully", false)
+                    scheduleNextCommandProcessing()
                 }
                 
                 override fun onCancelled(gestureDescription: GestureDescription) {
                     super.onCancelled(gestureDescription)
                     Log.e(TAG, "Long tap gesture cancelled")
                     showToast("Tap with longer duration at coordinates ($x, $y) cancelled", true)
+                    scheduleNextCommandProcessing()
                 }
             }, null)
             
             if (!dispatchResult) {
                 Log.e(TAG, "Failed to dispatch long tap gesture")
                 showToast("Error dispatching tap gesture with longer duration", true)
+                scheduleNextCommandProcessing()
             }
         } catch (e: Exception) {
             Log.e(TAG, "Error tapping at coordinates with longer duration: ${e.message}")
             showToast("Error tapping with longer duration at coordinates: ${e.message}", true)
+            scheduleNextCommandProcessing()
         }
     }
 
@@ -1047,23 +1133,29 @@ fun pressEnterKey() {
         // Dispatch the gesture
         val result = dispatchGesture(gestureBuilder.build(), object : GestureResultCallback() {
             override fun onCompleted(gestureDescription: GestureDescription) {
+                super.onCompleted(gestureDescription)
                 Log.d(TAG, "Enter key tap gesture completed")
                 showToast("Enter key pressed successfully", false)
+                scheduleNextCommandProcessing() // Continue queue after completion
             }
             
             override fun onCancelled(gestureDescription: GestureDescription) {
+                super.onCancelled(gestureDescription)
                 Log.e(TAG, "Enter key tap gesture cancelled")
                 showToast("Enter key gesture cancelled", true)
+                scheduleNextCommandProcessing() // Continue queue even if cancelled
             }
         }, null)
-        
+
         if (!result) {
             Log.e(TAG, "Failed to dispatch Enter key tap gesture")
             showToast("Error pressing Enter key", true)
+            scheduleNextCommandProcessing() // Continue queue if dispatch failed immediately
         }
     } catch (e: Exception) {
         Log.e(TAG, "Error pressing Enter key: ${e.message}")
         showToast("Error pressing Enter key: ${e.message}", true)
+        scheduleNextCommandProcessing()
     }
 }
     
@@ -1988,12 +2080,14 @@ fun pressEnterKey() {
                         super.onCompleted(gestureDescription)
                         Log.d(TAG, "Scroll down gesture completed")
                         showToast("Successfully scrolled down", false)
+                        scheduleNextCommandProcessing()
                     }
                     
                     override fun onCancelled(gestureDescription: GestureDescription) {
                         super.onCancelled(gestureDescription)
                         Log.e(TAG, "Scroll down gesture cancelled")
                         showToast("Scroll down cancelled", true)
+                        scheduleNextCommandProcessing()
                     }
                 },
                 null // handler
@@ -2002,10 +2096,12 @@ fun pressEnterKey() {
             if (!result) {
                 Log.e(TAG, "Failed to dispatch scroll down gesture")
                 showToast("Error scrolling down", true)
+                scheduleNextCommandProcessing()
             }
         } catch (e: Exception) {
             Log.e(TAG, "Error scrolling down: ${e.message}")
             showToast("Error scrolling down: ${e.message}", true)
+            scheduleNextCommandProcessing()
         }
     }
     
@@ -2049,12 +2145,14 @@ fun pressEnterKey() {
                         super.onCompleted(gestureDescription)
                         Log.d(TAG, "scrollDown method: Gesture completed for path from ($startX, $startY) to ($endX, $endY)")
                         showToast("Successfully scrolled down from position ($startX, $startY)", false)
+                        scheduleNextCommandProcessing()
                     }
                     
                     override fun onCancelled(gestureDescription: GestureDescription) {
                         super.onCancelled(gestureDescription)
                         Log.e(TAG, "scrollDown method: Gesture CANCELLED for path from ($startX, $startY) to ($endX, $endY). GestureDescription: $gestureDescription")
                         showToast("Scroll down from position ($startX, $startY) cancelled", true)
+                        scheduleNextCommandProcessing()
                     }
                 },
                 null // handler
@@ -2063,10 +2161,12 @@ fun pressEnterKey() {
             if (!result) {
                 Log.e(TAG, "Failed to dispatch coordinate-based scroll down gesture for path from ($startX, $startY) to ($endX, $endY)")
                 showToast("Error scrolling down from position ($startX, $startY)", true)
+                scheduleNextCommandProcessing()
             }
         } catch (e: Exception) {
             Log.e(TAG, "Error scrolling down from coordinates: ${e.message}")
             showToast("Error scrolling down from position ($x, $y): ${e.message}", true)
+            scheduleNextCommandProcessing()
         }
     }
     
@@ -2105,12 +2205,14 @@ fun pressEnterKey() {
                         super.onCompleted(gestureDescription)
                         Log.d(TAG, "Scroll up gesture completed")
                         showToast("Successfully scrolled up", false)
+                        scheduleNextCommandProcessing()
                     }
                     
                     override fun onCancelled(gestureDescription: GestureDescription) {
                         super.onCancelled(gestureDescription)
                         Log.e(TAG, "Scroll up gesture cancelled")
                         showToast("Scroll up cancelled", true)
+                        scheduleNextCommandProcessing()
                     }
                 },
                 null // handler
@@ -2119,10 +2221,12 @@ fun pressEnterKey() {
             if (!result) {
                 Log.e(TAG, "Failed to dispatch scroll up gesture")
                 showToast("Error scrolling up", true)
+                scheduleNextCommandProcessing()
             }
         } catch (e: Exception) {
             Log.e(TAG, "Error scrolling up: ${e.message}")
             showToast("Error scrolling up: ${e.message}", true)
+            scheduleNextCommandProcessing()
         }
     }
     
@@ -2166,12 +2270,14 @@ fun pressEnterKey() {
                         super.onCompleted(gestureDescription)
                         Log.d(TAG, "scrollUp method: Gesture completed for path from ($startX, $startY) to ($endX, $endY)")
                         showToast("Successfully scrolled up from position ($startX, $startY)", false)
+                        scheduleNextCommandProcessing()
                     }
                     
                     override fun onCancelled(gestureDescription: GestureDescription) {
                         super.onCancelled(gestureDescription)
                         Log.e(TAG, "scrollUp method: Gesture CANCELLED for path from ($startX, $startY) to ($endX, $endY). GestureDescription: $gestureDescription")
                         showToast("Scroll up from position ($startX, $startY) cancelled", true)
+                        scheduleNextCommandProcessing()
                     }
                 },
                 null // handler
@@ -2180,10 +2286,12 @@ fun pressEnterKey() {
             if (!result) {
                 Log.e(TAG, "Failed to dispatch coordinate-based scroll up gesture for path from ($startX, $startY) to ($endX, $endY)")
                 showToast("Error scrolling up from position ($startX, $startY)", true)
+                scheduleNextCommandProcessing()
             }
         } catch (e: Exception) {
             Log.e(TAG, "Error scrolling up from coordinates: ${e.message}")
             showToast("Error scrolling up from position ($x, $y): ${e.message}", true)
+            scheduleNextCommandProcessing()
         }
     }
     
@@ -2219,13 +2327,17 @@ fun pressEnterKey() {
                 gestureBuilder.build(),
                 object : GestureResultCallback() {
                     override fun onCompleted(gestureDescription: GestureDescription) {
+                        super.onCompleted(gestureDescription)
                         Log.d(TAG, "Scroll left gesture completed")
                         showToast("Successfully scrolled left", false)
+                        scheduleNextCommandProcessing()
                     }
                     
                     override fun onCancelled(gestureDescription: GestureDescription) {
+                        super.onCancelled(gestureDescription)
                         Log.e(TAG, "Scroll left gesture cancelled")
                         showToast("Scroll left cancelled", true)
+                        scheduleNextCommandProcessing()
                     }
                 },
                 null // handler
@@ -2234,10 +2346,12 @@ fun pressEnterKey() {
             if (!result) {
                 Log.e(TAG, "Failed to dispatch scroll left gesture")
                 showToast("Error scrolling left", true)
+                scheduleNextCommandProcessing()
             }
         } catch (e: Exception) {
             Log.e(TAG, "Error scrolling left: ${e.message}")
             showToast("Error scrolling left: ${e.message}", true)
+            scheduleNextCommandProcessing()
         }
     }
     
@@ -2281,12 +2395,14 @@ fun pressEnterKey() {
                         super.onCompleted(gestureDescription)
                         Log.d(TAG, "scrollLeft method: Gesture completed for path from ($startX, $startY) to ($endX, $endY)")
                         showToast("Successfully scrolled left from position ($startX, $startY)", false)
+                        scheduleNextCommandProcessing()
                     }
                     
                     override fun onCancelled(gestureDescription: GestureDescription) {
                         super.onCancelled(gestureDescription)
                         Log.e(TAG, "scrollLeft method: Gesture CANCELLED for path from ($startX, $startY) to ($endX, $endY). GestureDescription: $gestureDescription")
                         showToast("Scroll left from position ($startX, $startY) cancelled", true)
+                        scheduleNextCommandProcessing()
                     }
                 },
                 null // handler
@@ -2295,10 +2411,12 @@ fun pressEnterKey() {
             if (!result) {
                 Log.e(TAG, "Failed to dispatch coordinate-based scroll left gesture for path from ($startX, $startY) to ($endX, $endY)")
                 showToast("Error scrolling left from position ($startX, $startY)", true)
+                scheduleNextCommandProcessing()
             }
         } catch (e: Exception) {
             Log.e(TAG, "Error scrolling left from coordinates: ${e.message}")
             showToast("Error scrolling left from position ($x, $y): ${e.message}", true)
+            scheduleNextCommandProcessing()
         }
     }
     
@@ -2334,13 +2452,17 @@ fun pressEnterKey() {
                 gestureBuilder.build(),
                 object : GestureResultCallback() {
                     override fun onCompleted(gestureDescription: GestureDescription) {
+                        super.onCompleted(gestureDescription)
                         Log.d(TAG, "Scroll right gesture completed")
                         showToast("Successfully scrolled right", false)
+                        scheduleNextCommandProcessing()
                     }
                     
                     override fun onCancelled(gestureDescription: GestureDescription) {
+                        super.onCancelled(gestureDescription)
                         Log.e(TAG, "Scroll right gesture cancelled")
                         showToast("Scroll right cancelled", true)
+                        scheduleNextCommandProcessing()
                     }
                 },
                 null // handler
@@ -2349,10 +2471,12 @@ fun pressEnterKey() {
             if (!result) {
                 Log.e(TAG, "Failed to dispatch scroll right gesture")
                 showToast("Error scrolling right", true)
+                scheduleNextCommandProcessing()
             }
         } catch (e: Exception) {
             Log.e(TAG, "Error scrolling right: ${e.message}")
             showToast("Error scrolling right: ${e.message}", true)
+            scheduleNextCommandProcessing()
         }
     }
     
@@ -2396,12 +2520,14 @@ fun pressEnterKey() {
                         super.onCompleted(gestureDescription)
                         Log.d(TAG, "scrollRight method: Gesture completed for path from ($startX, $startY) to ($endX, $endY)")
                         showToast("Successfully scrolled right from position ($startX, $startY)", false)
+                        scheduleNextCommandProcessing()
                     }
                     
                     override fun onCancelled(gestureDescription: GestureDescription) {
                         super.onCancelled(gestureDescription)
                         Log.e(TAG, "scrollRight method: Gesture CANCELLED for path from ($startX, $startY) to ($endX, $endY). GestureDescription: $gestureDescription")
                         showToast("Scroll right from position ($startX, $startY) cancelled", true)
+                        scheduleNextCommandProcessing()
                     }
                 },
                 null // handler
@@ -2410,10 +2536,12 @@ fun pressEnterKey() {
             if (!result) {
                 Log.e(TAG, "Failed to dispatch coordinate-based scroll right gesture for path from ($startX, $startY) to ($endX, $endY)")
                 showToast("Error scrolling right from position ($startX, $startY)", true)
+                scheduleNextCommandProcessing()
             }
         } catch (e: Exception) {
             Log.e(TAG, "Error scrolling right from coordinates: ${e.message}")
             showToast("Error scrolling right from position ($x, $y): ${e.message}", true)
+            scheduleNextCommandProcessing()
         }
     }
     

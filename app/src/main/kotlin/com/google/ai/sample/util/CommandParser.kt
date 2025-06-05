@@ -8,185 +8,135 @@ import android.util.Log
 object CommandParser {
     private const val TAG = "CommandParser"
 
-    // Regex patterns for different command formats
-    
-    // Enter key patterns - for simulating Enter key press
-    private val ENTER_KEY_PATTERNS = listOf(
-        // Function-like patterns
-        Regex("(?i)\\benter\\(\\)"),
-        Regex("(?i)\\bpressEnter\\(\\)"),
-        Regex("(?i)\\benterKey\\(\\)"),
-        
-        // Natural language patterns
-        Regex("(?i)\\b(?:press|hit|tap|drücke|tippe auf) (?:the )?enter(?: key| button)?\\b"),
-        Regex("(?i)\\b(?:press|hit|tap|drücke|tippe auf) (?:the )?return(?: key| button)?\\b")
+    // Enum to represent different command types
+    private enum class CommandTypeEnum {
+        CLICK_BUTTON, TAP_COORDINATES, TAKE_SCREENSHOT, PRESS_HOME, PRESS_BACK,
+        SHOW_RECENT_APPS, SCROLL_DOWN, SCROLL_UP, SCROLL_LEFT, SCROLL_RIGHT,
+        SCROLL_DOWN_FROM_COORDINATES, SCROLL_UP_FROM_COORDINATES,
+        SCROLL_LEFT_FROM_COORDINATES, SCROLL_RIGHT_FROM_COORDINATES,
+        OPEN_APP, WRITE_TEXT, USE_HIGH_REASONING_MODEL, USE_LOW_REASONING_MODEL,
+        PRESS_ENTER_KEY
+    }
+
+    // Data class to hold pattern information
+    private data class PatternInfo(
+        val id: String, // For debugging
+        val regex: Regex,
+        val commandBuilder: (MatchResult) -> Command,
+        val commandType: CommandTypeEnum // Used for single-instance command check
     )
 
-    // Model selection patterns - for switching between high and low reasoning models
-    private val MODEL_SELECTION_PATTERNS = listOf(
-        // High reasoning model patterns
-        Regex("(?i)\\bhighReasoningModel\\(\\)"),
-        Regex("(?i)\\buseHighReasoningModel\\(\\)"),
-        Regex("(?i)\\bswitchToHighReasoningModel\\(\\)"),
-        Regex("(?i)\\b(?:use|switch to|enable|activate|verwende|wechsle zu|aktiviere) (?:the )?(?:high|advanced|better|improved|höhere|verbesserte|bessere) (?:reasoning|thinking|intelligence|denk|intelligenz) model\\b"),
-        Regex("(?i)\\b(?:use|switch to|enable|activate|verwende|wechsle zu|aktiviere) (?:the )?gemini(?:\\-|\\s)?2\\.5(?:\\-|\\s)?pro\\b"),
+    // Master list of all patterns
+    private val ALL_PATTERNS: List<PatternInfo> = listOf(
+        // Enter key patterns
+        PatternInfo("enterKey1", Regex("(?i)\\benter\\(\\)"), { Command.PressEnterKey }, CommandTypeEnum.PRESS_ENTER_KEY),
+        PatternInfo("enterKey2", Regex("(?i)\\bpressEnter\\(\\)"), { Command.PressEnterKey }, CommandTypeEnum.PRESS_ENTER_KEY),
+        PatternInfo("enterKey3", Regex("(?i)\\benterKey\\(\\)"), { Command.PressEnterKey }, CommandTypeEnum.PRESS_ENTER_KEY),
+        PatternInfo("enterKey4", Regex("(?i)\\b(?:press|hit|tap|drücke|tippe auf) (?:the )?enter(?: key| button)?\\b"), { Command.PressEnterKey }, CommandTypeEnum.PRESS_ENTER_KEY),
+        PatternInfo("enterKey5", Regex("(?i)\\b(?:press|hit|tap|drücke|tippe auf) (?:the )?return(?: key| button)?\\b"), { Command.PressEnterKey }, CommandTypeEnum.PRESS_ENTER_KEY),
 
-        // Low reasoning model patterns
-        Regex("(?i)\\blowReasoningModel\\(\\)"),
-        Regex("(?i)\\buseLowReasoningModel\\(\\)"),
-        Regex("(?i)\\bswitchToLowReasoningModel\\(\\)"),
-        Regex("(?i)\\b(?:use|switch to|enable|activate|verwende|wechsle zu|aktiviere) (?:the )?(?:low|basic|simple|standard|niedrige|einfache|standard) (?:reasoning|thinking|intelligence|denk|intelligenz) model\\b"),
-        Regex("(?i)\\b(?:use|switch to|enable|activate|verwende|wechsle zu|aktiviere) (?:the )?gemini(?:\\-|\\s)?2\\.0(?:\\-|\\s)?flash\\b")
-    )
+        // Model selection patterns
+        PatternInfo("highReasoning1", Regex("(?i)\\bhighReasoningModel\\(\\)"), { Command.UseHighReasoningModel }, CommandTypeEnum.USE_HIGH_REASONING_MODEL),
+        PatternInfo("highReasoning2", Regex("(?i)\\buseHighReasoningModel\\(\\)"), { Command.UseHighReasoningModel }, CommandTypeEnum.USE_HIGH_REASONING_MODEL),
+        PatternInfo("highReasoning3", Regex("(?i)\\bswitchToHighReasoningModel\\(\\)"), { Command.UseHighReasoningModel }, CommandTypeEnum.USE_HIGH_REASONING_MODEL),
+        PatternInfo("highReasoning4", Regex("(?i)\\b(?:use|switch to|enable|activate|verwende|wechsle zu|aktiviere) (?:the )?(?:high|advanced|better|improved|höhere|verbesserte|bessere) (?:reasoning|thinking|intelligence|denk|intelligenz) model\\b"), { Command.UseHighReasoningModel }, CommandTypeEnum.USE_HIGH_REASONING_MODEL),
+        PatternInfo("highReasoning5", Regex("(?i)\\b(?:use|switch to|enable|activate|verwende|wechsle zu|aktiviere) (?:the )?gemini(?:\\-|\\s)?2\\.5(?:\\-|\\s)?pro\\b"), { Command.UseHighReasoningModel }, CommandTypeEnum.USE_HIGH_REASONING_MODEL),
+        PatternInfo("lowReasoning1", Regex("(?i)\\blowReasoningModel\\(\\)"), { Command.UseLowReasoningModel }, CommandTypeEnum.USE_LOW_REASONING_MODEL),
+        PatternInfo("lowReasoning2", Regex("(?i)\\buseLowReasoningModel\\(\\)"), { Command.UseLowReasoningModel }, CommandTypeEnum.USE_LOW_REASONING_MODEL),
+        PatternInfo("lowReasoning3", Regex("(?i)\\bswitchToLowReasoningModel\\(\\)"), { Command.UseLowReasoningModel }, CommandTypeEnum.USE_LOW_REASONING_MODEL),
+        PatternInfo("lowReasoning4", Regex("(?i)\\b(?:use|switch to|enable|activate|verwende|wechsle zu|aktiviere) (?:the )?(?:low|basic|simple|standard|niedrige|einfache|standard) (?:reasoning|thinking|intelligence|denk|intelligenz) model\\b"), { Command.UseLowReasoningModel }, CommandTypeEnum.USE_LOW_REASONING_MODEL),
+        PatternInfo("lowReasoning5", Regex("(?i)\\b(?:use|switch to|enable|activate|verwende|wechsle zu|aktiviere) (?:the )?gemini(?:\\-|\\s)?2\\.0(?:\\-|\\s)?flash\\b"), { Command.UseLowReasoningModel }, CommandTypeEnum.USE_LOW_REASONING_MODEL),
 
-    // Write text patterns - for writing text into focused text fields
-    private val WRITE_TEXT_PATTERNS = listOf(
-        // Function-like patterns
-        Regex("(?i)\\bwriteText\\([\"']([^\"']+)[\"']\\)"),
-        Regex("(?i)\\benterText\\([\"']([^\"']+)[\"']\\)"),
-        Regex("(?i)\\btypeText\\([\"']([^\"']+)[\"']\\)"),
+        // Write text patterns
+        PatternInfo("writeText1", Regex("(?i)\\bwriteText\\([\"']([^\"']+)[\"']\\)"), { match -> Command.WriteText(match.groupValues[1]) }, CommandTypeEnum.WRITE_TEXT),
+        PatternInfo("writeText2", Regex("(?i)\\benterText\\([\"']([^\"']+)[\"']\\)"), { match -> Command.WriteText(match.groupValues[1]) }, CommandTypeEnum.WRITE_TEXT),
+        PatternInfo("writeText3", Regex("(?i)\\btypeText\\([\"']([^\"']+)[\"']\\)"), { match -> Command.WriteText(match.groupValues[1]) }, CommandTypeEnum.WRITE_TEXT),
+        PatternInfo("writeText4", Regex("(?i)\\b(?:write|enter|type|input|schreibe|gib ein|tippe) (?:the )?(?:text|text string|string|text value|value|text content|content|text input|input)? [\"']([^\"']+)[\"']"), { match -> Command.WriteText(match.groupValues[1]) }, CommandTypeEnum.WRITE_TEXT),
+        PatternInfo("writeText5", Regex("(?i)\\b(?:write|enter|type|input|schreibe|gib ein|tippe) [\"']([^\"']+)[\"'] (?:into|in|to|auf|in das|ins) (?:the )?(?:text field|input field|field|text box|input box|box|text input|input|textfeld|eingabefeld|feld|textbox|eingabebox|box|texteingabe|eingabe)"), { match -> Command.WriteText(match.groupValues[1]) }, CommandTypeEnum.WRITE_TEXT),
+        PatternInfo("writeText6", Regex("(?i)\\b(?:write|enter|type|input|schreibe|gib ein|tippe) (?:the )?(?:text|text string|string|text value|value|text content|content|text input|input)? \"([^\"]+)\""), { match -> Command.WriteText(match.groupValues[1]) }, CommandTypeEnum.WRITE_TEXT),
+        PatternInfo("writeText7", Regex("(?i)\\b(?:write|enter|type|input|schreibe|gib ein|tippe) \"([^\"]+)\" (?:into|in|to|auf|in das|ins) (?:the )?(?:text field|input field|field|text box|input box|box|text input|input|textfeld|eingabefeld|feld|textbox|eingabebox|box|texteingabe|eingabe)"), { match -> Command.WriteText(match.groupValues[1]) }, CommandTypeEnum.WRITE_TEXT),
 
-        // Natural language patterns with quotes
-        Regex("(?i)\\b(?:write|enter|type|input|schreibe|gib ein|tippe) (?:the )?(?:text|text string|string|text value|value|text content|content|text input|input)? [\"']([^\"']+)[\"']"),
-        Regex("(?i)\\b(?:write|enter|type|input|schreibe|gib ein|tippe) [\"']([^\"']+)[\"'] (?:into|in|to|auf|in das|ins) (?:the )?(?:text field|input field|field|text box|input box|box|text input|input|textfeld|eingabefeld|feld|textbox|eingabebox|box|texteingabe|eingabe)"),
+        // Click button patterns
+        PatternInfo("clickBtn1", Regex("(?i)\\b(?:click|tap|press|klick|tippe auf|drücke|klicke auf|drücke auf) (?:on )?(?:the )?(?:button|knopf|schaltfläche|button labeled|knopf mit text|schaltfläche mit text)? [\"']([^\"']+)[\"']"), { match -> Command.ClickButton(match.groupValues[1]) }, CommandTypeEnum.CLICK_BUTTON),
+        PatternInfo("clickBtn2", Regex("(?i)\\b(?:click|tap|press|klick|tippe auf|drücke|klicke auf|drücke auf) (?:on )?(?:the )?[\"']([^\"']+)[\"'] (?:button|knopf|schaltfläche)?"), { match -> Command.ClickButton(match.groupValues[1]) }, CommandTypeEnum.CLICK_BUTTON),
+        PatternInfo("clickBtn3", Regex("(?i)\\b(?:click|tap|press|klick|tippe auf|drücke|klicke auf|drücke auf) (?:on )?(?:the )?(?:button|knopf|schaltfläche) ([\\w\\s\\-]+)\\b"), { match -> Command.ClickButton(match.groupValues[1]) }, CommandTypeEnum.CLICK_BUTTON),
+        PatternInfo("clickBtn4", Regex("(?i)\\b(?:click|tap|press|klick|tippe auf|drücke|klicke auf|drücke auf) (?:on )?(?:the )?(?:button|knopf|schaltfläche) labeled ([\\w\\s\\-]+)\\b"), { match -> Command.ClickButton(match.groupValues[1]) }, CommandTypeEnum.CLICK_BUTTON),
+        PatternInfo("clickBtn5", Regex("(?i)\\b(?:click|tap|press|klick|tippe auf|drücke|klicke auf|drücke auf) ([\\w\\s\\-]+) (?:button|knopf|schaltfläche)\\b"), { match -> Command.ClickButton(match.groupValues[1]) }, CommandTypeEnum.CLICK_BUTTON),
+        PatternInfo("clickBtn6", Regex("(?i)\\bclickOnButton\\([\"']([^\"']+)[\"']\\)"), { match -> Command.ClickButton(match.groupValues[1]) }, CommandTypeEnum.CLICK_BUTTON),
+        PatternInfo("clickBtn7", Regex("(?i)\\btapOnButton\\([\"']([^\"']+)[\"']\\)"), { match -> Command.ClickButton(match.groupValues[1]) }, CommandTypeEnum.CLICK_BUTTON),
+        PatternInfo("clickBtn8", Regex("(?i)\\bpressButton\\([\"']([^\"']+)[\"']\\)"), { match -> Command.ClickButton(match.groupValues[1]) }, CommandTypeEnum.CLICK_BUTTON),
 
-        // Natural language patterns without quotes
-        Regex("(?i)\\b(?:write|enter|type|input|schreibe|gib ein|tippe) (?:the )?(?:text|text string|string|text value|value|text content|content|text input|input)? \"([^\"]+)\""),
-        Regex("(?i)\\b(?:write|enter|type|input|schreibe|gib ein|tippe) \"([^\"]+)\" (?:into|in|to|auf|in das|ins) (?:the )?(?:text field|input field|field|text box|input box|box|text input|input|textfeld|eingabefeld|feld|textbox|eingabebox|box|texteingabe|eingabe)")
-    )
+        // Tap coordinates patterns
+        PatternInfo("tapCoords1", Regex("(?i)\\b(?:tap|click|press|tippe|klicke|tippe auf|klicke auf) (?:at|on|auf) (?:coordinates?|koordinaten|position|stelle|punkt)[:\\s]\\s*\\(?\\s*([\\d\\.%]+)\\s*,\\s*([\\d\\.%]+)\\s*\\)?"), { match -> Command.TapCoordinates(match.groupValues[1], match.groupValues[2]) }, CommandTypeEnum.TAP_COORDINATES),
+        PatternInfo("tapCoords2", Regex("(?i)\\b(?:tap|click|press|tippe|klicke|tippe auf|klicke auf) (?:at|on|auf) \\(?\\s*([\\d\\.%]+)\\s*,\\s*([\\d\\.%]+)\\s*\\)?"), { match -> Command.TapCoordinates(match.groupValues[1], match.groupValues[2]) }, CommandTypeEnum.TAP_COORDINATES),
+        PatternInfo("tapCoords3", Regex("(?i)\\btapAtCoordinates\\(\\s*([\\d\\.%]+)\\s*,\\s*([\\d\\.%]+)\\s*\\)"), { match -> Command.TapCoordinates(match.groupValues[1], match.groupValues[2]) }, CommandTypeEnum.TAP_COORDINATES),
+        PatternInfo("tapCoords4", Regex("(?i)\\bclickAtPosition\\(\\s*([\\d\\.%]+)\\s*,\\s*([\\d\\.%]+)\\s*\\)"), { match -> Command.TapCoordinates(match.groupValues[1], match.groupValues[2]) }, CommandTypeEnum.TAP_COORDINATES),
+        PatternInfo("tapCoords5", Regex("(?i)\\btapAt\\(\\s*([\\d\\.%]+)\\s*,\\s*([\\d\\.%]+)\\s*\\)"), { match -> Command.TapCoordinates(match.groupValues[1], match.groupValues[2]) }, CommandTypeEnum.TAP_COORDINATES),
 
-    // Click button patterns - significantly expanded to catch more variations
-    private val CLICK_BUTTON_PATTERNS = listOf(
-        // Standard patterns with quotes
-        Regex("(?i)\\b(?:click|tap|press|klick|tippe auf|drücke|klicke auf|drücke auf) (?:on )?(?:the )?(?:button|knopf|schaltfläche|button labeled|knopf mit text|schaltfläche mit text)? [\"']([^\"']+)[\"']"),
-        Regex("(?i)\\b(?:click|tap|press|klick|tippe auf|drücke|klicke auf|drücke auf) (?:on )?(?:the )?[\"']([^\"']+)[\"'] (?:button|knopf|schaltfläche)?"),
+        // Screenshot patterns
+        PatternInfo("screenshot1", Regex("(?i)\\b(?:take|capture|make|nimm|erstelle|mache|nehme|erzeuge) (?:a |ein(?:e)? )?(?:screenshot|bildschirmfoto|bildschirmaufnahme|bildschirmabbild)"), { Command.TakeScreenshot }, CommandTypeEnum.TAKE_SCREENSHOT),
+        PatternInfo("screenshot2", Regex("(?i)\\btakeScreenshot\\(\\)"), { Command.TakeScreenshot }, CommandTypeEnum.TAKE_SCREENSHOT),
+        PatternInfo("screenshot3", Regex("(?i)\\bcaptureScreen\\(\\)"), { Command.TakeScreenshot }, CommandTypeEnum.TAKE_SCREENSHOT),
 
-        // Patterns without quotes
-        Regex("(?i)\\b(?:click|tap|press|klick|tippe auf|drücke|klicke auf|drücke auf) (?:on )?(?:the )?(?:button|knopf|schaltfläche) ([\\w\\s\\-]+)\\b"),
-        Regex("(?i)\\b(?:click|tap|press|klick|tippe auf|drücke|klicke auf|drücke auf) (?:on )?(?:the )?(?:button|knopf|schaltfläche) labeled ([\\w\\s\\-]+)\\b"),
+        // Home button patterns
+        PatternInfo("home1", Regex("(?i)\\bhome\\(\\)"), { Command.PressHomeButton }, CommandTypeEnum.PRESS_HOME),
+        PatternInfo("home2", Regex("(?i)\\bpressHome\\(\\)"), { Command.PressHomeButton }, CommandTypeEnum.PRESS_HOME),
+        PatternInfo("home3", Regex("(?i)\\bgoHome\\(\\)"), { Command.PressHomeButton }, CommandTypeEnum.PRESS_HOME),
+        PatternInfo("home4", Regex("(?i)\\b(?:press|click|tap|go to|navigate to|return to|drücke|klicke|tippe auf|gehe zu|navigiere zu|kehre zurück zu) (?:the )?home(?: button| screen)?\\b"), { Command.PressHomeButton }, CommandTypeEnum.PRESS_HOME),
+        PatternInfo("home5", Regex("(?i)\\b(?:zurück zum|zurück zur) (?:home|startseite|hauptbildschirm)\\b"), { Command.PressHomeButton }, CommandTypeEnum.PRESS_HOME),
 
-        // Direct command patterns
-        Regex("(?i)\\b(?:click|tap|press|klick|tippe auf|drücke|klicke auf|drücke auf) ([\\w\\s\\-]+) (?:button|knopf|schaltfläche)\\b"),
+        // Back button patterns
+        PatternInfo("back1", Regex("(?i)\\bback\\(\\)"), { Command.PressBackButton }, CommandTypeEnum.PRESS_BACK),
+        PatternInfo("back2", Regex("(?i)\\bpressBack\\(\\)"), { Command.PressBackButton }, CommandTypeEnum.PRESS_BACK),
+        PatternInfo("back3", Regex("(?i)\\bgoBack\\(\\)"), { Command.PressBackButton }, CommandTypeEnum.PRESS_BACK),
+        PatternInfo("back4", Regex("(?i)\\b(?:press|click|tap|go|navigate|return|drücke|klicke|tippe auf|gehe|navigiere|kehre) (?:the )?back(?: button)?\\b"), { Command.PressBackButton }, CommandTypeEnum.PRESS_BACK),
+        PatternInfo("back5", Regex("(?i)\\b(?:zurück|zurückgehen)\\b"), { Command.PressBackButton }, CommandTypeEnum.PRESS_BACK),
 
-        // Function-like patterns
-        Regex("(?i)\\bclickOnButton\\([\"']([^\"']+)[\"']\\)"),
-        Regex("(?i)\\btapOnButton\\([\"']([^\"']+)[\"']\\)"),
-        Regex("(?i)\\bpressButton\\([\"']([^\"']+)[\"']\\)")
-    )
+        // Recent apps patterns
+        PatternInfo("recentApps1", Regex("(?i)\\brecentApps\\(\\)"), { Command.ShowRecentApps }, CommandTypeEnum.SHOW_RECENT_APPS),
+        PatternInfo("recentApps2", Regex("(?i)\\bshowRecentApps\\(\\)"), { Command.ShowRecentApps }, CommandTypeEnum.SHOW_RECENT_APPS),
+        PatternInfo("recentApps3", Regex("(?i)\\bopenRecentApps\\(\\)"), { Command.ShowRecentApps }, CommandTypeEnum.SHOW_RECENT_APPS),
+        PatternInfo("recentApps4", Regex("(?i)\\b(?:show|open|display|view|zeige|öffne|anzeigen) (?:the )?recent(?: apps| applications| tasks)?\\b"), { Command.ShowRecentApps }, CommandTypeEnum.SHOW_RECENT_APPS),
+        PatternInfo("recentApps5", Regex("(?i)\\b(?:letzte apps|letzte anwendungen|app übersicht|app-übersicht|übersicht)\\b"), { Command.ShowRecentApps }, CommandTypeEnum.SHOW_RECENT_APPS),
 
-    // Tap coordinates patterns - expanded to catch more variations
-    private val TAP_COORDINATES_PATTERNS = listOf(
-        // Standard patterns
-        Regex("(?i)\\b(?:tap|click|press|tippe|klicke|tippe auf|klicke auf) (?:at|on|auf) (?:coordinates?|koordinaten|position|stelle|punkt)[:\\s]\\s*\\(?\\s*([\\d\\.%]+)\\s*,\\s*([\\d\\.%]+)\\s*\\)?"),
-        Regex("(?i)\\b(?:tap|click|press|tippe|klicke|tippe auf|klicke auf) (?:at|on|auf) \\(?\\s*([\\d\\.%]+)\\s*,\\s*([\\d\\.%]+)\\s*\\)?"),
+        // Scroll patterns (simple)
+        PatternInfo("scrollDown1", Regex("(?i)\\bscrollDown\\(\\)"), { Command.ScrollDown }, CommandTypeEnum.SCROLL_DOWN),
+        PatternInfo("scrollDown2", Regex("(?i)\\bscrollDownPage\\(\\)"), { Command.ScrollDown }, CommandTypeEnum.SCROLL_DOWN),
+        PatternInfo("scrollDown3", Regex("(?i)\\bpageDown\\(\\)"), { Command.ScrollDown }, CommandTypeEnum.SCROLL_DOWN),
+        PatternInfo("scrollDown4", Regex("(?i)\\b(?:scroll|swipe|move|nach unten|runter) (?:down|nach unten|runter)\\b"), { Command.ScrollDown }, CommandTypeEnum.SCROLL_DOWN),
+        PatternInfo("scrollDown5", Regex("(?i)\\b(?:nach unten scrollen|runter scrollen|nach unten wischen|runter wischen)\\b"), { Command.ScrollDown }, CommandTypeEnum.SCROLL_DOWN),
+        PatternInfo("scrollUp1", Regex("(?i)\\bscrollUp\\(\\)"), { Command.ScrollUp }, CommandTypeEnum.SCROLL_UP),
+        PatternInfo("scrollUp2", Regex("(?i)\\bscrollUpPage\\(\\)"), { Command.ScrollUp }, CommandTypeEnum.SCROLL_UP),
+        PatternInfo("scrollUp3", Regex("(?i)\\bpageUp\\(\\)"), { Command.ScrollUp }, CommandTypeEnum.SCROLL_UP),
+        PatternInfo("scrollUp4", Regex("(?i)\\b(?:scroll|swipe|move|nach oben|hoch) (?:up|nach oben|hoch)\\b"), { Command.ScrollUp }, CommandTypeEnum.SCROLL_UP),
+        PatternInfo("scrollUp5", Regex("(?i)\\b(?:nach oben scrollen|hoch scrollen|nach oben wischen|hoch wischen)\\b"), { Command.ScrollUp }, CommandTypeEnum.SCROLL_UP),
+        PatternInfo("scrollLeft1", Regex("(?i)\\bscrollLeft\\(\\)"), { Command.ScrollLeft }, CommandTypeEnum.SCROLL_LEFT),
+        PatternInfo("scrollLeft2", Regex("(?i)\\bscrollLeftPage\\(\\)"), { Command.ScrollLeft }, CommandTypeEnum.SCROLL_LEFT),
+        PatternInfo("scrollLeft3", Regex("(?i)\\bpageLeft\\(\\)"), { Command.ScrollLeft }, CommandTypeEnum.SCROLL_LEFT),
+        PatternInfo("scrollLeft4", Regex("(?i)\\b(?:scroll|swipe|move|nach links) (?:left|nach links)\\b"), { Command.ScrollLeft }, CommandTypeEnum.SCROLL_LEFT),
+        PatternInfo("scrollLeft5", Regex("(?i)\\b(?:nach links scrollen|links scrollen|nach links wischen|links wischen)\\b"), { Command.ScrollLeft }, CommandTypeEnum.SCROLL_LEFT),
+        PatternInfo("scrollRight1", Regex("(?i)\\bscrollRight\\(\\)"), { Command.ScrollRight }, CommandTypeEnum.SCROLL_RIGHT),
+        PatternInfo("scrollRight2", Regex("(?i)\\bscrollRightPage\\(\\)"), { Command.ScrollRight }, CommandTypeEnum.SCROLL_RIGHT),
+        PatternInfo("scrollRight3", Regex("(?i)\\bpageRight\\(\\)"), { Command.ScrollRight }, CommandTypeEnum.SCROLL_RIGHT),
+        PatternInfo("scrollRight4", Regex("(?i)\\b(?:scroll|swipe|move|nach rechts) (?:right|nach rechts)\\b"), { Command.ScrollRight }, CommandTypeEnum.SCROLL_RIGHT),
+        PatternInfo("scrollRight5", Regex("(?i)\\b(?:nach rechts scrollen|rechts scrollen|nach rechts wischen|rechts wischen)\\b"), { Command.ScrollRight }, CommandTypeEnum.SCROLL_RIGHT),
 
-        // Function-like patterns
-        Regex("(?i)\\btapAtCoordinates\\(\\s*([\\d\\.%]+)\\s*,\\s*([\\d\\.%]+)\\s*\\)"),
-        Regex("(?i)\\bclickAtPosition\\(\\s*([\\d\\.%]+)\\s*,\\s*([\\d\\.%]+)\\s*\\)"),
-        Regex("(?i)\\btapAt\\(\\s*([\\d\\.%]+)\\s*,\\s*([\\d\\.%]+)\\s*\\)")
-    )
+        // Scroll from coordinates patterns
+        PatternInfo("scrollDownCoords", Regex("(?i)\\bscrollDown\\s*\\(\\s*([\\d\\.%]+)\\s*,\\s*([\\d\\.%]+)\\s*,\\s*([\\d\\.%]+)\\s*,\\s*(\\d+)\\s*\\)"),
+            { match -> Command.ScrollDownFromCoordinates(match.groupValues[1], match.groupValues[2], match.groupValues[3], match.groupValues[4].toLong()) }, CommandTypeEnum.SCROLL_DOWN_FROM_COORDINATES),
+        PatternInfo("scrollUpCoords", Regex("(?i)\\bscrollUp\\s*\\(\\s*([\\d\\.%]+)\\s*,\\s*([\\d\\.%]+)\\s*,\\s*([\\d\\.%]+)\\s*,\\s*(\\d+)\\s*\\)"),
+            { match -> Command.ScrollUpFromCoordinates(match.groupValues[1], match.groupValues[2], match.groupValues[3], match.groupValues[4].toLong()) }, CommandTypeEnum.SCROLL_UP_FROM_COORDINATES),
+        PatternInfo("scrollLeftCoords", Regex("(?i)\\bscrollLeft\\s*\\(\\s*([\\d\\.%]+)\\s*,\\s*([\\d\\.%]+)\\s*,\\s*([\\d\\.%]+)\\s*,\\s*(\\d+)\\s*\\)"),
+            { match -> Command.ScrollLeftFromCoordinates(match.groupValues[1], match.groupValues[2], match.groupValues[3], match.groupValues[4].toLong()) }, CommandTypeEnum.SCROLL_LEFT_FROM_COORDINATES),
+        PatternInfo("scrollRightCoords", Regex("(?i)\\bscrollRight\\s*\\(\\s*([\\d\\.%]+)\\s*,\\s*([\\d\\.%]+)\\s*,\\s*([\\d\\.%]+)\\s*,\\s*(\\d+)\\s*\\)"),
+            { match -> Command.ScrollRightFromCoordinates(match.groupValues[1], match.groupValues[2], match.groupValues[3], match.groupValues[4].toLong()) }, CommandTypeEnum.SCROLL_RIGHT_FROM_COORDINATES),
 
-    // Screenshot patterns - expanded for consistency
-    private val TAKE_SCREENSHOT_PATTERNS = listOf(
-        Regex("(?i)\\b(?:take|capture|make|nimm|erstelle|mache|nehme|erzeuge) (?:a |ein(?:e)? )?(?:screenshot|bildschirmfoto|bildschirmaufnahme|bildschirmabbild)"),
-        Regex("(?i)\\btakeScreenshot\\(\\)"),
-        Regex("(?i)\\bcaptureScreen\\(\\)")
-    )
-
-    // Home button patterns - for pressing the home button
-    private val HOME_BUTTON_PATTERNS = listOf(
-        // Function-like patterns
-        Regex("(?i)\\bhome\\(\\)"),
-        Regex("(?i)\\bpressHome\\(\\)"),
-        Regex("(?i)\\bgoHome\\(\\)"),
-
-        // Natural language patterns
-        Regex("(?i)\\b(?:press|click|tap|go to|navigate to|return to|drücke|klicke|tippe auf|gehe zu|navigiere zu|kehre zurück zu) (?:the )?home(?: button| screen)?\\b"),
-        Regex("(?i)\\b(?:zurück zum|zurück zur) (?:home|startseite|hauptbildschirm)\\b")
-    )
-
-    // Back button patterns - for pressing the back button
-    private val BACK_BUTTON_PATTERNS = listOf(
-        // Function-like patterns
-        Regex("(?i)\\bback\\(\\)"),
-        Regex("(?i)\\bpressBack\\(\\)"),
-        Regex("(?i)\\bgoBack\\(\\)"),
-
-        // Natural language patterns
-        Regex("(?i)\\b(?:press|click|tap|go|navigate|return|drücke|klicke|tippe auf|gehe|navigiere|kehre) (?:the )?back(?: button)?\\b"),
-        Regex("(?i)\\b(?:zurück|zurückgehen)\\b")
-    )
-
-    // Recent apps patterns - for showing recent apps
-    private val RECENT_APPS_PATTERNS = listOf(
-        // Function-like patterns
-        Regex("(?i)\\brecentApps\\(\\)"),
-        Regex("(?i)\\bshowRecentApps\\(\\)"),
-        Regex("(?i)\\bopenRecentApps\\(\\)"),
-
-        // Natural language patterns
-        Regex("(?i)\\b(?:show|open|display|view|zeige|öffne|anzeigen) (?:the )?recent(?: apps| applications| tasks)?\\b"),
-        Regex("(?i)\\b(?:letzte apps|letzte anwendungen|app übersicht|app-übersicht|übersicht)\\b")
-    )
-
-    // Scroll down patterns - for scrolling down
-    private val SCROLL_DOWN_PATTERNS = listOf(
-        // Function-like patterns
-        Regex("(?i)\\bscrollDown\\(\\)"),
-        Regex("(?i)\\bscrollDownPage\\(\\)"),
-        Regex("(?i)\\bpageDown\\(\\)"),
-
-        // Natural language patterns
-        Regex("(?i)\\b(?:scroll|swipe|move|nach unten|runter) (?:down|nach unten|runter)\\b"),
-        Regex("(?i)\\b(?:nach unten scrollen|runter scrollen|nach unten wischen|runter wischen)\\b")
-    )
-
-    // Scroll up patterns - for scrolling up
-    private val SCROLL_UP_PATTERNS = listOf(
-        // Function-like patterns
-        Regex("(?i)\\bscrollUp\\(\\)"),
-        Regex("(?i)\\bscrollUpPage\\(\\)"),
-        Regex("(?i)\\bpageUp\\(\\)"),
-
-        // Natural language patterns
-        Regex("(?i)\\b(?:scroll|swipe|move|nach oben|hoch) (?:up|nach oben|hoch)\\b"),
-        Regex("(?i)\\b(?:nach oben scrollen|hoch scrollen|nach oben wischen|hoch wischen)\\b")
-    )
-
-    // Scroll left patterns - for scrolling left
-    private val SCROLL_LEFT_PATTERNS = listOf(
-        // Function-like patterns
-        Regex("(?i)\\bscrollLeft\\(\\)"),
-        Regex("(?i)\\bscrollLeftPage\\(\\)"),
-        Regex("(?i)\\bpageLeft\\(\\)"),
-
-        // Natural language patterns
-        Regex("(?i)\\b(?:scroll|swipe|move|nach links) (?:left|nach links)\\b"),
-        Regex("(?i)\\b(?:nach links scrollen|links scrollen|nach links wischen|links wischen)\\b")
-    )
-
-    // Scroll right patterns - for scrolling right
-    private val SCROLL_RIGHT_PATTERNS = listOf(
-        // Function-like patterns
-        Regex("(?i)\\bscrollRight\\(\\)"),
-        Regex("(?i)\\bscrollRightPage\\(\\)"),
-        Regex("(?i)\\bpageRight\\(\\)"),
-
-        // Natural language patterns
-        Regex("(?i)\\b(?:scroll|swipe|move|nach rechts) (?:right|nach rechts)\\b"),
-        Regex("(?i)\\b(?:nach rechts scrollen|rechts scrollen|nach rechts wischen|rechts wischen)\\b")
-    )
-
-    // Open app patterns - for opening apps
-    private val OPEN_APP_PATTERNS = listOf(
-        // Function-like patterns
-        Regex("(?i)\\bopenApp\\([\"']([^\"']+)[\"']\\)"),
-        Regex("(?i)\\blaunchApp\\([\"']([^\"']+)[\"']\\)"),
-        Regex("(?i)\\bstartApp\\([\"']([^\"']+)[\"']\\)"),
-
-        // Natural language patterns
-        Regex("(?i)\\b(?:open|launch|start|öffne|starte) (?:the )?(?:app|application|anwendung) [\"']([^\"']+)[\"']"),
-        Regex("(?i)\\b(?:öffne|starte) [\"']([^\"']+)[\"']")
+        // Open app patterns
+        PatternInfo("openApp1", Regex("(?i)\\bopenApp\\([\"']([^\"']+)[\"']\\)"), { match -> Command.OpenApp(match.groupValues[1]) }, CommandTypeEnum.OPEN_APP),
+        PatternInfo("openApp2", Regex("(?i)\\blaunchApp\\([\"']([^\"']+)[\"']\\)"), { match -> Command.OpenApp(match.groupValues[1]) }, CommandTypeEnum.OPEN_APP),
+        PatternInfo("openApp3", Regex("(?i)\\bstartApp\\([\"']([^\"']+)[\"']\\)"), { match -> Command.OpenApp(match.groupValues[1]) }, CommandTypeEnum.OPEN_APP),
+        PatternInfo("openApp4", Regex("(?i)\\b(?:open|launch|start|öffne|starte) (?:the )?(?:app|application|anwendung) [\"']([^\"']+)[\"']"), { match -> Command.OpenApp(match.groupValues[1]) }, CommandTypeEnum.OPEN_APP),
+        PatternInfo("openApp5", Regex("(?i)\\b(?:öffne|starte) [\"']([^\"']+)[\"']"), { match -> Command.OpenApp(match.groupValues[1]) }, CommandTypeEnum.OPEN_APP)
     )
 
     // Buffer for storing partial text between calls
@@ -270,160 +220,82 @@ object CommandParser {
     /**
      * Process text to find commands
      */
-    private fun processText(text: String, commands: MutableList<Command>) {
-        // Look for model selection commands
-        findModelSelectionCommands(text, commands)
+    private fun processTextInternal(text: String): List<Command> {
+        data class ProcessedMatch(val startIndex: Int, val endIndex: Int, val command: Command, val type: CommandTypeEnum)
+        val foundRawMatches = mutableListOf<ProcessedMatch>()
+        val finalCommands = mutableListOf<Command>()
+        val addedSingleInstanceCommands = mutableSetOf<CommandTypeEnum>()
 
-        // Look for write text commands
-        findWriteTextCommands(text, commands)
-
-        // Look for click button commands
-        findClickButtonCommands(text, commands)
-
-        // Look for tap coordinates commands
-        findTapCoordinatesCommands(text, commands)
-
-        // Look for take screenshot commands
-        findTakeScreenshotCommands(text, commands)
-
-        // Look for home button commands
-        findHomeButtonCommands(text, commands)
-
-        // Look for back button commands
-        findBackButtonCommands(text, commands)
-
-        // Look for recent apps commands
-        findRecentAppsCommands(text, commands)
-
-        // Look for scroll down commands
-        findScrollDownCommands(text, commands)
-
-        // Look for scroll up commands
-        findScrollUpCommands(text, commands)
-
-        // Look for scroll left commands
-        findScrollLeftCommands(text, commands)
-
-        // Look for scroll right commands
-        findScrollRightCommands(text, commands)
-
-        // Look for open app commands
-        findOpenAppCommands(text, commands)
-        
-        // Look for enter key commands
-        findEnterKeyCommands(text, commands)
-    }
-    
-    /**
-     * Find enter key commands in the text
-     */
-    private fun findEnterKeyCommands(text: String, commands: MutableList<Command>) {
-        // Try each pattern
-        for (pattern in ENTER_KEY_PATTERNS) {
-            if (pattern.containsMatchIn(text)) {
-                // Check if this command is already in the list (avoid duplicates)
-                if (!commands.any { it is Command.PressEnterKey }) {
-                    Log.d(TAG, "Found enter key command with pattern ${pattern.pattern}")
-                    commands.add(Command.PressEnterKey)
-                    // Only add one enter key command even if multiple matches are found
-                    break
-                }
-            }
-        }
-    }
-
-    /**
-     * Find model selection commands in the text
-     */
-    private fun findModelSelectionCommands(text: String, commands: MutableList<Command>) {
-        // --- HINZUGEFÜGTE LOGS START ---
-        Log.d(TAG, "--- Checking High Reasoning Patterns ---")
-        // First check for high reasoning model commands
-        for (i in 0 until 5) { // First 5 patterns are for high reasoning model
-            val pattern = MODEL_SELECTION_PATTERNS[i]
-            // LOG 1: Welches Muster wird geprüft?
-            Log.d(TAG, "High Check: Pattern='${pattern.pattern}'")
-
-            // LOG 2: Was ist der Text und seine Codes DIREKT vor dem Match?
-            Log.d(TAG, "High Check: Attempting match against text: [$text]")
-            Log.d(TAG, "High Check: Text character codes: ${text.map { it.code }}")
-
-            val matchFound = pattern.containsMatchIn(text) // Der eigentliche Match-Versuch
-            // LOG 3: Was ist das Ergebnis des Matchings?
-            Log.d(TAG, "High Check: Match found = $matchFound")
-
-            if (matchFound) {
-                // LOG 4: Wird die Duplikatprüfung ausgeführt?
-                Log.d(TAG, "High Check: Pattern matched. Checking for duplicates...")
-                if (!commands.any { it is Command.UseHighReasoningModel }) {
-                    Log.d(TAG, "Found high reasoning model command with pattern ${pattern.pattern}")
-                    commands.add(Command.UseHighReasoningModel)
-                    break
-                } else {
-                    // LOG 5: Duplikat gefunden
-                    Log.d(TAG, "High Check: Duplicate command already exists.")
-                }
-            }
-        }
-        Log.d(TAG, "--- Finished High Reasoning Patterns ---")
-
-        Log.d(TAG, "--- Checking Low Reasoning Patterns ---")
-        // Then check for low reasoning model commands
-        for (i in 5 until MODEL_SELECTION_PATTERNS.size) { // Remaining patterns are for low reasoning model
-            val pattern = MODEL_SELECTION_PATTERNS[i]
-            // LOG 1 (analog): Welches Muster wird geprüft?
-            Log.d(TAG, "Low Check: Pattern='${pattern.pattern}'")
-
-            // LOG 2 (analog): Was ist der Text und seine Codes DIREKT vor dem Match?
-            Log.d(TAG, "Low Check: Attempting match against text: [$text]")
-            Log.d(TAG, "Low Check: Text character codes: ${text.map { it.code }}")
-
-            val matchFound = pattern.containsMatchIn(text) // Der eigentliche Match-Versuch
-            // LOG 3 (analog): Was ist das Ergebnis des Matchings?
-            Log.d(TAG, "Low Check: Match found = $matchFound")
-
-            if (matchFound) {
-                // LOG 4 (analog): Wird die Duplikatprüfung ausgeführt?
-                Log.d(TAG, "Low Check: Pattern matched. Checking for duplicates...")
-                if (!commands.any { it is Command.UseLowReasoningModel }) {
-                    Log.d(TAG, "Found low reasoning model command with pattern ${pattern.pattern}")
-                    commands.add(Command.UseLowReasoningModel)
-                    break
-                } else {
-                    // LOG 5 (analog): Duplikat gefunden
-                    Log.d(TAG, "Low Check: Duplicate command already exists.")
-                }
-            }
-        }
-        Log.d(TAG, "--- Finished Low Reasoning Patterns ---")
-        // --- HINZUGEFÜGTE LOGS ENDE ---
-    }
-
-
-    /**
-     * Find write text commands in the text
-     */
-    private fun findWriteTextCommands(text: String, commands: MutableList<Command>) {
-        // Try each pattern
-        for (pattern in WRITE_TEXT_PATTERNS) {
-            val matches = pattern.findAll(text)
-            for (match in matches) {
-                try {
-                    if (match.groupValues.size > 1) {
-                        val textToWrite = match.groupValues[1].trim()
-                        if (textToWrite.isNotEmpty()) {
-                            // Check if this command is already in the list (avoid duplicates)
-                            if (!commands.any { it is Command.WriteText && it.text == textToWrite }) {
-                                Log.d(TAG, "Found write text command with pattern ${pattern.pattern}: \"$textToWrite\"")
-                                commands.add(Command.WriteText(textToWrite))
-                            }
-                        }
+        for (patternInfo in ALL_PATTERNS) {
+            try {
+                patternInfo.regex.findAll(text).forEach { matchResult ->
+                    try {
+                        val command = patternInfo.commandBuilder(matchResult)
+                        // Store the commandType from the patternInfo that generated this command
+                        foundRawMatches.add(ProcessedMatch(matchResult.range.first, matchResult.range.last, command, patternInfo.commandType))
+                        Log.d(TAG, "Found raw match: Start=${matchResult.range.first}, End=${matchResult.range.last}, Command=${command}, Type=${patternInfo.commandType}, Pattern=${patternInfo.id}")
+                    } catch (e: Exception) {
+                        Log.e(TAG, "Error building command for pattern ${patternInfo.id} with match ${matchResult.value}: ${e.message}", e)
                     }
-                } catch (e: Exception) {
-                    Log.e(TAG, "Error processing write text match: ${e.message}", e)
                 }
+            } catch (e: Exception) {
+                Log.e(TAG, "Error finding matches for pattern ${patternInfo.id}: ${e.message}", e)
             }
         }
+
+        // Sort matches by start index
+        foundRawMatches.sortBy { it.startIndex }
+        Log.d(TAG, "Sorted raw matches (${foundRawMatches.size}): $foundRawMatches")
+
+        var currentPosition = 0
+        for (processedMatch in foundRawMatches) {
+            val (startIndex, endIndex, command, commandTypeFromMatch) = processedMatch // Destructure
+            if (startIndex >= currentPosition) {
+                var canAdd = true
+                // Use commandTypeFromMatch directly here
+                val isSingleInstanceType = when (commandTypeFromMatch) {
+                    CommandTypeEnum.TAKE_SCREENSHOT,
+                    CommandTypeEnum.PRESS_HOME,
+                    CommandTypeEnum.PRESS_BACK,
+                    CommandTypeEnum.SHOW_RECENT_APPS,
+                    CommandTypeEnum.USE_HIGH_REASONING_MODEL,
+                    CommandTypeEnum.USE_LOW_REASONING_MODEL,
+                    CommandTypeEnum.PRESS_ENTER_KEY -> true
+                    else -> false
+                }
+                if (isSingleInstanceType) {
+                    if (addedSingleInstanceCommands.contains(commandTypeFromMatch)) {
+                        canAdd = false
+                        Log.d(TAG, "Skipping duplicate single-instance command: $command (Type: $commandTypeFromMatch)")
+                    } else {
+                        addedSingleInstanceCommands.add(commandTypeFromMatch)
+                    }
+                }
+
+                if (canAdd) {
+                    // Simplified duplicate check: if it's not a single instance type, allow it.
+                    // More sophisticated duplicate checks for parameterized commands can be added here if needed.
+                    // For now, only single-instance types are strictly controlled for duplication.
+                    // The overlap filter (startIndex >= currentPosition) already prevents identical commands
+                    // from the exact same text span.
+                    finalCommands.add(command)
+                    currentPosition = endIndex + 1
+                    Log.d(TAG, "Added command: $command. New currentPosition: $currentPosition")
+                }
+            } else {
+                Log.d(TAG, "Skipping overlapping command: $command (startIndex $startIndex < currentPosition $currentPosition)")
+            }
+        }
+        Log.d(TAG, "Final commands list (${finalCommands.size}): $finalCommands")
+        return finalCommands
+    }
+
+    /**
+     * Process text to find commands
+     */
+    private fun processText(text: String, commands: MutableList<Command>) {
+        val extractedCommands = processTextInternal(text)
+        commands.addAll(extractedCommands)
     }
 
     /**
@@ -437,321 +309,6 @@ object CommandParser {
         normalized = normalized.replace(Regex("\\r\\n|\\r"), "\n")
 
         return normalized.trim() // Added trim() here as well for good measure
-    }
-
-    /**
-     * Find click button commands in the text
-     */
-    private fun findClickButtonCommands(text: String, commands: MutableList<Command>) {
-        // Try each pattern
-        for (pattern in CLICK_BUTTON_PATTERNS) {
-            val matches = pattern.findAll(text)
-            for (match in matches) {
-                try {
-                    if (match.groupValues.size > 1) {
-                        val buttonText = match.groupValues[1].trim()
-                        if (buttonText.isNotEmpty()) {
-                            // Check if this command is already in the list (avoid duplicates)
-                            if (!commands.any { it is Command.ClickButton && it.buttonText == buttonText }) {
-                                Log.d(TAG, "Found click button command with pattern ${pattern.pattern}: \"$buttonText\"")
-                                commands.add(Command.ClickButton(buttonText))
-                            }
-                        }
-                    }
-                } catch (e: Exception) {
-                    Log.e(TAG, "Error processing click button match: ${e.message}", e)
-                }
-            }
-        }
-    }
-
-    /**
-     * Find tap coordinates commands in the text
-     */
-    private fun findTapCoordinatesCommands(text: String, commands: MutableList<Command>) {
-        // Try each pattern
-        for (pattern in TAP_COORDINATES_PATTERNS) {
-            val matches = pattern.findAll(text)
-            for (match in matches) {
-                try {
-                    if (match.groupValues.size > 2) {
-                        val xString = match.groupValues[1].trim()
-                        val yString = match.groupValues[2].trim()
-
-                        // Check if this command is already in the list (avoid duplicates)
-                        // Note: Comparison now happens with strings directly.
-                        if (!commands.any { it is Command.TapCoordinates && it.x == xString && it.y == yString }) {
-                            Log.d(TAG, "Found tap coordinates command with pattern ${pattern.pattern}: ($xString, $yString)")
-                            commands.add(Command.TapCoordinates(xString, yString))
-                        }
-                    }
-                } catch (e: Exception) {
-                    Log.e(TAG, "Error processing tap coordinates match: ${e.message}", e)
-                }
-            }
-        }
-    }
-
-    /**
-     * Find take screenshot commands in the text
-     */
-    private fun findTakeScreenshotCommands(text: String, commands: MutableList<Command>) {
-        // Try each pattern
-        for (pattern in TAKE_SCREENSHOT_PATTERNS) {
-            if (pattern.containsMatchIn(text)) {
-                // Check if this command is already in the list (avoid duplicates)
-                if (!commands.any { it is Command.TakeScreenshot }) {
-                    Log.d(TAG, "Found take screenshot command with pattern ${pattern.pattern}")
-                    commands.add(Command.TakeScreenshot)
-                    // Only add one screenshot command even if multiple matches are found
-                    break
-                }
-            }
-        }
-    }
-
-    /**
-     * Find home button commands in the text
-     */
-    private fun findHomeButtonCommands(text: String, commands: MutableList<Command>) {
-        // Try each pattern
-        for (pattern in HOME_BUTTON_PATTERNS) {
-            if (pattern.containsMatchIn(text)) {
-                // Check if this command is already in the list (avoid duplicates)
-                if (!commands.any { it is Command.PressHomeButton }) {
-                    Log.d(TAG, "Found home button command with pattern ${pattern.pattern}")
-                    commands.add(Command.PressHomeButton)
-                    // Only add one home button command even if multiple matches are found
-                    break
-                }
-            }
-        }
-    }
-
-    /**
-     * Find back button commands in the text
-     */
-    private fun findBackButtonCommands(text: String, commands: MutableList<Command>) {
-        // Try each pattern
-        for (pattern in BACK_BUTTON_PATTERNS) {
-            if (pattern.containsMatchIn(text)) {
-                // Check if this command is already in the list (avoid duplicates)
-                if (!commands.any { it is Command.PressBackButton }) {
-                    Log.d(TAG, "Found back button command with pattern ${pattern.pattern}")
-                    commands.add(Command.PressBackButton)
-                    // Only add one back button command even if multiple matches are found
-                    break
-                }
-            }
-        }
-    }
-
-    /**
-     * Find recent apps commands in the text
-     */
-    private fun findRecentAppsCommands(text: String, commands: MutableList<Command>) {
-        // Try each pattern
-        for (pattern in RECENT_APPS_PATTERNS) {
-            if (pattern.containsMatchIn(text)) {
-                // Check if this command is already in the list (avoid duplicates)
-                if (!commands.any { it is Command.ShowRecentApps }) {
-                    Log.d(TAG, "Found recent apps command with pattern ${pattern.pattern}")
-                    commands.add(Command.ShowRecentApps)
-                    // Only add one recent apps command even if multiple matches are found
-                    break
-                }
-            }
-        }
-    }
-
-    /**
-     * Find scroll down commands in the text
-     */
-    private fun findScrollDownCommands(text: String, commands: MutableList<Command>) {
-        // First check for coordinate-based scroll down commands
-        val coordPattern = Regex("(?i)\\bscrollDown\\s*\\(\\s*([\\d\\.%]+)\\s*,\\s*([\\d\\.%]+)\\s*,\\s*([\\d\\.%]+)\\s*,\\s*(\\d+)\\s*\\)")
-        val matches = coordPattern.findAll(text)
-
-        for (match in matches) {
-            if (match.groupValues.size >= 5) {
-                try {
-                    val xString = match.groupValues[1].trim()
-                    val yString = match.groupValues[2].trim()
-                    val distanceString = match.groupValues[3].trim()
-                    val duration = match.groupValues[4].toLong()
-
-                    Log.d(TAG, "Found coordinate-based scroll down command: scrollDown($xString, $yString, $distanceString, $duration)")
-                    commands.add(Command.ScrollDownFromCoordinates(xString, yString, distanceString, duration))
-                } catch (e: Exception) {
-                    Log.e(TAG, "Error parsing coordinate-based scroll down command: ${e.message}")
-                }
-            }
-        }
-
-        // If no coordinate-based commands were found, look for simple scroll down commands
-        if (!commands.any { it is Command.ScrollDownFromCoordinates }) {
-            // Try each pattern
-            for (pattern in SCROLL_DOWN_PATTERNS) {
-                if (pattern.containsMatchIn(text)) {
-                    // Check if this command is already in the list (avoid duplicates)
-                    if (!commands.any { it is Command.ScrollDown }) {
-                        Log.d(TAG, "Found scroll down command with pattern ${pattern.pattern}")
-                        commands.add(Command.ScrollDown)
-                        // Only add one scroll down command even if multiple matches are found
-                        break
-                    }
-                }
-            }
-        }
-    }
-
-    /**
-     * Find scroll up commands in the text
-     */
-    private fun findScrollUpCommands(text: String, commands: MutableList<Command>) {
-        // First check for coordinate-based scroll up commands
-        val coordPattern = Regex("(?i)\\bscrollUp\\s*\\(\\s*([\\d\\.%]+)\\s*,\\s*([\\d\\.%]+)\\s*,\\s*([\\d\\.%]+)\\s*,\\s*(\\d+)\\s*\\)")
-        val matches = coordPattern.findAll(text)
-
-        for (match in matches) {
-            if (match.groupValues.size >= 5) {
-                try {
-                    val xString = match.groupValues[1].trim()
-                    val yString = match.groupValues[2].trim()
-                    val distanceString = match.groupValues[3].trim()
-                    val duration = match.groupValues[4].toLong()
-
-                    Log.d(TAG, "Found coordinate-based scroll up command: scrollUp($xString, $yString, $distanceString, $duration)")
-                    commands.add(Command.ScrollUpFromCoordinates(xString, yString, distanceString, duration))
-                } catch (e: Exception) {
-                    Log.e(TAG, "Error parsing coordinate-based scroll up command: ${e.message}")
-                }
-            }
-        }
-
-        // If no coordinate-based commands were found, look for simple scroll up commands
-        if (!commands.any { it is Command.ScrollUpFromCoordinates }) {
-            // Try each pattern
-            for (pattern in SCROLL_UP_PATTERNS) {
-                if (pattern.containsMatchIn(text)) {
-                    // Check if this command is already in the list (avoid duplicates)
-                    if (!commands.any { it is Command.ScrollUp }) {
-                        Log.d(TAG, "Found scroll up command with pattern ${pattern.pattern}")
-                        commands.add(Command.ScrollUp)
-                        // Only add one scroll up command even if multiple matches are found
-                        break
-                    }
-                }
-            }
-        }
-    }
-
-    /**
-     * Find scroll left commands in the text
-     */
-    private fun findScrollLeftCommands(text: String, commands: MutableList<Command>) {
-        // First check for coordinate-based scroll left commands
-        val coordPattern = Regex("(?i)\\bscrollLeft\\s*\\(\\s*([\\d\\.%]+)\\s*,\\s*([\\d\\.%]+)\\s*,\\s*([\\d\\.%]+)\\s*,\\s*(\\d+)\\s*\\)")
-        val matches = coordPattern.findAll(text)
-
-        for (match in matches) {
-            if (match.groupValues.size >= 5) {
-                try {
-                    val xString = match.groupValues[1].trim()
-                    val yString = match.groupValues[2].trim()
-                    val distanceString = match.groupValues[3].trim()
-                    val duration = match.groupValues[4].toLong()
-
-                    Log.d(TAG, "Found coordinate-based scroll left command: scrollLeft($xString, $yString, $distanceString, $duration)")
-                    commands.add(Command.ScrollLeftFromCoordinates(xString, yString, distanceString, duration))
-                } catch (e: Exception) {
-                    Log.e(TAG, "Error parsing coordinate-based scroll left command: ${e.message}")
-                }
-            }
-        }
-
-        // If no coordinate-based commands were found, look for simple scroll left commands
-        if (!commands.any { it is Command.ScrollLeftFromCoordinates }) {
-            // Try each pattern
-            for (pattern in SCROLL_LEFT_PATTERNS) {
-                if (pattern.containsMatchIn(text)) {
-                    // Check if this command is already in the list (avoid duplicates)
-                    if (!commands.any { it is Command.ScrollLeft }) {
-                        Log.d(TAG, "Found scroll left command with pattern ${pattern.pattern}")
-                        commands.add(Command.ScrollLeft)
-                        // Only add one scroll left command even if multiple matches are found
-                        break
-                    }
-                }
-            }
-        }
-    }
-
-    /**
-     * Find scroll right commands in the text
-     */
-    private fun findScrollRightCommands(text: String, commands: MutableList<Command>) {
-        // First check for coordinate-based scroll right commands
-        val coordPattern = Regex("(?i)\\bscrollRight\\s*\\(\\s*([\\d\\.%]+)\\s*,\\s*([\\d\\.%]+)\\s*,\\s*([\\d\\.%]+)\\s*,\\s*(\\d+)\\s*\\)")
-        val matches = coordPattern.findAll(text)
-
-        for (match in matches) {
-            if (match.groupValues.size >= 5) {
-                try {
-                    val xString = match.groupValues[1].trim()
-                    val yString = match.groupValues[2].trim()
-                    val distanceString = match.groupValues[3].trim()
-                    val duration = match.groupValues[4].toLong()
-
-                    Log.d(TAG, "Found coordinate-based scroll right command: scrollRight($xString, $yString, $distanceString, $duration)")
-                    commands.add(Command.ScrollRightFromCoordinates(xString, yString, distanceString, duration))
-                } catch (e: Exception) {
-                    Log.e(TAG, "Error parsing coordinate-based scroll right command: ${e.message}")
-                }
-            }
-        }
-
-        // If no coordinate-based commands were found, look for simple scroll right commands
-        if (!commands.any { it is Command.ScrollRightFromCoordinates }) {
-            // Try each pattern
-            for (pattern in SCROLL_RIGHT_PATTERNS) {
-                if (pattern.containsMatchIn(text)) {
-                    // Check if this command is already in the list (avoid duplicates)
-                    if (!commands.any { it is Command.ScrollRight }) {
-                        Log.d(TAG, "Found scroll right command with pattern ${pattern.pattern}")
-                        commands.add(Command.ScrollRight)
-                        // Only add one scroll right command even if multiple matches are found
-                        break
-                    }
-                }
-            }
-        }
-    }
-
-    /**
-     * Find open app commands in the text
-     */
-    private fun findOpenAppCommands(text: String, commands: MutableList<Command>) {
-        // Try each pattern
-        for (pattern in OPEN_APP_PATTERNS) {
-            val matches = pattern.findAll(text)
-            for (match in matches) {
-                try {
-                    if (match.groupValues.size > 1) {
-                        val packageName = match.groupValues[1].trim()
-                        if (packageName.isNotEmpty()) {
-                            // Check if this command is already in the list (avoid duplicates)
-                            if (!commands.any { it is Command.OpenApp && it.packageName == packageName }) {
-                                Log.d(TAG, "Found open app command with pattern ${pattern.pattern}: \"$packageName\"")
-                                commands.add(Command.OpenApp(packageName))
-                            }
-                        }
-                    }
-                } catch (e: Exception) {
-                    Log.e(TAG, "Error processing open app match: ${e.message}", e)
-                }
-            }
-        }
     }
 
     /**
