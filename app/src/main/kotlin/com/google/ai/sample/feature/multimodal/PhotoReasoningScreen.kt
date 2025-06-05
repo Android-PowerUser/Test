@@ -732,7 +732,7 @@ fun DatabaseListPopup(
                                     verticalAlignment = Alignment.CenterVertically,
                                     horizontalArrangement = Arrangement.End 
                                 ) {
-                                    Text("Add a new system message guide", color = Color.Black.copy(alpha = 0.6f), style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+                                    Text("This is also sent to the AI", color = Color.Black.copy(alpha = 0.6f), style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
                                     Button(onClick = onNewClicked, colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary), modifier = Modifier.padding(start = 8.dp)) {
                                         Text("New")
                                     }
