@@ -133,16 +133,19 @@ class PhotoReasoningViewModel(
         currentReasoningJob = PhotoReasoningApplication.applicationScope.launch(Dispatchers.IO) {
             // Create content with the current images and prompt
             val inputContent = content {
-                if (currentReasoningJob?.isActive != true) return@launch // Check for cancellation
+                // Ensure line for original request: 136
+                if (currentReasoningJob?.isActive != true) return@launch
                 for (bitmap in selectedImages) {
-                    if (currentReasoningJob?.isActive != true) return@launch // Check for cancellation
+                    // Ensure line for original request: 138
+                    if (currentReasoningJob?.isActive != true) return@launch
                     image(bitmap)
                 }
-                if (currentReasoningJob?.isActive != true) return@launch // Check for cancellation
+                // Ensure line for original request: 141
+                if (currentReasoningJob?.isActive != true) return@launch
                 text(prompt)
             }
 
-            if (currentReasoningJob?.isActive != true) return@launch // Check for cancellation
+            if (currentReasoningJob?.isActive != true) return@launch // Check for cancellation outside content block
             sendMessageWithRetry(inputContent, 0)
         }
     }
