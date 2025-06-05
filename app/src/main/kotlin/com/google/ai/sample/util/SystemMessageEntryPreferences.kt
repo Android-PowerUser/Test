@@ -40,11 +40,11 @@ object SystemMessageEntryPreferences {
                 val defaultEntries = listOf(
                     SystemMessageEntry(
                         title = "Termux",
-                        guide = "//To write something in Termux you must be sure the ESC HOME banner is away. If not: `back()` `scrollRight(75%, 99%, 50%, 50)` `tapAtCoordinates(50%, 99%)` this in one message. Check if the banner has disappeared also at the bottom. To show the keyboard in Termux if the banner is gone: `tapAtCoordinates(50%, 99%)` And you must always `Enter()` twice.\""
+                        guide = "To write something in Termux you must be sure the ESC HOME banner is away. If not: `back()` `scrollRight(75%, 99%, 50%, 50)` `tapAtCoordinates(50%, 99%)` this in one message. Check if the banner has disappeared also at the bottom. To show the keyboard in Termux if the banner is gone: `tapAtCoordinates(50%, 99%)` And you must always `Enter()` twice.\""
                     ),
                     SystemMessageEntry(
                         title = "Chromium-based Browser",
-                        guide = "//To see more in a screenshot, you may want to consider zooming out. To do this, tap the three vertical dots, select the appropriate location in the menu, and then tap the 'minus' symbol (multiple times). You can only zoom out to 50%.\""
+                        guide = "To see more in a screenshot, you may want to consider zooming out. To do this, tap the three vertical dots, select the appropriate location in the menu, and then tap the 'minus' symbol (multiple times). You can only zoom out to 50%.\""
                     )
                 )
                 saveEntries(context, defaultEntries) // This saves them to KEY_SYSTEM_MESSAGE_ENTRIES
