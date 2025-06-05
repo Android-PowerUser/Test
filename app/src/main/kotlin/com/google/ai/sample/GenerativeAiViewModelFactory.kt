@@ -18,7 +18,7 @@ enum class ModelOption(val displayName: String, val modelName: String) {
 
 val GenerativeViewModelFactory = object : ViewModelProvider.Factory {
     // Current selected model name
-    private var currentModelName = ModelOption.GEMINI_FLASH_LITE.modelName
+    private var currentModelName = ModelOption.GEMINI_FLASH_PREVIEW.modelName
     
     /**
      * Set the model to high reasoning capability (gemini-2.5-pro-preview-03-25)
@@ -95,7 +95,7 @@ val GenerativeViewModelFactory = object : ViewModelProvider.Factory {
 // Add companion object with static methods for easier access
 object GenerativeAiViewModelFactory {
     // Current selected model name - duplicated from GenerativeViewModelFactory
-    private var currentModelName = ModelOption.GEMINI_FLASH_LITE.modelName
+    private var currentModelName = ModelOption.GEMINI_FLASH_PREVIEW.modelName
     
     /**
      * Set the model to high reasoning capability (gemini-2.5-pro-preview-03-25)
