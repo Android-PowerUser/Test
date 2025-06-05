@@ -30,10 +30,6 @@ object CommandParser {
     private val ALL_PATTERNS: List<PatternInfo> = listOf(
         // Enter key patterns
         PatternInfo("enterKey1", Regex("(?i)\\benter\\(\\)"), { Command.PressEnterKey }, CommandTypeEnum.PRESS_ENTER_KEY),
-        PatternInfo("enterKey2", Regex("(?i)\\bpressEnter\\(\\)"), { Command.PressEnterKey }, CommandTypeEnum.PRESS_ENTER_KEY),
-        PatternInfo("enterKey3", Regex("(?i)\\benterKey\\(\\)"), { Command.PressEnterKey }, CommandTypeEnum.PRESS_ENTER_KEY),
-        PatternInfo("enterKey4", Regex("(?i)\\b(?:press|hit|tap|drücke|tippe auf) (?:the )?enter(?: key| button)?\\b"), { Command.PressEnterKey }, CommandTypeEnum.PRESS_ENTER_KEY),
-        PatternInfo("enterKey5", Regex("(?i)\\b(?:press|hit|tap|drücke|tippe auf) (?:the )?return(?: key| button)?\\b"), { Command.PressEnterKey }, CommandTypeEnum.PRESS_ENTER_KEY),
 
         // Model selection patterns
         PatternInfo("highReasoning1", Regex("(?i)\\bhighReasoningModel\\(\\)"), { Command.UseHighReasoningModel }, CommandTypeEnum.USE_HIGH_REASONING_MODEL),

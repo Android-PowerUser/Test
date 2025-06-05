@@ -39,16 +39,12 @@ object SystemMessageEntryPreferences {
                 Log.d(TAG, "Default entries not populated. Populating now.")
                 val defaultEntries = listOf(
                     SystemMessageEntry(
-                        title = "Example Task: Web Browsing",
-                        guide = "// TODO: Define a detailed guide for the AI on how to perform web browsing tasks. \n// Example: \"To search the web, first click on the search bar (element_id: 'search_bar'), then type your query using writeText('your query'), then click the search button (element_id: 'search_button').\""
+                        title = "Termux",
+                        guide = "To write something in Termux you must be sure the ESC HOME banner is away. If not: `back()` `scrollRight(75%, 99%, 50%, 50)` `tapAtCoordinates(50%, 99%)` this in one message. Check if the banner has disappeared also at the bottom. To show the keyboard in Termux if the banner is gone: `tapAtCoordinates(50%, 99%)` And you must always `Enter()` twice.\""
                     ),
                     SystemMessageEntry(
-                        title = "Example Task: Sending an Email",
-                        guide = "// TODO: Provide step-by-step instructions for composing and sending an email. \n// Specify UI elements to interact with (e.g., compose button, recipient field, subject field, body field, send button).\""
-                    ),
-                    SystemMessageEntry(
-                        title = "General App Navigation Guide",
-                        guide = "// TODO: Describe common navigation patterns within this app or general Android OS that the AI should know. \n// Example: \"To go to settings, click on the 'Settings' icon. To return to the previous screen, use the back button.\""
+                        title = "Chromium-based Browser",
+                        guide = "To see more in a screenshot, you may want to consider zooming out. To do this, tap the three vertical dots, select the appropriate location in the menu, and then tap the 'minus' symbol (multiple times). You can only zoom out to 50%.\""
                     )
                 )
                 saveEntries(context, defaultEntries) // This saves them to KEY_SYSTEM_MESSAGE_ENTRIES

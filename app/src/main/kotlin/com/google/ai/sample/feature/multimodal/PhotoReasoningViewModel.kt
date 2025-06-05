@@ -28,11 +28,15 @@ import com.google.ai.sample.util.SystemMessageEntryPreferences // Added import
 import com.google.ai.sample.util.SystemMessageEntry // Added import
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+// import kotlinx.coroutines.isActive // Removed as we will use job.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.IOException
+// import kotlin.coroutines.coroutineContext // Removed if not used
+import java.util.concurrent.atomic.AtomicBoolean
 
 class PhotoReasoningViewModel(
     private var generativeModel: GenerativeModel,
@@ -86,23 +90,27 @@ class PhotoReasoningViewModel(
     
     // Maximum number of retry attempts for API calls
     private val MAX_RETRY_ATTEMPTS = 3
+    private var currentReasoningJob: Job? = null
+    private var commandProcessingJob: Job? = null
+    private val stopExecutionFlag = AtomicBoolean(false)
 
     fun reason(
         userInput: String,
         selectedImages: List<Bitmap>
     ) {
         _uiState.value = PhotoReasoningUiState.Loading
-        
+        stopExecutionFlag.set(false) // Reset flag at the beginning of a new reason call
+
         val prompt = "FOLLOW THE INSTRUCTIONS STRICTLY: $userInput"
-        
+
         // Store the current user input and selected images
         currentUserInput = userInput
         currentSelectedImages = selectedImages
-        
+
         // Clear previous commands
         _detectedCommands.value = emptyList()
         _commandExecutionStatus.value = ""
-        
+
         // Add user message to chat history
         val userMessage = PhotoReasoningMessage(
             text = userInput,
@@ -111,7 +119,7 @@ class PhotoReasoningViewModel(
         )
         _chatState.addMessage(userMessage)
         _chatMessagesFlow.value = chatMessages
-        
+
         // Add AI message with pending status
         val pendingAiMessage = PhotoReasoningMessage(
             text = "",
@@ -121,89 +129,211 @@ class PhotoReasoningViewModel(
         _chatState.addMessage(pendingAiMessage)
         _chatMessagesFlow.value = chatMessages
 
-        // Use application scope to prevent cancellation when app goes to background
-        PhotoReasoningApplication.applicationScope.launch(Dispatchers.IO) {
+        currentReasoningJob?.cancel() // Cancel any previous reasoning job
+        currentReasoningJob = PhotoReasoningApplication.applicationScope.launch(Dispatchers.IO) {
+            var shouldContinueProcessing = true
             // Create content with the current images and prompt
             val inputContent = content {
-                for (bitmap in selectedImages) {
-                    image(bitmap)
+                // Ensure line for original request: 136
+                if (currentReasoningJob?.isActive != true) {
+                    shouldContinueProcessing = false
+                    // No return here
                 }
-                text(prompt)
+                if (shouldContinueProcessing) { // Check flag before proceeding
+                    for (bitmap in selectedImages) {
+                        // Ensure line for original request: 138
+                        if (currentReasoningJob?.isActive != true) {
+                            shouldContinueProcessing = false
+                            break // Break from the for loop
+                        }
+                        if (!shouldContinueProcessing) break // Check flag again in case it was set by the outer check
+                        image(bitmap)
+                    }
+                }
+                if (shouldContinueProcessing) { // Check flag before proceeding
+                    // Ensure line for original request: 141
+                    if (currentReasoningJob?.isActive != true) {
+                        shouldContinueProcessing = false
+                        // No return here
+                    }
+                }
+                if (shouldContinueProcessing) { // Check flag before proceeding
+                    text(prompt)
+                }
             }
-            
-            // Try to send the message with retry logic for 503 errors
+
+            if (!shouldContinueProcessing) {
+                // If processing should not continue, we might need to update UI state
+                // For now, the existing check below should handle it.
+                // If specific UI updates are needed here, they can be added.
+                return@launch
+            }
+
+            if (currentReasoningJob?.isActive != true) return@launch // Check for cancellation outside content block
             sendMessageWithRetry(inputContent, 0)
         }
     }
-    
+
+    fun onStopClicked() {
+        stopExecutionFlag.set(true)
+        currentReasoningJob?.cancel()
+        commandProcessingJob?.cancel()
+
+        val lastMessage = chatMessages.lastOrNull()
+        val statusMessage = "Operation stopped by user."
+
+        if (lastMessage != null && lastMessage.participant == PhotoParticipant.MODEL && lastMessage.isPending) {
+            _chatState.replaceLastPendingMessage() // Remove pending message
+            _chatState.addMessage(
+                PhotoReasoningMessage(
+                    text = statusMessage,
+                    participant = PhotoParticipant.MODEL,
+                    isPending = false
+                )
+            )
+        } else if (lastMessage != null && lastMessage.participant == PhotoParticipant.MODEL && !lastMessage.isPending) {
+             // If the last message was a successful model response, update it.
+            _chatState.updateLastMessageText(lastMessage.text + "\n\n[Stopped by user]")
+        } else {
+            // If no relevant model message, or last message was user/error, add a new model message
+             _chatState.addMessage(
+                PhotoReasoningMessage(
+                    text = statusMessage,
+                    participant = PhotoParticipant.MODEL,
+                    isPending = false
+                )
+            )
+        }
+        _chatMessagesFlow.value = chatMessages
+
+
+        _uiState.value = PhotoReasoningUiState.Stopped
+        _commandExecutionStatus.value = "Stopped."
+        _detectedCommands.value = emptyList()
+        Log.d(TAG, "Stop clicked, operations cancelled, UI updated to Stopped state.")
+    }
+
     /**
      * Send a message to the AI with retry logic for 503 errors
-     * 
+     *
      * @param inputContent The content to send
      * @param retryCount The current retry count
      */
     private suspend fun sendMessageWithRetry(inputContent: Content, retryCount: Int) {
+        if (currentReasoningJob?.isActive != true || stopExecutionFlag.get()) { // Check for cancellation
+            _uiState.value = PhotoReasoningUiState.Success("Operation cancelled before sending.")
+            updateAiMessage("Operation cancelled.")
+            return
+        }
+        var shouldProceed = true // Flag to control further processing
+
         try {
             // Send the message to the chat to maintain context
             val response = chat.sendMessage(inputContent)
-            
+            if (currentReasoningJob?.isActive != true || stopExecutionFlag.get()) { // Check for cancellation
+                _uiState.value = PhotoReasoningUiState.Success("Operation cancelled after sending.")
+                updateAiMessage("Operation cancelled.")
+                return
+            }
+
             var outputContent = ""
-            
+
             // Process the response
             response.text?.let { modelResponse ->
                 outputContent = modelResponse
-                
-                withContext(Dispatchers.Main) {
-                    _uiState.value = PhotoReasoningUiState.Success(outputContent)
-                    
-                    // Update the AI message in chat history
-                    updateAiMessage(outputContent)
-                    
-                    // Parse and execute commands from the response
-                    processCommands(modelResponse)
+
+                if (currentReasoningJob?.isActive != true || stopExecutionFlag.get()) { // Check for cancellation
+                    _uiState.value = PhotoReasoningUiState.Success("Operation cancelled during response processing.")
+                    updateAiMessage("Operation cancelled.")
+                    shouldProceed = false // Signal to skip further processing
                 }
             }
-            
+
+            if (shouldProceed) { // Only proceed if not cancelled in the 'let' block
+                withContext(Dispatchers.Main) {
+                    if (currentReasoningJob?.isActive != true || stopExecutionFlag.get()) { // Re-check for cancellation
+                        _uiState.value = PhotoReasoningUiState.Success("Operation cancelled.")
+                        updateAiMessage("Operation cancelled.")
+                        // No return@withContext, logic will naturally skip due to outer 'if (shouldProceed)' and this check
+                    } else {
+                        _uiState.value = PhotoReasoningUiState.Success(outputContent)
+
+                        // Update the AI message in chat history
+                        updateAiMessage(outputContent)
+
+                        // Parse and execute commands from the response
+                        // Ensure modelResponse is accessible or passed correctly if needed here
+                        // Assuming outputContent is what's needed for processCommands if modelResponse was scoped to 'let'
+                        response.text?.let { modelResponse -> // Re-access modelResponse safely
+                            processCommands(modelResponse)
+                        }
+                    }
+                }
+            }
+
+
             // Save chat history after successful response
-            withContext(Dispatchers.Main) {
-                saveChatHistory(MainActivity.getInstance()?.applicationContext)
+            // Ensure this runs only if processing was successful and not cancelled
+            if (shouldProceed && currentReasoningJob?.isActive == true && !stopExecutionFlag.get()) {
+                withContext(Dispatchers.Main) {
+                    // Ensure we are still active before saving
+                    if (currentReasoningJob?.isActive == true && !stopExecutionFlag.get()) {
+                        saveChatHistory(MainActivity.getInstance()?.applicationContext)
+                    }
+                }
             }
         } catch (e: Exception) {
+            if (currentReasoningJob?.isActive != true || stopExecutionFlag.get()) { // Check for cancellation during exception handling
+                _uiState.value = PhotoReasoningUiState.Error("Operation cancelled during error handling.")
+                updateAiMessage("Operation cancelled during error handling.")
+                return
+            }
             Log.e(TAG, "Error generating content: ${e.message}", e)
-            
+
             // Check specifically for quota exceeded errors first
             if (isQuotaExceededError(e) && apiKeyManager != null) {
+                if (currentReasoningJob?.isActive != true || stopExecutionFlag.get()) return // Check for cancellation
                 handleQuotaExceededError(e, inputContent, retryCount)
                 return
             }
-            
+
             // Check for other 503 errors
             if (is503Error(e) && apiKeyManager != null) {
+                if (currentReasoningJob?.isActive != true || stopExecutionFlag.get()) return // Check for cancellation
                 handle503Error(e, inputContent, retryCount)
                 return
             }
-            
+
             // If we get here, it's not a 503 error or quota exceeded error
-            withContext(Dispatchers.Main) {
-                _uiState.value = PhotoReasoningUiState.Error(e.localizedMessage ?: "Unknown error")
-                _commandExecutionStatus.value = "Error during generation: ${e.localizedMessage}"
-                
-                // Update chat with error message
-                _chatState.replaceLastPendingMessage()
-                _chatState.addMessage(
-                    PhotoReasoningMessage(
-                        text = e.localizedMessage ?: "Unknown error",
-                        participant = PhotoParticipant.ERROR
-                    )
-                )
-                _chatMessagesFlow.value = chatMessages
-                
-                // Save chat history even after error
-                saveChatHistory(MainActivity.getInstance()?.applicationContext)
+            if (currentReasoningJob?.isActive == true && !stopExecutionFlag.get()) {
+                withContext(Dispatchers.Main) {
+                     if (currentReasoningJob?.isActive != true || stopExecutionFlag.get()) {
+                        // If cancelled, potentially update UI or log, but don't proceed with error state for this exception
+                     } else {
+                        _uiState.value = PhotoReasoningUiState.Error(e.localizedMessage ?: "Unknown error")
+                        _commandExecutionStatus.value = "Error during generation: ${e.localizedMessage}"
+
+                        // Update chat with error message
+                        _chatState.replaceLastPendingMessage()
+                        _chatState.addMessage(
+                            PhotoReasoningMessage(
+                                text = e.localizedMessage ?: "Unknown error",
+                                participant = PhotoParticipant.ERROR
+                            )
+                        )
+                        _chatMessagesFlow.value = chatMessages
+
+                        // Save chat history even after error
+                        saveChatHistory(MainActivity.getInstance()?.applicationContext)
+                    }
+                }
+            } else {
+                 _uiState.value = PhotoReasoningUiState.Error("Operation cancelled during error processing.")
+                 updateAiMessage("Operation cancelled during error processing.")
             }
         }
     }
-    
+
     /**
      * Check if an exception represents a quota exceeded error
      * 
@@ -251,6 +381,7 @@ class PhotoReasoningViewModel(
      * Handle quota exceeded errors specifically
      */
     private suspend fun handleQuotaExceededError(e: Exception, inputContent: Content, retryCount: Int) {
+        if (currentReasoningJob?.isActive != true || stopExecutionFlag.get()) return // Check for cancellation
         // Mark the current API key as failed
         val currentKey = MainActivity.getInstance()?.getCurrentApiKey()
         if (currentKey != null && apiKeyManager != null) {
@@ -327,17 +458,19 @@ class PhotoReasoningViewModel(
                     )
                     
                     // Retry the request with the new API key
+                    if (currentReasoningJob?.isActive != true || stopExecutionFlag.get()) return // Check for cancellation
                     sendMessageWithRetry(inputContent, retryCount + 1)
                     return
                 }
             }
         }
     }
-    
+
     /**
      * Handle 503 errors (excluding quota exceeded errors)
      */
     private suspend fun handle503Error(e: Exception, inputContent: Content, retryCount: Int) {
+        if (currentReasoningJob?.isActive != true || stopExecutionFlag.get()) return // Check for cancellation
         // Mark the current API key as failed
         val currentKey = MainActivity.getInstance()?.getCurrentApiKey()
         if (currentKey != null && apiKeyManager != null) {
@@ -411,39 +544,52 @@ class PhotoReasoningViewModel(
                     )
                     
                     // Retry the request with the new API key
+                    if (currentReasoningJob?.isActive != true || stopExecutionFlag.get()) return // Check for cancellation
                     sendMessageWithRetry(inputContent, retryCount + 1)
                     return
                 }
             }
         }
     }
-    
+
     /**
      * Update the AI message in chat history
      */
-    private fun updateAiMessage(text: String) {
-        // Find the last AI message and update it
+    private fun updateAiMessage(text: String, isPending: Boolean = false) {
+        // Find the last AI message and update it or add a new one if no suitable message exists
         val messages = _chatState.messages.toMutableList()
         val lastAiMessageIndex = messages.indexOfLast { it.participant == PhotoParticipant.MODEL }
-        
-        if (lastAiMessageIndex >= 0) {
-            val updatedMessage = messages[lastAiMessageIndex].copy(text = text, isPending = false)
+
+        if (lastAiMessageIndex >= 0 && messages[lastAiMessageIndex].isPending) {
+            // If last AI message is pending, update it
+            val updatedMessage = messages[lastAiMessageIndex].copy(text = text, isPending = isPending)
             messages[lastAiMessageIndex] = updatedMessage
-            
-            // Clear and re-add all messages to maintain order
-            _chatState.clearMessages()
-            for (message in messages) {
-                _chatState.addMessage(message)
-            }
-            
-            // Update the flow
-            _chatMessagesFlow.value = chatMessages
-            
-            // Save chat history after updating message
-            saveChatHistory(MainActivity.getInstance()?.applicationContext)
+        } else if (lastAiMessageIndex >=0 && !messages[lastAiMessageIndex].isPending && text.startsWith(messages[lastAiMessageIndex].text)) {
+            // If last AI message is not pending, but the new text is an extension, update it (e.g. for stop message)
+            val updatedMessage = messages[lastAiMessageIndex].copy(text = text, isPending = isPending)
+            messages[lastAiMessageIndex] = updatedMessage
+        }
+        else {
+            // Otherwise, add a new AI message
+            messages.add(PhotoReasoningMessage(text = text, participant = PhotoParticipant.MODEL, isPending = isPending))
+        }
+
+        // Clear and re-add all messages to maintain order
+        _chatState.clearMessages()
+        for (message in messages) {
+            _chatState.addMessage(message)
+        }
+
+        // Update the flow
+        _chatMessagesFlow.value = chatMessages
+
+        // Save chat history after updating message
+        // Only save if the operation wasn't stopped, or if it's a deliberate update after stopping
+        if (!stopExecutionFlag.get() || text.contains("stopped by user", ignoreCase = true)) {
+             saveChatHistory(MainActivity.getInstance()?.applicationContext)
         }
     }
-    
+
     /**
      * Update the system message
      */
@@ -487,42 +633,68 @@ class PhotoReasoningViewModel(
      * Process commands found in the AI response
      */
     private fun processCommands(text: String) {
-        PhotoReasoningApplication.applicationScope.launch(Dispatchers.Main) {
+        commandProcessingJob?.cancel() // Cancel any previous command processing
+        commandProcessingJob = PhotoReasoningApplication.applicationScope.launch(Dispatchers.Main) {
+            if (commandProcessingJob?.isActive != true || stopExecutionFlag.get()) return@launch // Check for cancellation
             try {
                 // Parse commands from the text
                 val commands = CommandParser.parseCommands(text)
-                
+
                 if (commands.isNotEmpty()) {
+                    if (commandProcessingJob?.isActive != true || stopExecutionFlag.get()) return@launch
                     Log.d(TAG, "Found ${commands.size} commands in response")
-                    
+
                     // Update the detected commands
                     val currentCommands = _detectedCommands.value.toMutableList()
                     currentCommands.addAll(commands)
                     _detectedCommands.value = currentCommands
-                    
+
                     // Update status to show commands were detected
-                    val commandDescriptions = commands.joinToString("; ") { command -> 
+                    val commandDescriptions = commands.joinToString("; ") { command ->
                         command.toString()
                     }
                     _commandExecutionStatus.value = "Commands detected: $commandDescriptions"
-                    
+
                     // Execute the commands
                     for (command in commands) {
+                        if (commandProcessingJob?.isActive != true || stopExecutionFlag.get()) { // Check for cancellation before executing each command
+                            Log.d(TAG, "Command execution stopped before executing: $command")
+                            _commandExecutionStatus.value = "Command execution stopped."
+                            break // Exit loop if cancelled
+                        }
                         try {
+                            Log.d(TAG, "Executing command: $command")
                             ScreenOperatorAccessibilityService.executeCommand(command)
+                            // Check immediately after execution attempt if a stop was requested
+                            if (stopExecutionFlag.get()) {
+                                Log.d(TAG, "Command execution stopped after attempting: $command")
+                                _commandExecutionStatus.value = "Command execution stopped."
+                                break
+                            }
                         } catch (e: Exception) {
+                            if (commandProcessingJob?.isActive != true || stopExecutionFlag.get()) break // Exit loop if cancelled during error handling
                             Log.e(TAG, "Error executing command: ${e.message}", e)
                             _commandExecutionStatus.value = "Error during command execution: ${e.message}"
                         }
                     }
+                     if (stopExecutionFlag.get()){
+                        _commandExecutionStatus.value = "Command processing loop was stopped."
+                    }
                 }
             } catch (e: Exception) {
+                 if (commandProcessingJob?.isActive != true || stopExecutionFlag.get()) return@launch
                 Log.e(TAG, "Error processing commands: ${e.message}", e)
                 _commandExecutionStatus.value = "Error during command processing: ${e.message}"
+            } finally {
+                if (stopExecutionFlag.get()){
+                     _commandExecutionStatus.value = "Command processing finished after stop request."
+                }
+                // Reset flag after processing is complete or stopped to allow future executions
+                // No, don't reset here. Reset at the beginning of 'reason' or when stop is explicitly cleared.
             }
         }
     }
-    
+
     /**
      * Save chat history to SharedPreferences
      */
@@ -788,22 +960,29 @@ class PhotoReasoningViewModel(
      */
     private class ChatState {
         private val _messages = mutableListOf<PhotoReasoningMessage>()
-        
+
         val messages: List<PhotoReasoningMessage>
             get() = _messages.toList()
-        
+
         fun addMessage(message: PhotoReasoningMessage) {
             _messages.add(message)
         }
-        
+
         fun clearMessages() {
             _messages.clear()
         }
-        
+
         fun replaceLastPendingMessage() {
             val lastPendingIndex = _messages.indexOfLast { it.isPending }
             if (lastPendingIndex >= 0) {
                 _messages.removeAt(lastPendingIndex)
+            }
+        }
+
+        fun updateLastMessageText(newText: String) {
+            if (_messages.isNotEmpty()) {
+                val lastMessage = _messages.last()
+                _messages[_messages.size -1] = lastMessage.copy(text = newText, isPending = false)
             }
         }
     }
