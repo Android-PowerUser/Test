@@ -181,7 +181,7 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
             Log.d(TAG, "Next command in queue is TakeScreenshot, scheduling with 850ms delay.")
             850L
         } else {
-            200L
+            500L
         }
 
         handler.postDelayed({
