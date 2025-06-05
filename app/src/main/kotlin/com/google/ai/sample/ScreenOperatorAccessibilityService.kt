@@ -115,8 +115,9 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
             serviceInstance!!.commandQueue.add(command)
             Log.d(TAG, "Command $command added to queue. Queue size: ${serviceInstance!!.commandQueue.size}")
 
-            if (!serviceInstance!!.isProcessingQueue.get()) {
-                 serviceInstance!!.processCommandQueue() // Call the instance method
+            // Ensure processCommandQueue is called on the service's handler thread
+            serviceInstance!!.handler.post {
+                serviceInstance!!.processCommandQueue()
             }
         }
 
