@@ -44,7 +44,7 @@ object SystemMessageEntryPreferences {
                     ),
                     SystemMessageEntry(
                         title = "Chromium-based Browser",
-                        guide = "//To see more in a screenshot, you may want to consider zooming out. To do this, tap the three vertical dots, select the appropriate location in the menu, and then tap the "-" (multiple times). You can only zoom out to 50%.\""
+                        guide = "//To see more in a screenshot, you may want to consider zooming out. To do this, tap the three vertical dots, select the appropriate location in the menu, and then tap the 'minus' symbol (multiple times). You can only zoom out to 50%.\""
                     )
                 )
                 saveEntries(context, defaultEntries) // This saves them to KEY_SYSTEM_MESSAGE_ENTRIES
