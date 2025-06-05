@@ -216,7 +216,7 @@ class PhotoReasoningViewModel(
                 if (currentReasoningJob?.isActive != true || stopExecutionFlag.get()) { // Check for cancellation
                      _uiState.value = PhotoReasoningUiState.Success("Operation cancelled during response processing.")
                     updateAiMessage("Operation cancelled.")
-                    return
+                    return@let
                 }
                 withContext(Dispatchers.Main) {
                      if (currentReasoningJob?.isActive != true || stopExecutionFlag.get()) { // Check for cancellation
