@@ -254,13 +254,7 @@ object CommandParser {
                 var canAdd = true
                 // Use commandTypeFromMatch directly here
                 val isSingleInstanceType = when (commandTypeFromMatch) {
-                    CommandTypeEnum.TAKE_SCREENSHOT,
-                    CommandTypeEnum.PRESS_HOME,
-                    CommandTypeEnum.PRESS_BACK,
-                    CommandTypeEnum.SHOW_RECENT_APPS,
-                    CommandTypeEnum.USE_HIGH_REASONING_MODEL,
-                    CommandTypeEnum.USE_LOW_REASONING_MODEL,
-                    CommandTypeEnum.PRESS_ENTER_KEY -> true
+                    CommandTypeEnum.TAKE_SCREENSHOT -> true // Only TakeScreenshot is single-instance
                     else -> false
                 }
                 if (isSingleInstanceType) {
