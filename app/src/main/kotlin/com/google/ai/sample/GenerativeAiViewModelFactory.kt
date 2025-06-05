@@ -12,8 +12,8 @@ import com.google.ai.sample.feature.multimodal.PhotoReasoningViewModel
 enum class ModelOption(val displayName: String, val modelName: String) {
     GEMINI_FLASH_LITE("Gemini 2.0 Flash Lite", "gemini-2.0-flash-lite"),
     GEMINI_FLASH("Gemini 2.0 Flash", "gemini-2.0-flash"),
-    GEMINI_FLASH_PREVIEW("Gemini 2.5 Flash Preview", "gemini-2.5-flash-preview-04-17"),
-    GEMINI_PRO("Gemini 2.5 Pro (maybe don't work)", "gemini-2.5-pro-preview-05-06")
+    GEMINI_FLASH_PREVIEW("Gemini 2.5 Flash Preview", "gemini-2.5-flash-preview-05-20"),
+    GEMINI_PRO("Gemini 2.5 Pro (maybe don't work)", "gemini-2.5-pro-preview-06-05")
 }
 
 val GenerativeViewModelFactory = object : ViewModelProvider.Factory {
@@ -21,7 +21,7 @@ val GenerativeViewModelFactory = object : ViewModelProvider.Factory {
     private var currentModelName = ModelOption.GEMINI_FLASH_PREVIEW.modelName
     
     /**
-     * Set the model to high reasoning capability (gemini-2.5-pro-preview-03-25)
+     * Set the model to high reasoning capability (gemini-2.5-pro-preview-06-05)
      */
     fun highReasoningModel() {
         currentModelName = ModelOption.GEMINI_PRO.modelName
