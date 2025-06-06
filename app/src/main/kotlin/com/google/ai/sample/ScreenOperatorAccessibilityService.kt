@@ -1,5 +1,6 @@
 package com.google.ai.sample
 
+import com.google.ai.sample.MainActivity // Added import
 import android.accessibilityservice.AccessibilityService
 import android.accessibilityservice.AccessibilityServiceInfo
 import android.accessibilityservice.GestureDescription
