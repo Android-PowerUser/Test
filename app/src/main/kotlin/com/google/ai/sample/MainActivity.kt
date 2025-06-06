@@ -20,7 +20,7 @@ import android.view.ViewTreeObserver
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
-import androidx.activity.result.ActivityResultLauncher // Added import
+import androidx.activity.result.ActivityResultLauncher
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -67,13 +67,12 @@ import com.android.billingclient.api.QueryPurchasesParams
 import com.google.ai.sample.feature.multimodal.PhotoReasoningRoute
 import com.google.ai.sample.feature.multimodal.PhotoReasoningViewModel
 import com.google.ai.sample.ui.theme.GenerativeAISample
+import com.google.ai.sample.util.NotificationUtil
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
-import com.google.ai.sample.util.NotificationUtil // Added
-import kotlinx.coroutines.flow.collect // Added for flow collection
-import androidx.lifecycle.lifecycleScope // Added for lifecycleScope
 
 class MainActivity : ComponentActivity() {
 
@@ -99,7 +98,35 @@ class MainActivity : ComponentActivity() {
     private var permissionRequestCount by mutableStateOf(0)
 
     private lateinit var navController: NavHostController
-    private lateinit var requestNotificationPermissionLauncher: ActivityResultLauncher<String> // For single notification permission
+
+    // Permission Launchers
+    private lateinit var requestNotificationPermissionLauncher: ActivityResultLauncher<String>
+    private val requestPermissionLauncher = registerForActivityResult(
+        ActivityResultContracts.RequestMultiplePermissions()
+    ) { permissions ->
+        Log.d(TAG, "requestPermissionLauncher callback received. Permissions: $permissions")
+        val allGranted = permissions.entries.all { it.value }
+        if (allGranted) {
+            Log.i(TAG, "All required permissions granted by user.")
+            updateStatusMessage("All required permissions granted")
+        } else {
+            val deniedPermissions = permissions.entries.filter { !it.value }.map { it.key }
+            Log.w(TAG, "Permissions denied. Current request count: $permissionRequestCount. Denied permissions: $deniedPermissions")
+
+            if (permissionRequestCount == 1) {
+                Log.i(TAG, "Permissions denied once. Showing rationale dialog again for a second attempt.")
+                showPermissionRationaleDialog = true
+            } else if (permissionRequestCount >= 2) {
+                Log.w(TAG, "Permissions denied after second formal request (request count: $permissionRequestCount). App will exit.")
+                Toast.makeText(this, "Without this authorization, operation is not possible.", Toast.LENGTH_LONG).show()
+                finish()
+            } else {
+                Log.e(TAG, "Permissions denied with unexpected permissionRequestCount: $permissionRequestCount. Exiting.")
+                Toast.makeText(this, "Permissions repeatedly denied. Operation not possible.", Toast.LENGTH_LONG).show()
+                finish()
+            }
+        }
+    }
 
     // START: Added for Accessibility Service Status
     private val _isAccessibilityServiceEnabled = MutableStateFlow(false)
@@ -206,7 +233,6 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-
     internal fun requestManageExternalStoragePermission() {
         Log.d(TAG, "requestManageExternalStoragePermission (dummy) called.")
     }
@@ -237,6 +263,17 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    private val requiredPermissions = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+        arrayOf(
+            Manifest.permission.READ_MEDIA_IMAGES,
+            Manifest.permission.READ_MEDIA_VIDEO
+        )
+    } else {
+        arrayOf(
+            Manifest.permission.READ_EXTERNAL_STORAGE,
+            Manifest.permission.WRITE_EXTERNAL_STORAGE
+        )
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         Log.d(TAG, "onCreate: Activity creating.")
@@ -403,41 +440,13 @@ class MainActivity : ComponentActivity() {
 
         requestNotificationPermissionLauncher = registerForActivityResult(ActivityResultContracts.RequestPermission()) { isGranted: Boolean ->
             if (isGranted) {
-                // Permission is granted. You can now show notifications.
                 Toast.makeText(this, "Notification permission granted.", Toast.LENGTH_SHORT).show()
             } else {
-                // Permission denied. Inform the user that the feature is unavailable.
                 Toast.makeText(this, "Notification permission denied. Stop via notification will not be available.", Toast.LENGTH_LONG).show()
             }
-            // Optionally, refresh any UI that depends on this permission
         }
 
-        // Collect showStopNotificationFlow from ViewModel
-        // Ensure photoReasoningViewModel is initialized before this.
-        // A null check or late initialization observer might be needed if ViewModel init is delayed.
-        // For this subtask, assuming it's available after setContent or similar.
-        // A safer place might be after ViewModel is confirmed initialized.
-        // Let's assume photoReasoningViewModel will be initialized by the time setContent completes
-        // or shortly after, and PhotoReasoningRoute will set it.
-        // To be robust, this collection should ideally start once photoReasoningViewModel is confirmed.
-        // However, the getPhotoReasoningViewModel() could return null initially.
-        // Awaiting ViewModel to be set via setPhotoReasoningViewModel.
-        // For now, placing it here with a check.
-        // This is a bit tricky because the ViewModel is set from the Composable route.
-        // A better pattern might be to have the ViewModel passed to MainActivity or use a shared Activity-level ViewModel.
-        // For now, let's try to collect when it becomes available.
-        // This specific placement might be problematic if the VM is not ready.
-        // A launchWhenStarted or similar might be better, or observing a LiveData/StateFlow for VM availability.
-        // The original prompt implies photoReasoningViewModel is already a member, let's use it.
-        // It IS initialized in setContent -> AppNavigation -> PhotoReasoningRoute -> viewModel()
-        // The issue is collecting it *here* in onCreate if that VM is created *later*.
-        // The current `photoReasoningViewModel` member is nullable and set via `setPhotoReasoningViewModel`.
-        // This collection needs to happen *after* `setPhotoReasoningViewModel` is called.
-        }
-
-        // Placed here, at the end of onCreate, after setContent and other initializations.
-        // This relies on photoReasoningViewModel being set by PhotoReasoningRoute during setContent.
-        if (photoReasoningViewModel != null) { // Check if VM is already set
+        if (photoReasoningViewModel != null) {
             lifecycleScope.launch {
                 photoReasoningViewModel!!.showStopNotificationFlow.collect { show ->
                     if (show) {
@@ -448,12 +457,7 @@ class MainActivity : ComponentActivity() {
                 }
             }
         } else {
-            // This is a fallback if VM is not immediately available.
-            // A more robust solution would involve a callback or a StateFlow for VM availability.
             Log.w(TAG, "photoReasoningViewModel is null at the end of onCreate. Notification flow collection might be delayed or not start if VM is set much later or never.")
-            // One strategy could be to start collecting in onResume and cancel in onPause, checking for VM nullity.
-            // Or use a lifecycle observer for the view model if it were an AndroidViewModel.
-            // For now, this explicit check and potential log is the best under current structure.
         }
     }
 
@@ -469,19 +473,15 @@ class MainActivity : ComponentActivity() {
         return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
         } else {
-            true // Notifications are implicitly granted on older versions
+            true
         }
     }
 
     fun requestNotificationPermission() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             if (shouldShowRequestPermissionRationale(Manifest.permission.POST_NOTIFICATIONS)) {
-                // This is a good place to show a system-recommended rationale if needed,
-                // but our custom dialog in the screen handles the initial rationale.
-                // For now, just request. If user denies twice, system handles "don't ask again".
                 requestNotificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
             } else {
-                // Directly request if rationale isn't needed or already handled by system for "don't ask again"
                 requestNotificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
             }
         }
@@ -548,7 +548,6 @@ class MainActivity : ComponentActivity() {
                     }
                 }
             }
-            // Weitere Routen hier...
         }
     }
 
@@ -756,7 +755,7 @@ class MainActivity : ComponentActivity() {
             QueryPurchasesParams.newBuilder().setProductType(BillingClient.ProductType.SUBS).build()
         ) { billingResult, purchases ->
             Log.i(TAG, "queryActiveSubscriptions result: ResponseCode: ${billingResult.responseCode}, Message: ${billingResult.debugMessage}, Purchases count: ${purchases.size}")
-            var isSubscribedLocally = false // Lokale Variable für diese Abfrage
+            var isSubscribedLocally = false
             if (billingResult.responseCode == BillingClient.BillingResponseCode.OK) {
                 purchases.forEach { purchase ->
                     Log.d(TAG, "queryActiveSubscriptions: Checking purchase - Products: ${purchase.products}, State: ${purchase.purchaseState}")
@@ -791,52 +790,41 @@ class MainActivity : ComponentActivity() {
                     }
                 } else {
                     Log.i(TAG, "queryActiveSubscriptions: User has no active subscription for $subscriptionProductId. Re-evaluating trial logic.")
-                    // --- START: MODIFICATION ---
                     if (TrialManager.isPurchased(this@MainActivity)) {
                         Log.w(TAG, "queryActiveSubscriptions: No active subscription found by Google Play Billing, but app was previously marked as purchased. Clearing purchase mark.")
                         TrialManager.clearPurchaseMark(this@MainActivity)
                     }
-                    // --- END: MODIFICATION ---
                     if (TrialManager.getTrialState(this, null) != TrialManager.TrialState.PURCHASED) {
                         Log.d(TAG, "queryActiveSubscriptions: No active sub, and TrialManager confirms not purchased. Re-evaluating trial state and starting service if needed.")
                         updateTrialState(TrialManager.getTrialState(this, null))
-                        // --- START: MODIFICATION ---
                         if (currentTrialState == TrialManager.TrialState.EXPIRED_INTERNET_TIME_CONFIRMED) {
                             Log.i(TAG, "queryActiveSubscriptions: Subscription deactivated (no active sub and trial expired). Showing Toast.")
                             Toast.makeText(this@MainActivity, "Subscription is deactivated", Toast.LENGTH_LONG).show()
                         }
-                        // --- END: MODIFICATION ---
                         startTrialServiceIfNeeded()
                     } else {
                          Log.w(TAG, "queryActiveSubscriptions: No active sub from Google, but TrialManager says PURCHASED. This could be due to restored SharedPreferences without active subscription. Re-evaluating trial logic based on no internet time.")
                          updateTrialState(TrialManager.getTrialState(this, null))
-                         // --- START: MODIFICATION ---
                          if (currentTrialState == TrialManager.TrialState.EXPIRED_INTERNET_TIME_CONFIRMED) {
                             Log.i(TAG, "queryActiveSubscriptions: Subscription deactivated (no active sub, was purchased, now trial expired). Showing Toast.")
                             Toast.makeText(this@MainActivity, "Subscription is deactivated", Toast.LENGTH_LONG).show()
                          }
-                         // --- END: MODIFICATION ---
                          startTrialServiceIfNeeded()
                     }
                 }
             } else {
                 Log.e(TAG, "Failed to query active subscriptions: ${billingResult.debugMessage}")
                 Log.d(TAG, "queryActiveSubscriptions: Query failed. Re-evaluating trial state based on no internet time and starting service if needed.")
-                // --- START: MODIFICATION ---
-                // It's important to also check/clear purchase mark here if query fails but app thought it was purchased
                 if (TrialManager.isPurchased(this@MainActivity)) {
                     Log.w(TAG, "queryActiveSubscriptions: Failed to query active subscriptions, but app was previously marked as purchased. Clearing purchase mark.")
                     TrialManager.clearPurchaseMark(this@MainActivity)
                 }
-                // --- END: MODIFICATION ---
                 if (TrialManager.getTrialState(this, null) != TrialManager.TrialState.PURCHASED) {
                     updateTrialState(TrialManager.getTrialState(this, null))
-                    // --- START: MODIFICATION ---
                     if (currentTrialState == TrialManager.TrialState.EXPIRED_INTERNET_TIME_CONFIRMED) {
                         Log.i(TAG, "queryActiveSubscriptions: Subscription deactivated (query failed, trial expired). Showing Toast.")
                         Toast.makeText(this@MainActivity, "Subscription is deactivated", Toast.LENGTH_LONG).show()
                     }
-                    // --- END: MODIFICATION ---
                     startTrialServiceIfNeeded()
                 }
             }
@@ -885,7 +873,6 @@ class MainActivity : ComponentActivity() {
             billingClient.endConnection()
             Log.d(TAG, "onDestroy: BillingClient connection ended.")
         }
-        // Remove keyboard listener
         onGlobalLayoutListener?.let {
             findViewById<View>(android.R.id.content).viewTreeObserver.removeOnGlobalLayoutListener(it)
             Log.d(TAG, "onDestroy: Keyboard layout listener removed.")
@@ -903,63 +890,10 @@ class MainActivity : ComponentActivity() {
             ContextCompat.checkSelfPermission(this, it) != PackageManager.PERMISSION_GRANTED
         }.toTypedArray()
         if (permissionsToRequest.isNotEmpty()) {
-            // Original: requestPermissionLauncher.launch(permissionsToRequest)
-            // New:
             Log.i(TAG, "Required permissions not granted. Showing rationale dialog. Permissions: ${permissionsToRequest.joinToString()}")
             showPermissionRationaleDialog = true
         } else {
             Log.i(TAG, "All required permissions already granted.")
-            Log.d(TAG, "checkAndRequestPermissions: Permissions granted, calling startTrialServiceIfNeeded. Current state: $currentTrialState")
-            // TODO: It seems the startTrialServiceIfNeeded() call was here in the original code when permissions were granted.
-            // Confirm if it should remain here or be handled elsewhere. For now, keeping it as per the 'else' block's original apparent structure.
-            // Based on the prompt, only the 'if (permissionsToRequest.isNotEmpty())' block's direct action changes.
-        }
-    }
-
-    private val requiredPermissions = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-        arrayOf(
-            Manifest.permission.READ_MEDIA_IMAGES,
-            Manifest.permission.READ_MEDIA_VIDEO
-        )
-    } else {
-        arrayOf(
-            Manifest.permission.READ_EXTERNAL_STORAGE,
-            Manifest.permission.WRITE_EXTERNAL_STORAGE 
-        )
-    }
-
-    private val requestPermissionLauncher = registerForActivityResult(
-        ActivityResultContracts.RequestMultiplePermissions()
-    ) { permissions ->
-        Log.d(TAG, "requestPermissionLauncher callback received. Permissions: $permissions")
-        val allGranted = permissions.entries.all { it.value }
-        if (allGranted) {
-            Log.i(TAG, "All required permissions granted by user.")
-            updateStatusMessage("All required permissions granted")
-            // Any other logic that should happen when permissions are granted (e.g., related to trial service)
-            // This part should remain as it was if permissions being granted triggered other actions.
-        } else {
-            val deniedPermissions = permissions.entries.filter { !it.value }.map { it.key }
-            Log.w(TAG, "Permissions denied. Current request count: $permissionRequestCount. Denied permissions: $deniedPermissions")
-
-            if (permissionRequestCount == 1) {
-                // First denial, show rationale again
-                Log.i(TAG, "Permissions denied once. Showing rationale dialog again for a second attempt.")
-                showPermissionRationaleDialog = true
-                // Optionally, a less intrusive toast here, or none if the dialog is prominent enough.
-                // For now, let's rely on the dialog.
-            } else if (permissionRequestCount >= 2) {
-                // Second denial, show toast and exit
-                Log.w(TAG, "Permissions denied after second formal request (request count: $permissionRequestCount). App will exit.")
-                Toast.makeText(this, "Without this authorization, operation is not possible.", Toast.LENGTH_LONG).show()
-                finish()
-            } else {
-                // Should not happen if permissionRequestCount is managed correctly (starts at 0, increments before request)
-                // but as a fallback:
-                Log.e(TAG, "Permissions denied with unexpected permissionRequestCount: $permissionRequestCount. Exiting.")
-                Toast.makeText(this, "Permissions repeatedly denied. Operation not possible.", Toast.LENGTH_LONG).show()
-                finish()
-            }
         }
     }
 
@@ -970,17 +904,15 @@ class MainActivity : ComponentActivity() {
             Log.d(TAG, "getInstance() called. Returning instance: ${if(instance == null) "null" else "not null"}")
             return instance
         }
-        // SharedPreferences constants
-        private const val PREFS_NAME = "AppPrefs" // Use existing prefs name
+        private const val PREFS_NAME = "AppPrefs"
         private const val PREF_KEY_FIRST_LAUNCH_INFO_SHOWN = "firstLaunchInfoShown"
-        private const val KEY_NOTIFICATION_RATIONALE_SHOWN = "notification_rationale_shown" // New key
+        private const val KEY_NOTIFICATION_RATIONALE_SHOWN = "notification_rationale_shown"
     }
 
     override fun onNewIntent(intent: Intent?) {
         super.onNewIntent(intent)
         if (intent?.action == NotificationUtil.ACTION_STOP_OPERATION) {
             Log.d(TAG, "ACTION_STOP_OPERATION received from notification.")
-            // Ensure ViewModel is available
             photoReasoningViewModel?.onStopClicked() ?: run {
                 Log.w(TAG, "PhotoReasoningViewModel not initialized when trying to handle stop action from notification.")
             }
