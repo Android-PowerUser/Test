@@ -1062,7 +1062,9 @@ fun PhotoReasoningScreenPreviewWithContent() {
                 PhotoReasoningMessage(text = "I am here to help you. What do you want to know?", participant = PhotoParticipant.MODEL)
             ),
             isKeyboardOpen = false,
-            onStopClicked = {}
+            onStopClicked = {},
+            showNotificationRationaleDialog = false,
+            onShowNotificationRationaleDialogChange = {}
         )
     }
 }
@@ -1160,7 +1162,14 @@ val SystemMessageEntrySaver = Saver<SystemMessageEntry?, List<String?>>(
 @Composable
 @Preview(showSystemUi = true)
 fun PhotoReasoningScreenPreviewEmpty() {
-    MaterialTheme { PhotoReasoningScreen(isKeyboardOpen = false, onStopClicked = {}) }
+    MaterialTheme {
+        PhotoReasoningScreen(
+            isKeyboardOpen = false,
+            onStopClicked = {},
+            showNotificationRationaleDialog = false,
+            onShowNotificationRationaleDialogChange = {}
+        )
+    }
 }
 
 @Preview(showBackground = true)
