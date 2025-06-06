@@ -143,7 +143,10 @@ internal fun PhotoReasoningRoute(
     val systemMessage by viewModel.systemMessage.collectAsState()
     val chatMessages by viewModel.chatMessagesFlow.collectAsState()
 
-    var showNotificationRationaleDialog by rememberSaveable { mutableStateOf(false) } // Added
+    // Hoisted: var showNotificationRationaleDialog by rememberSaveable { mutableStateOf(false) }
+    // This state will now be managed in PhotoReasoningRoute and passed down.
+    var showNotificationRationaleDialogStateInRoute by rememberSaveable { mutableStateOf(false) }
+
 
     val coroutineScope = rememberCoroutineScope()
     val imageRequestBuilder = ImageRequest.Builder(LocalContext.current)
@@ -203,7 +206,9 @@ internal fun PhotoReasoningRoute(
             mainActivity?.getPhotoReasoningViewModel()?.clearChatHistory(context)
         },
         isKeyboardOpen = isKeyboardOpen,
-        onStopClicked = { viewModel.onStopClicked() }
+        onStopClicked = { viewModel.onStopClicked() },
+        showNotificationRationaleDialog = showNotificationRationaleDialogStateInRoute,
+        onShowNotificationRationaleDialogChange = { showNotificationRationaleDialogStateInRoute = it }
     )
 }
 
@@ -220,7 +225,9 @@ fun PhotoReasoningScreen(
     onEnableAccessibilityService: () -> Unit = {},
     onClearChatHistory: () -> Unit = {},
     isKeyboardOpen: Boolean,
-    onStopClicked: () -> Unit = {}
+    onStopClicked: () -> Unit = {},
+    showNotificationRationaleDialog: Boolean, // New parameter
+    onShowNotificationRationaleDialogChange: (Boolean) -> Unit // New parameter
 ) {
     var userQuestion by rememberSaveable { mutableStateOf("") }
     val imageUris = rememberSaveable(saver = UriSaver()) { mutableStateListOf() }
@@ -356,7 +363,7 @@ fun PhotoReasoningScreen(
                         val activity = context as? MainActivity
                         if (activity != null && !activity.isNotificationPermissionGranted()) {
                             if (!activity.hasShownNotificationRationale()) {
-                                showNotificationRationaleDialog = true
+                                onShowNotificationRationaleDialogChange(true) // Use new callback
                             } else {
                                 // Rationale already shown, or user previously denied.
                                 // Directly request permission or decide if reasoning should be blocked.
@@ -480,15 +487,15 @@ fun PhotoReasoningScreen(
         }
     }
 
-    if (showNotificationRationaleDialog) {
+    if (showNotificationRationaleDialog) { // Use new parameter
         AlertDialog(
-            onDismissRequest = { showNotificationRationaleDialog = false },
+            onDismissRequest = { onShowNotificationRationaleDialogChange(false) }, // Use new callback
             title = { Text("Notification Permission") },
             text = { Text("You can grant notification permission if you want to be able to stop Screen Operator via notifications.") },
             confirmButton = {
                 TextButton(
                     onClick = {
-                        showNotificationRationaleDialog = false
+                        onShowNotificationRationaleDialogChange(false) // Use new callback
                         val activity = context as? MainActivity
                         activity?.setNotificationRationaleShown(true)
                         activity?.requestNotificationPermission()
@@ -510,7 +517,7 @@ fun PhotoReasoningScreen(
                 }
             },
             dismissButton = {
-                 TextButton(onClick = { showNotificationRationaleDialog = false }) { Text("Cancel") }
+                 TextButton(onClick = { onShowNotificationRationaleDialogChange(false) }) { Text("Cancel") } // Use new callback
             }
         )
     }
