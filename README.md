@@ -13,7 +13,7 @@ This Android app operates the screen with commands from vision LLMs
 ### How to get it from Google Play
 <br/>
 
-Unfortunately, I need 12 testers for 14 days to publish the app on the Play Store and Google doesn't even update the index of this page. 💩
+Unfortunately, I need 12 testers for 14 days to publish the app on the Play Store.
 
 For the Play Store link to work you must first join the [Google Group](https://groups.google.com/g/Screen_Operator) (I didn't make that rule). You can then download it regularly from the [Play Store](https://play.google.com/store/apps/details?id=io.github.android_poweruser).
 
