@@ -449,9 +449,12 @@ class MainActivity : ComponentActivity() {
         if (photoReasoningViewModel != null) {
             lifecycleScope.launch {
                 photoReasoningViewModel!!.showStopNotificationFlow.collect { show ->
+                    Log.d(TAG, "showStopNotificationFlow collected value: $show")
                     if (show) {
+                        Log.d(TAG, "Calling showStopOperationNotification()")
                         showStopOperationNotification()
                     } else {
+                        Log.d(TAG, "Calling cancelStopOperationNotification()")
                         cancelStopOperationNotification()
                     }
                 }
@@ -462,7 +465,9 @@ class MainActivity : ComponentActivity() {
     }
 
     fun showStopOperationNotification() {
+        Log.d(TAG, "MainActivity.showStopOperationNotification() entered.")
         NotificationUtil.showStopNotification(this)
+        Log.d(TAG, "MainActivity.showStopOperationNotification() finished call to NotificationUtil.")
     }
 
     fun cancelStopOperationNotification() {

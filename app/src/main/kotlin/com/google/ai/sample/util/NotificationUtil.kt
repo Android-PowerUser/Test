@@ -13,6 +13,8 @@ import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
 import com.google.ai.sample.MainActivity
+import android.os.Build // Added import
+import android.util.Log // Added import
 // Import R class if needed for custom drawables, for android.R.drawable it's not needed.
 // import com.google.ai.sample.R
 
@@ -22,7 +24,7 @@ object NotificationUtil {
     const val CHANNEL_NAME = "Screen Operator Controls"
     const val NOTIFICATION_ID = 1001
     const val ACTION_STOP_OPERATION = "com.google.ai.sample.ACTION_STOP_OPERATION"
-    private const val TAG = "NotificationUtil"
+    private const val TAG = "NotificationUtil" // Ensure TAG is defined
 
     fun createNotificationChannel(context: Context) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -41,6 +43,7 @@ object NotificationUtil {
     }
 
     fun showStopNotification(context: Context) {
+        Log.d(TAG, "NotificationUtil.showStopNotification() entered.")
         // Create an Intent for MainActivity
         val intent = Intent(context, MainActivity::class.java).apply {
             action = ACTION_STOP_OPERATION
@@ -74,31 +77,27 @@ object NotificationUtil {
 
         val notificationManager = NotificationManagerCompat.from(context)
 
-        // Check for notification permission on Android 13+
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            if (ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) ==
-                PackageManager.PERMISSION_GRANTED
-            ) {
-                try {
-                    notificationManager.notify(NOTIFICATION_ID, notificationBuilder.build())
-                    Log.d(TAG, "Stop notification shown.")
-                } catch (e: SecurityException) {
-                    Log.e(TAG, "SecurityException while showing notification, even though permission was granted.", e)
-                }
-            } else {
-                Log.w(TAG, "Cannot show stop notification: POST_NOTIFICATIONS permission not granted.")
-                // Optionally, inform the user via a Toast or other means if this is critical
-                // Toast.makeText(context, "Notification permission needed to show stop control.", Toast.LENGTH_LONG).show()
+        val permissionGranted = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
+        } else {
+            true // Effectively granted for older versions
+        }
+        Log.d(TAG, "Notification permission granted: $permissionGranted (API Level: ${Build.VERSION.SDK_INT})")
+
+        if (permissionGranted) {
+            try {
+                Log.d(TAG, "Attempting to show notification (ID: $NOTIFICATION_ID).")
+                notificationManager.notify(NOTIFICATION_ID, notificationBuilder.build())
+                Log.d(TAG, "Stop notification shown successfully.")
+            } catch (e: SecurityException) {
+                Log.e(TAG, "SecurityException while showing notification, even though permission was granted.", e)
+            } catch (e: Exception) { // Catch any other exception during notify
+                Log.e(TAG, "Generic Exception while calling notificationManager.notify().", e)
             }
         } else {
-            // For older versions, permission is not needed at runtime in this manner
-            try {
-                notificationManager.notify(NOTIFICATION_ID, notificationBuilder.build())
-                Log.d(TAG, "Stop notification shown (pre-Android 13).")
-            } catch (e: Exception) {
-                // Catch any other potential exceptions, though less likely for notifications on older versions
-                Log.e(TAG, "Exception while showing notification (pre-Android 13).", e)
-            }
+            Log.w(TAG, "Cannot show stop notification: POST_NOTIFICATIONS permission not granted.")
+            // Optionally, inform the user via a Toast or other means if this is critical
+            // Toast.makeText(context, "Notification permission needed to show stop control.", Toast.LENGTH_LONG).show()
         }
     }
 

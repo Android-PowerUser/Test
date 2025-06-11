@@ -38,6 +38,7 @@ import android.widget.Toast
 import android.Manifest // For Manifest.permission.POST_NOTIFICATIONS
 import androidx.compose.material3.AlertDialog // For the rationale dialog
 import androidx.compose.runtime.saveable.rememberSaveable
+import android.util.Log
 
 data class MenuItem(
     val routeId: String,
@@ -192,19 +193,25 @@ fun MenuScreen(
                             } else {
                                 if (menuItem.routeId == "photo_reasoning") {
                                     val mainActivity = context as? MainActivity
-                                    if (mainActivity != null && !mainActivity.isNotificationPermissionGranted()) {
-                                        // Check if rationale should be shown
-                                        if (mainActivity.shouldShowRequestPermissionRationale(Manifest.permission.POST_NOTIFICATIONS) && !mainActivity.hasShownNotificationRationale()) {
-                                            showRationaleDialogForPhotoReasoning = true
-                                            // onItemClicked will be called from the dialog's OK button or if rationale is not shown
+                                    if (mainActivity != null) { // Ensure mainActivity is not null
+                                        if (!mainActivity.isNotificationPermissionGranted()) {
+                                            Log.d("MenuScreen", "Notification permission NOT granted.")
+                                            if (mainActivity.shouldShowRequestPermissionRationale(Manifest.permission.POST_NOTIFICATIONS) && !mainActivity.hasShownNotificationRationale()) {
+                                                Log.d("MenuScreen", "Showing notification rationale dialog.")
+                                                showRationaleDialogForPhotoReasoning = true
+                                                // onItemClicked will be called from dialog
+                                            } else {
+                                                Log.d("MenuScreen", "Rationale not needed or already handled. Requesting permission directly.")
+                                                mainActivity.requestNotificationPermission()
+                                                onItemClicked(menuItem.routeId) // Proceed to navigate
+                                            }
                                         } else {
-                                            // Rationale not needed or already shown and dismissed, directly request permission
-                                            mainActivity.requestNotificationPermission()
+                                            Log.d("MenuScreen", "Notification permission ALREADY granted.")
                                             onItemClicked(menuItem.routeId) // Proceed to navigate
                                         }
                                     } else {
-                                        // Permission already granted or not on Android 13+ or mainActivity is null
-                                        onItemClicked(menuItem.routeId) // Proceed to navigate
+                                        Log.e("MenuScreen", "MainActivity instance is null. Cannot check/request permission.")
+                                        onItemClicked(menuItem.routeId) // Proceed to navigate anyway
                                     }
                                 } else {
                                     // For other menu items, navigate directly
@@ -311,24 +318,26 @@ fun MenuScreen(
             confirmButton = {
                 TextButton(
                     onClick = {
+                        Log.d("MenuScreen", "Rationale dialog OK clicked.")
                         showRationaleDialogForPhotoReasoning = false
                         mainActivity?.setNotificationRationaleShown(true)
+                        Log.d("MenuScreen", "Requesting notification permission from rationale dialog.")
                         mainActivity?.requestNotificationPermission()
-                        mainActivity?.let { onItemClicked("photo_reasoning") } // Proceed to navigate
+                        // Log after to see if it's called immediately or if requestNotificationPermission is suspending (it's not)
+                        Log.d("MenuScreen", "Navigating to photo_reasoning after rationale OK.")
+                        mainActivity?.let { onItemClicked("photo_reasoning") }
                     }
-                ) {
-                    Text("OK")
-                }
+                ) { Text("OK") }
             },
             dismissButton = {
                 TextButton(
                     onClick = {
+                        Log.d("MenuScreen", "Rationale dialog Cancel clicked or dismissed.")
                         showRationaleDialogForPhotoReasoning = false
-                        mainActivity?.let { onItemClicked("photo_reasoning") } // Proceed to navigate even on cancel
+                        Log.d("MenuScreen", "Navigating to photo_reasoning after rationale cancel/dismiss.")
+                        mainActivity?.let { onItemClicked("photo_reasoning") }
                     }
-                ) {
-                    Text("Cancel")
-                }
+                ) { Text("Cancel") }
             }
         )
     }

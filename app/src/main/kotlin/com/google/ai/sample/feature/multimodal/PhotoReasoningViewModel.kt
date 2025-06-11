@@ -106,9 +106,12 @@ class PhotoReasoningViewModel(
         userInput: String,
         selectedImages: List<Bitmap>
     ) {
+        Log.d(TAG, "reason() called. User input: '$userInput', Image count: ${selectedImages.size}")
         _uiState.value = PhotoReasoningUiState.Loading
-        _showStopNotificationFlow.value = true // Show notification when loading starts
-        stopExecutionFlag.set(false) // Reset flag at the beginning of a new reason call
+        Log.d(TAG, "Setting _showStopNotificationFlow to true")
+        _showStopNotificationFlow.value = true
+        Log.d(TAG, "_showStopNotificationFlow value is now: ${_showStopNotificationFlow.value}")
+        stopExecutionFlag.set(false)
 
         val prompt = "FOLLOW THE INSTRUCTIONS STRICTLY: $userInput"
 
