@@ -2170,9 +2170,9 @@ fun pressEnterKey() {
             val nodeBounds = Rect()
             scrollableNode.getBoundsInScreen(nodeBounds)
             
-            val startX: Float
-            val swipeStartY: Float
-            val swipeEndY: Float
+            var startX: Float
+            var swipeStartY: Float
+            var swipeEndY: Float
 
             if (nodeBounds.width() > 0 && nodeBounds.height() > 0) {
                 startX = nodeBounds.centerX().toFloat()
@@ -2370,9 +2370,9 @@ fun pressEnterKey() {
             val nodeBounds = Rect()
             scrollableNode.getBoundsInScreen(nodeBounds)
 
-            val startX: Float
-            val swipeStartY: Float
-            val swipeEndY: Float
+            var startX: Float
+            var swipeStartY: Float
+            var swipeEndY: Float
 
             if (nodeBounds.width() > 0 && nodeBounds.height() > 0) {
                 startX = nodeBounds.centerX().toFloat()
@@ -2531,18 +2531,18 @@ fun pressEnterKey() {
         Log.d(TAG, "scrollLeft: Initiating scroll left (content moves left, viewport moves right).")
         // ACTION_SCROLL_LEFT: Action to scroll the content of the node to the left.
         // Gesture: Finger swipes from Left to Right.
-        val scrollableNode = findScrollableNode(null, null, android.view.accessibility.AccessibilityNodeInfo.ACTION_SCROLL_LEFT)
+        val scrollableNode = findScrollableNode(null, null, AccessibilityNodeInfo.ACTION_SCROLL_LEFT)
 
         if (scrollableNode == null) {
-            Log.w(TAG, "scrollLeft: No scrollable node found supporting ACTION_SCROLL_LEFT.")
+            Log.w(TAG, "scrollLeft: No scrollable node found supporting AccessibilityNodeInfo.ACTION_SCROLL_LEFT.")
             showToast("No scrollable area found to scroll left.", true)
             scheduleNextCommandProcessing()
             return
         }
 
-        val canScrollLeft = scrollableNode.actionList.any { it.id == android.view.accessibility.AccessibilityNodeInfo.ACTION_SCROLL_LEFT }
+        val canScrollLeft = scrollableNode.actionList.any { it.id == AccessibilityNodeInfo.ACTION_SCROLL_LEFT }
         if (!canScrollLeft) {
-            Log.i(TAG, "scrollLeft: Node does not support ACTION_SCROLL_LEFT. Node: $scrollableNode")
+            Log.i(TAG, "scrollLeft: Node does not support AccessibilityNodeInfo.ACTION_SCROLL_LEFT. Node: $scrollableNode")
             showToast("Reached end of scrollable area (left side of content visible) or node not scrollable left.", false)
             scrollableNode.recycle()
             scheduleNextCommandProcessing()
@@ -2558,9 +2558,9 @@ fun pressEnterKey() {
             val nodeBounds = Rect()
             scrollableNode.getBoundsInScreen(nodeBounds)
 
-            val startY: Float
-            val swipeStartX: Float
-            val swipeEndX: Float
+            var startY: Float
+            var swipeStartX: Float
+            var swipeEndX: Float
 
             if (nodeBounds.width() > 0 && nodeBounds.height() > 0) {
                 startY = nodeBounds.centerY().toFloat()
@@ -2635,18 +2635,18 @@ fun pressEnterKey() {
      */
     fun scrollLeft(x: Float, y: Float, distance: Float, duration: Long) {
         Log.d(TAG, "scrollLeft (coords): Initiating scroll left from ($x, $y), distance $distance, duration $duration. Content moves L, Finger L to R.")
-        val scrollableNode = findScrollableNode(x, y, android.view.accessibility.AccessibilityNodeInfo.ACTION_SCROLL_LEFT)
+        val scrollableNode = findScrollableNode(x, y, AccessibilityNodeInfo.ACTION_SCROLL_LEFT)
 
         if (scrollableNode == null) {
-            Log.w(TAG, "scrollLeft (coords): No scrollable node found at or containing ($x, $y) that supports ACTION_SCROLL_LEFT.")
+            Log.w(TAG, "scrollLeft (coords): No scrollable node found at or containing ($x, $y) that supports AccessibilityNodeInfo.ACTION_SCROLL_LEFT.")
             showToast("No scrollable area found at the specified coordinates to scroll left.", true)
             scheduleNextCommandProcessing()
             return
         }
 
-        val canScrollLeft = scrollableNode.actionList.any { it.id == android.view.accessibility.AccessibilityNodeInfo.ACTION_SCROLL_LEFT }
+        val canScrollLeft = scrollableNode.actionList.any { it.id == AccessibilityNodeInfo.ACTION_SCROLL_LEFT }
         if (!canScrollLeft) {
-            Log.i(TAG, "scrollLeft (coords): Node does not support ACTION_SCROLL_LEFT. Node: $scrollableNode")
+            Log.i(TAG, "scrollLeft (coords): Node does not support AccessibilityNodeInfo.ACTION_SCROLL_LEFT. Node: $scrollableNode")
             showToast("Reached end of scrollable area (left side of content) at coordinates or node not scrollable left.", false)
             scrollableNode.recycle()
             scheduleNextCommandProcessing()
@@ -2719,18 +2719,18 @@ fun pressEnterKey() {
         Log.d(TAG, "scrollRight: Initiating scroll right (content moves right, viewport moves left).")
         // ACTION_SCROLL_RIGHT: Action to scroll the content of the node to the right.
         // Gesture: Finger swipes from Right to Left.
-        val scrollableNode = findScrollableNode(null, null, android.view.accessibility.AccessibilityNodeInfo.ACTION_SCROLL_RIGHT)
+        val scrollableNode = findScrollableNode(null, null, AccessibilityNodeInfo.ACTION_SCROLL_RIGHT)
 
         if (scrollableNode == null) {
-            Log.w(TAG, "scrollRight: No scrollable node found supporting ACTION_SCROLL_RIGHT.")
+            Log.w(TAG, "scrollRight: No scrollable node found supporting AccessibilityNodeInfo.ACTION_SCROLL_RIGHT.")
             showToast("No scrollable area found to scroll right.", true)
             scheduleNextCommandProcessing()
             return
         }
 
-        val canScrollRight = scrollableNode.actionList.any { it.id == android.view.accessibility.AccessibilityNodeInfo.ACTION_SCROLL_RIGHT }
+        val canScrollRight = scrollableNode.actionList.any { it.id == AccessibilityNodeInfo.ACTION_SCROLL_RIGHT }
         if (!canScrollRight) {
-            Log.i(TAG, "scrollRight: Node does not support ACTION_SCROLL_RIGHT. Node: $scrollableNode")
+            Log.i(TAG, "scrollRight: Node does not support AccessibilityNodeInfo.ACTION_SCROLL_RIGHT. Node: $scrollableNode")
             showToast("Reached end of scrollable area (right side of content visible) or node not scrollable right.", false)
             scrollableNode.recycle()
             scheduleNextCommandProcessing()
@@ -2746,9 +2746,9 @@ fun pressEnterKey() {
             val nodeBounds = Rect()
             scrollableNode.getBoundsInScreen(nodeBounds)
 
-            val startY: Float
-            val swipeStartX: Float // Finger starts on the right
-            val swipeEndX: Float   // Finger ends on the left
+            var startY: Float
+            var swipeStartX: Float // Finger starts on the right
+            var swipeEndX: Float   // Finger ends on the left
 
             if (nodeBounds.width() > 0 && nodeBounds.height() > 0) {
                 startY = nodeBounds.centerY().toFloat()
@@ -2822,18 +2822,18 @@ fun pressEnterKey() {
      */
     fun scrollRight(x: Float, y: Float, distance: Float, duration: Long) {
         Log.d(TAG, "scrollRight (coords): Initiating scroll right from ($x, $y), distance $distance, duration $duration. Content moves R, Finger R to L.")
-        val scrollableNode = findScrollableNode(x, y, android.view.accessibility.AccessibilityNodeInfo.ACTION_SCROLL_RIGHT)
+        val scrollableNode = findScrollableNode(x, y, AccessibilityNodeInfo.ACTION_SCROLL_RIGHT)
 
         if (scrollableNode == null) {
-            Log.w(TAG, "scrollRight (coords): No scrollable node found at or containing ($x, $y) that supports ACTION_SCROLL_RIGHT.")
+            Log.w(TAG, "scrollRight (coords): No scrollable node found at or containing ($x, $y) that supports AccessibilityNodeInfo.ACTION_SCROLL_RIGHT.")
             showToast("No scrollable area found at the specified coordinates to scroll right.", true)
             scheduleNextCommandProcessing()
             return
         }
 
-        val canScrollRight = scrollableNode.actionList.any { it.id == android.view.accessibility.AccessibilityNodeInfo.ACTION_SCROLL_RIGHT }
+        val canScrollRight = scrollableNode.actionList.any { it.id == AccessibilityNodeInfo.ACTION_SCROLL_RIGHT }
         if (!canScrollRight) {
-            Log.i(TAG, "scrollRight (coords): Node does not support ACTION_SCROLL_RIGHT. Node: $scrollableNode")
+            Log.i(TAG, "scrollRight (coords): Node does not support AccessibilityNodeInfo.ACTION_SCROLL_RIGHT. Node: $scrollableNode")
             showToast("Reached end of scrollable area (right side of content) at coordinates or node not scrollable right.", false)
             scrollableNode.recycle()
             scheduleNextCommandProcessing()
