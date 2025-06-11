@@ -148,6 +148,95 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
 
     // App name to package mapper
     private lateinit var appNamePackageMapper: AppNamePackageMapper
+
+    /**
+     * Finds a scrollable node, optionally at the given coordinates and for a specific scroll direction.
+     * If x and y are null, it tries to find the largest scrollable view on screen relevant to the direction.
+     *
+     * @param x The x-coordinate to search at (optional).
+     * @param y The y-coordinate to search at (optional).
+     * @param scrollAction The accessibility action for the scroll direction (e.g., ACTION_SCROLL_FORWARD).
+     * @return The found AccessibilityNodeInfo, or null if not found. The caller is responsible for recycling this node.
+     */
+    private fun findScrollableNode(x: Float?, y: Float?, scrollAction: Int): AccessibilityNodeInfo? {
+        refreshRootNode() // Ensures rootNode is up-to-date
+
+        val currentRootNode = rootNode ?: run {
+            Log.e(TAG, "findScrollableNode: rootNode is null. Cannot search for scrollable nodes.")
+            // Consider calling refreshRootNode() here if it's suspected to be stale,
+            // but if it's still null after refresh, then there's nothing to search.
+            return null
+        }
+
+        val nodesFound = mutableListOf<AccessibilityNodeInfo>()
+
+        // Recursive function to traverse nodes
+        fun findNodes(node: AccessibilityNodeInfo) {
+            if (node.isVisibleToUser && node.isScrollable) {
+                // Check if node supports the specific scroll action
+                val supportedActions = node.actionList
+                var actionSupported = false
+                for (action in supportedActions) {
+                    if (action.id == scrollAction) {
+                        actionSupported = true
+                        break
+                    }
+                }
+
+                if (actionSupported) {
+                    if (x != null && y != null) {
+                        val bounds = Rect()
+                        node.getBoundsInScreen(bounds)
+                        if (bounds.contains(x.toInt(), y.toInt())) {
+                            nodesFound.add(AccessibilityNodeInfo.obtain(node))
+                        }
+                    } else {
+                        // If no coordinates, add any node that supports the action
+                        nodesFound.add(AccessibilityNodeInfo.obtain(node))
+                    }
+                }
+            }
+
+            for (i in 0 until node.childCount) {
+                node.getChild(i)?.let { child ->
+                    findNodes(child)
+                    // Do not recycle child here, as it's managed by the system or parent
+                }
+            }
+        }
+
+        findNodes(currentRootNode)
+
+        if (nodesFound.isEmpty()) {
+            Log.d(TAG, "findScrollableNode: No nodes found supporting scroll action $scrollAction" + if (x !=null) " at ($x, $y)" else "")
+            return null
+        }
+
+        // Determine the best node:
+        // If coordinates are given, prefer the smallest node containing the point.
+        // If no coordinates, prefer the largest scrollable node.
+        val bestNode: AccessibilityNodeInfo?
+        if (x != null && y != null) {
+            bestNode = nodesFound.minByOrNull {
+                val bounds = Rect()
+                it.getBoundsInScreen(bounds)
+                bounds.width() * bounds.height()
+            }
+            Log.d(TAG, "findScrollableNode: Found ${nodesFound.size} nodes at ($x, $y) for action $scrollAction. Smallest: $bestNode")
+        } else {
+            bestNode = nodesFound.maxByOrNull {
+                val bounds = Rect()
+                it.getBoundsInScreen(bounds)
+                bounds.width() * bounds.height()
+            }
+            Log.d(TAG, "findScrollableNode: Found ${nodesFound.size} general nodes for action $scrollAction. Largest: $bestNode")
+        }
+
+        // Recycle all nodes that were obtained and not chosen as the bestNode
+        nodesFound.forEach { if (it != bestNode) it.recycle() }
+
+        return bestNode
+    }
     
     override fun onServiceConnected() {
         super.onServiceConnected()
@@ -2050,58 +2139,106 @@ fun pressEnterKey() {
      * Scroll down on the screen using gesture
      */
     fun scrollDown() {
-        Log.d(TAG, "Scrolling down")
-        showToast("Scrolling down...", false)
-        
+        Log.d(TAG, "scrollDown: Initiating scroll down.")
+        // Use ACTION_SCROLL_FORWARD for scrolling content "down" (finger swipes up)
+        val scrollableNode = findScrollableNode(null, null, AccessibilityNodeInfo.ACTION_SCROLL_FORWARD)
+
+        if (scrollableNode == null) {
+            Log.w(TAG, "scrollDown: No scrollable node found supporting ACTION_SCROLL_FORWARD.")
+            showToast("No scrollable area found to scroll down.", true)
+            scheduleNextCommandProcessing()
+            return
+        }
+
+        // Double check the action is supported (findScrollableNode should ensure this, but defensive check)
+        val canScrollDown = scrollableNode.actionList.any { it.id == AccessibilityNodeInfo.ACTION_SCROLL_FORWARD }
+        if (!canScrollDown) {
+            Log.i(TAG, "scrollDown: Node does not support ACTION_SCROLL_FORWARD (unexpected). Node: $scrollableNode")
+            showToast("Reached end of scrollable area (bottom) or node not scrollable down.", false)
+            scrollableNode.recycle()
+            scheduleNextCommandProcessing()
+            return
+        }
+
+        Log.d(TAG, "scrollDown: Found scrollable node: $scrollableNode, attempting to scroll down.")
+
         try {
-            // Get display metrics to calculate swipe coordinates
             val displayMetrics = resources.displayMetrics
             val screenHeight = displayMetrics.heightPixels
             val screenWidth = displayMetrics.widthPixels
+
+            val nodeBounds = Rect()
+            scrollableNode.getBoundsInScreen(nodeBounds)
             
-            // Create a path for the gesture (swipe from middle-bottom to middle-top)
+            val startX: Float
+            val swipeStartY: Float
+            val swipeEndY: Float
+
+            if (nodeBounds.width() > 0 && nodeBounds.height() > 0) {
+                startX = nodeBounds.centerX().toFloat()
+                // For scrolling down, finger moves from bottom to top of the scrollable area
+                swipeStartY = nodeBounds.top + nodeBounds.height() * 0.8f // Start lower part of the node
+                swipeEndY = nodeBounds.top + nodeBounds.height() * 0.2f   // End upper part of the node
+            } else {
+                // Fallback to screen dimensions if node bounds are not valid
+                startX = screenWidth / 2f
+                swipeStartY = screenHeight * 0.8f // Start lower part of the screen
+                swipeEndY = screenHeight * 0.2f   // End upper part of the screen
+            }
+
+            // Ensure swipeStartY is actually above swipeEndY after calculations
+            if (swipeStartY <= swipeEndY) {
+                 Log.w(TAG, "scrollDown: Calculated swipe points are invalid (startY $swipeStartY <= endY $swipeEndY). Using screen defaults.")
+                 //This can happen if node height is very small.
+                 //Defaulting to a safer, screen-based swipe.
+                 swipeStartY = screenHeight * 0.8f
+                 swipeEndY = screenHeight * 0.2f
+            }
+
+
+            Log.d(TAG, "scrollDown: Swipe from ($startX, $swipeStartY) to ($startX, $swipeEndY)")
+
             val swipePath = Path()
-            swipePath.moveTo(screenWidth / 2f, screenHeight * 0.7f) // Start from 70% down the screen
-            swipePath.lineTo(screenWidth / 2f, screenHeight * 0.3f) // Move to 30% down the screen
+            swipePath.moveTo(startX, swipeStartY)
+            swipePath.lineTo(startX, swipeEndY)
             
-            // Create a gesture builder and add the swipe
             val gestureBuilder = GestureDescription.Builder()
-            val gesture = GestureDescription.StrokeDescription(
-                swipePath, 
-                0, // start time
-                300 // duration in milliseconds
-            )
+            // A bit longer duration for scroll, e.g. 400ms
+            val gesture = GestureDescription.StrokeDescription(swipePath, 0, 400)
             gestureBuilder.addStroke(gesture)
             
-            // Dispatch the gesture
             val result = dispatchGesture(
                 gestureBuilder.build(),
                 object : GestureResultCallback() {
                     override fun onCompleted(gestureDescription: GestureDescription) {
                         super.onCompleted(gestureDescription)
-                        Log.d(TAG, "Scroll down gesture completed")
-                        showToast("Successfully scrolled down", false)
+                        Log.d(TAG, "scrollDown: Gesture completed.")
+                        showToast("Scrolled down.", false)
+                        scrollableNode.recycle()
                         scheduleNextCommandProcessing()
                     }
                     
                     override fun onCancelled(gestureDescription: GestureDescription) {
                         super.onCancelled(gestureDescription)
-                        Log.e(TAG, "Scroll down gesture cancelled")
-                        showToast("Scroll down cancelled", true)
+                        Log.e(TAG, "scrollDown: Gesture cancelled.")
+                        showToast("Scroll down cancelled.", true)
+                        scrollableNode.recycle()
                         scheduleNextCommandProcessing()
                     }
                 },
-                null // handler
+                null
             )
             
             if (!result) {
-                Log.e(TAG, "Failed to dispatch scroll down gesture")
-                showToast("Error scrolling down", true)
+                Log.e(TAG, "scrollDown: Failed to dispatch scroll down gesture.")
+                showToast("Error performing scroll down.", true)
+                scrollableNode.recycle()
                 scheduleNextCommandProcessing()
             }
         } catch (e: Exception) {
-            Log.e(TAG, "Error scrolling down: ${e.message}")
+            Log.e(TAG, "scrollDown: Error during scroll down: ${e.message}", e)
             showToast("Error scrolling down: ${e.message}", true)
+            scrollableNode.recycle()
             scheduleNextCommandProcessing()
         }
     }
@@ -2115,58 +2252,87 @@ fun pressEnterKey() {
      * @param duration Duration of the scroll gesture in milliseconds
      */
     fun scrollDown(x: Float, y: Float, distance: Float, duration: Long) {
-        Log.d(TAG, "scrollDown method: Received x=$x, y=$y, distance=$distance, duration=$duration")
-        showToast("Scrolling down from specific position...", false)
+        Log.d(TAG, "scrollDown (coords): Initiating scroll down from ($x, $y), distance $distance, duration $duration.")
+        val scrollableNode = findScrollableNode(x, y, AccessibilityNodeInfo.ACTION_SCROLL_FORWARD)
+
+        if (scrollableNode == null) {
+            Log.w(TAG, "scrollDown (coords): No scrollable node found at or containing ($x, $y) that supports ACTION_SCROLL_FORWARD.")
+            showToast("No scrollable area found at the specified coordinates to scroll down.", true)
+            scheduleNextCommandProcessing()
+            return
+        }
+
+        val canScrollDown = scrollableNode.actionList.any { it.id == AccessibilityNodeInfo.ACTION_SCROLL_FORWARD }
+        if (!canScrollDown) {
+            Log.i(TAG, "scrollDown (coords): Node does not support ACTION_SCROLL_FORWARD. Node: $scrollableNode")
+            showToast("Reached end of scrollable area (bottom) at coordinates or node not scrollable down.", false)
+            scrollableNode.recycle()
+            scheduleNextCommandProcessing()
+            return
+        }
         
+        Log.d(TAG, "scrollDown (coords): Found scrollable node: $scrollableNode, attempting scroll.")
+
         try {
-            // Create a path for the gesture (swipe from specified position upward by the specified distance)
+            // For scrolling down, finger moves up.
+            val startGestureX = x
+            val startGestureY = y
+            val endGestureY = y - distance // Swipe finger upwards
+
+            // It's important that (x,y) are within the bounds of scrollableNode,
+            // or this gesture might occur outside the intended element.
+            // findScrollableNode tries to find a node at x,y.
+            // We could add a check here:
+            val nodeBounds = Rect()
+            scrollableNode.getBoundsInScreen(nodeBounds)
+            if (!nodeBounds.contains(x.toInt(), y.toInt())) {
+                Log.w(TAG, "scrollDown (coords): Provided coordinates ($x, $y) are outside the bounds of the found scrollable node $nodeBounds. Gesture might be inaccurate.")
+                // Depending on strictness, one might choose to abort or adjust coordinates.
+                // For now, proceed with user-provided coordinates.
+            }
+
+            Log.d(TAG, "scrollDown (coords): Swipe from ($startGestureX, $startGestureY) to ($startGestureX, $endGestureY) over $duration ms")
+
             val swipePath = Path()
-            val startX = x
-            val startY = y
-            val endX = x
-            val endY = y - distance
-            swipePath.moveTo(startX, startY)
-            swipePath.lineTo(endX, endY)
-            Log.d(TAG, "scrollDown method: Creating swipePath from ($startX, $startY) to ($endX, $endY) over $duration ms")
-            
-            // Create a gesture builder and add the swipe
+            swipePath.moveTo(startGestureX, startGestureY)
+            swipePath.lineTo(startGestureX, endGestureY)
+
             val gestureBuilder = GestureDescription.Builder()
-            val gesture = GestureDescription.StrokeDescription(
-                swipePath, 
-                0, // start time
-                duration // custom duration in milliseconds
-            )
+            val gesture = GestureDescription.StrokeDescription(swipePath, 0, duration)
             gestureBuilder.addStroke(gesture)
             
-            // Dispatch the gesture
             val result = dispatchGesture(
                 gestureBuilder.build(),
                 object : GestureResultCallback() {
                     override fun onCompleted(gestureDescription: GestureDescription) {
                         super.onCompleted(gestureDescription)
-                        Log.d(TAG, "scrollDown method: Gesture completed for path from ($startX, $startY) to ($endX, $endY)")
-                        showToast("Successfully scrolled down from position ($startX, $startY)", false)
+                        Log.d(TAG, "scrollDown (coords): Gesture completed.")
+                        showToast("Scrolled down from ($x, $y).", false)
+                        scrollableNode.recycle()
                         scheduleNextCommandProcessing()
                     }
                     
                     override fun onCancelled(gestureDescription: GestureDescription) {
                         super.onCancelled(gestureDescription)
-                        Log.e(TAG, "scrollDown method: Gesture CANCELLED for path from ($startX, $startY) to ($endX, $endY). GestureDescription: $gestureDescription")
-                        showToast("Scroll down from position ($startX, $startY) cancelled", true)
+                        Log.e(TAG, "scrollDown (coords): Gesture cancelled.")
+                        showToast("Scroll down from ($x, $y) cancelled.", true)
+                        scrollableNode.recycle()
                         scheduleNextCommandProcessing()
                     }
                 },
-                null // handler
+                null
             )
             
             if (!result) {
-                Log.e(TAG, "Failed to dispatch coordinate-based scroll down gesture for path from ($startX, $startY) to ($endX, $endY)")
-                showToast("Error scrolling down from position ($startX, $startY)", true)
+                Log.e(TAG, "scrollDown (coords): Failed to dispatch scroll down gesture.")
+                showToast("Error performing scroll down from ($x, $y).", true)
+                scrollableNode.recycle()
                 scheduleNextCommandProcessing()
             }
         } catch (e: Exception) {
-            Log.e(TAG, "Error scrolling down from coordinates: ${e.message}")
-            showToast("Error scrolling down from position ($x, $y): ${e.message}", true)
+            Log.e(TAG, "scrollDown (coords): Error during scroll: ${e.message}", e)
+            showToast("Error scrolling down from ($x, $y): ${e.message}", true)
+            scrollableNode.recycle()
             scheduleNextCommandProcessing()
         }
     }
@@ -2175,58 +2341,98 @@ fun pressEnterKey() {
      * Scroll up on the screen using gesture
      */
     fun scrollUp() {
-        Log.d(TAG, "Scrolling up")
-        showToast("Scrolling up...", false)
-        
+        Log.d(TAG, "scrollUp: Initiating scroll up.")
+        // Use ACTION_SCROLL_BACKWARD for scrolling content "up" (finger swipes down)
+        val scrollableNode = findScrollableNode(null, null, AccessibilityNodeInfo.ACTION_SCROLL_BACKWARD)
+
+        if (scrollableNode == null) {
+            Log.w(TAG, "scrollUp: No scrollable node found supporting ACTION_SCROLL_BACKWARD.")
+            showToast("No scrollable area found to scroll up.", true)
+            scheduleNextCommandProcessing()
+            return
+        }
+
+        val canScrollUp = scrollableNode.actionList.any { it.id == AccessibilityNodeInfo.ACTION_SCROLL_BACKWARD }
+        if (!canScrollUp) {
+            Log.i(TAG, "scrollUp: Node does not support ACTION_SCROLL_BACKWARD. Node: $scrollableNode")
+            showToast("Reached end of scrollable area (top) or node not scrollable up.", false)
+            scrollableNode.recycle()
+            scheduleNextCommandProcessing()
+            return
+        }
+        Log.d(TAG, "scrollUp: Found scrollable node: $scrollableNode, attempting to scroll up.")
+
         try {
-            // Get display metrics to calculate swipe coordinates
             val displayMetrics = resources.displayMetrics
             val screenHeight = displayMetrics.heightPixels
             val screenWidth = displayMetrics.widthPixels
             
-            // Create a path for the gesture (swipe from middle-top to middle-bottom)
+            val nodeBounds = Rect()
+            scrollableNode.getBoundsInScreen(nodeBounds)
+
+            val startX: Float
+            val swipeStartY: Float
+            val swipeEndY: Float
+
+            if (nodeBounds.width() > 0 && nodeBounds.height() > 0) {
+                startX = nodeBounds.centerX().toFloat()
+                // For scrolling up, finger moves from top to bottom of the scrollable area
+                swipeStartY = nodeBounds.top + nodeBounds.height() * 0.2f // Start upper part of the node
+                swipeEndY = nodeBounds.top + nodeBounds.height() * 0.8f   // End lower part of the node
+            } else {
+                startX = screenWidth / 2f
+                swipeStartY = screenHeight * 0.2f // Start upper part of the screen
+                swipeEndY = screenHeight * 0.8f   // End lower part of the screen
+            }
+
+            if (swipeStartY >= swipeEndY) {
+                Log.w(TAG, "scrollUp: Calculated swipe points are invalid (startY $swipeStartY >= endY $swipeEndY). Using screen defaults.")
+                swipeStartY = screenHeight * 0.2f
+                swipeEndY = screenHeight * 0.8f
+            }
+
+            Log.d(TAG, "scrollUp: Swipe from ($startX, $swipeStartY) to ($startX, $swipeEndY)")
+
             val swipePath = Path()
-            swipePath.moveTo(screenWidth / 2f, screenHeight * 0.3f) // Start from 30% down the screen
-            swipePath.lineTo(screenWidth / 2f, screenHeight * 0.7f) // Move to 70% down the screen
+            swipePath.moveTo(startX, swipeStartY)
+            swipePath.lineTo(startX, swipeEndY)
             
-            // Create a gesture builder and add the swipe
             val gestureBuilder = GestureDescription.Builder()
-            val gesture = GestureDescription.StrokeDescription(
-                swipePath, 
-                0, // start time
-                300 // duration in milliseconds
-            )
+            val gesture = GestureDescription.StrokeDescription(swipePath, 0, 400) // Duration 400ms
             gestureBuilder.addStroke(gesture)
             
-            // Dispatch the gesture
             val result = dispatchGesture(
                 gestureBuilder.build(),
                 object : GestureResultCallback() {
                     override fun onCompleted(gestureDescription: GestureDescription) {
                         super.onCompleted(gestureDescription)
-                        Log.d(TAG, "Scroll up gesture completed")
-                        showToast("Successfully scrolled up", false)
+                        Log.d(TAG, "scrollUp: Gesture completed.")
+                        showToast("Scrolled up.", false)
+                        scrollableNode.recycle()
                         scheduleNextCommandProcessing()
                     }
                     
                     override fun onCancelled(gestureDescription: GestureDescription) {
                         super.onCancelled(gestureDescription)
-                        Log.e(TAG, "Scroll up gesture cancelled")
-                        showToast("Scroll up cancelled", true)
+                        Log.e(TAG, "scrollUp: Gesture cancelled.")
+                        showToast("Scroll up cancelled.", true)
+                        scrollableNode.recycle()
                         scheduleNextCommandProcessing()
                     }
                 },
-                null // handler
+                null
             )
             
             if (!result) {
-                Log.e(TAG, "Failed to dispatch scroll up gesture")
-                showToast("Error scrolling up", true)
+                Log.e(TAG, "scrollUp: Failed to dispatch scroll up gesture.")
+                showToast("Error performing scroll up.", true)
+                scrollableNode.recycle()
                 scheduleNextCommandProcessing()
             }
         } catch (e: Exception) {
-            Log.e(TAG, "Error scrolling up: ${e.message}")
+            Log.e(TAG, "scrollUp: Error during scroll up: ${e.message}", e)
             showToast("Error scrolling up: ${e.message}", true)
+            scrollableNode.recycle()
             scheduleNextCommandProcessing()
         }
     }
@@ -2240,58 +2446,80 @@ fun pressEnterKey() {
      * @param duration Duration of the scroll gesture in milliseconds
      */
     fun scrollUp(x: Float, y: Float, distance: Float, duration: Long) {
-        Log.d(TAG, "scrollUp method: Received x=$x, y=$y, distance=$distance, duration=$duration")
-        showToast("Scrolling up from specific position...", false)
-        
+        Log.d(TAG, "scrollUp (coords): Initiating scroll up from ($x, $y), distance $distance, duration $duration.")
+        val scrollableNode = findScrollableNode(x, y, AccessibilityNodeInfo.ACTION_SCROLL_BACKWARD)
+
+        if (scrollableNode == null) {
+            Log.w(TAG, "scrollUp (coords): No scrollable node found at or containing ($x, $y) that supports ACTION_SCROLL_BACKWARD.")
+            showToast("No scrollable area found at the specified coordinates to scroll up.", true)
+            scheduleNextCommandProcessing()
+            return
+        }
+
+        val canScrollUp = scrollableNode.actionList.any { it.id == AccessibilityNodeInfo.ACTION_SCROLL_BACKWARD }
+        if (!canScrollUp) {
+            Log.i(TAG, "scrollUp (coords): Node does not support ACTION_SCROLL_BACKWARD. Node: $scrollableNode")
+            showToast("Reached end of scrollable area (top) at coordinates or node not scrollable up.", false)
+            scrollableNode.recycle()
+            scheduleNextCommandProcessing()
+            return
+        }
+        Log.d(TAG, "scrollUp (coords): Found scrollable node: $scrollableNode, attempting scroll.")
+
         try {
-            // Create a path for the gesture (swipe from specified position downward by the specified distance)
+            // For scrolling up, finger moves down.
+            val startGestureX = x
+            val startGestureY = y
+            val endGestureY = y + distance // Swipe finger downwards
+
+            val nodeBounds = Rect()
+            scrollableNode.getBoundsInScreen(nodeBounds)
+            if (!nodeBounds.contains(x.toInt(), y.toInt())) {
+                Log.w(TAG, "scrollUp (coords): Provided coordinates ($x, $y) are outside the bounds of the found scrollable node $nodeBounds. Gesture might be inaccurate.")
+            }
+
+            Log.d(TAG, "scrollUp (coords): Swipe from ($startGestureX, $startGestureY) to ($startGestureX, $endGestureY) over $duration ms")
+
             val swipePath = Path()
-            val startX = x
-            val startY = y
-            val endX = x
-            val endY = y + distance
-            swipePath.moveTo(startX, startY)
-            swipePath.lineTo(endX, endY)
-            Log.d(TAG, "scrollUp method: Creating swipePath from ($startX, $startY) to ($endX, $endY) over $duration ms")
-            
-            // Create a gesture builder and add the swipe
+            swipePath.moveTo(startGestureX, startGestureY)
+            swipePath.lineTo(startGestureX, endGestureY)
+
             val gestureBuilder = GestureDescription.Builder()
-            val gesture = GestureDescription.StrokeDescription(
-                swipePath, 
-                0, // start time
-                duration // custom duration in milliseconds
-            )
+            val gesture = GestureDescription.StrokeDescription(swipePath, 0, duration)
             gestureBuilder.addStroke(gesture)
             
-            // Dispatch the gesture
             val result = dispatchGesture(
                 gestureBuilder.build(),
                 object : GestureResultCallback() {
                     override fun onCompleted(gestureDescription: GestureDescription) {
                         super.onCompleted(gestureDescription)
-                        Log.d(TAG, "scrollUp method: Gesture completed for path from ($startX, $startY) to ($endX, $endY)")
-                        showToast("Successfully scrolled up from position ($startX, $startY)", false)
+                        Log.d(TAG, "scrollUp (coords): Gesture completed.")
+                        showToast("Scrolled up from ($x, $y).", false)
+                        scrollableNode.recycle()
                         scheduleNextCommandProcessing()
                     }
                     
                     override fun onCancelled(gestureDescription: GestureDescription) {
                         super.onCancelled(gestureDescription)
-                        Log.e(TAG, "scrollUp method: Gesture CANCELLED for path from ($startX, $startY) to ($endX, $endY). GestureDescription: $gestureDescription")
-                        showToast("Scroll up from position ($startX, $startY) cancelled", true)
+                        Log.e(TAG, "scrollUp (coords): Gesture cancelled.")
+                        showToast("Scroll up from ($x, $y) cancelled.", true)
+                        scrollableNode.recycle()
                         scheduleNextCommandProcessing()
                     }
                 },
-                null // handler
+                null
             )
             
             if (!result) {
-                Log.e(TAG, "Failed to dispatch coordinate-based scroll up gesture for path from ($startX, $startY) to ($endX, $endY)")
-                showToast("Error scrolling up from position ($startX, $startY)", true)
+                Log.e(TAG, "scrollUp (coords): Failed to dispatch scroll up gesture.")
+                showToast("Error performing scroll up from ($x, $y).", true)
+                scrollableNode.recycle()
                 scheduleNextCommandProcessing()
             }
         } catch (e: Exception) {
-            Log.e(TAG, "Error scrolling up from coordinates: ${e.message}")
-            showToast("Error scrolling up from position ($x, $y): ${e.message}", true)
+            Log.e(TAG, "scrollUp (coords): Error during scroll: ${e.message}", e)
+            showToast("Error scrolling up from ($x, $y): ${e.message}", true)
+            scrollableNode.recycle()
             scheduleNextCommandProcessing()
         }
     }
@@ -2300,58 +2528,99 @@ fun pressEnterKey() {
      * Scroll left on the screen using gesture
      */
     fun scrollLeft() {
-        Log.d(TAG, "Scrolling left")
-        showToast("Scrolling left...", false)
+        Log.d(TAG, "scrollLeft: Initiating scroll left (content moves left, viewport moves right).")
+        // ACTION_SCROLL_LEFT: Action to scroll the content of the node to the left.
+        // Gesture: Finger swipes from Left to Right.
+        val scrollableNode = findScrollableNode(null, null, AccessibilityNodeInfo.ACTION_SCROLL_LEFT)
+
+        if (scrollableNode == null) {
+            Log.w(TAG, "scrollLeft: No scrollable node found supporting ACTION_SCROLL_LEFT.")
+            showToast("No scrollable area found to scroll left.", true)
+            scheduleNextCommandProcessing()
+            return
+        }
+
+        val canScrollLeft = scrollableNode.actionList.any { it.id == AccessibilityNodeInfo.ACTION_SCROLL_LEFT }
+        if (!canScrollLeft) {
+            Log.i(TAG, "scrollLeft: Node does not support ACTION_SCROLL_LEFT. Node: $scrollableNode")
+            showToast("Reached end of scrollable area (left side of content visible) or node not scrollable left.", false)
+            scrollableNode.recycle()
+            scheduleNextCommandProcessing()
+            return
+        }
+        Log.d(TAG, "scrollLeft: Found scrollable node: $scrollableNode, attempting to scroll left (finger L to R).")
         
         try {
-            // Get display metrics to calculate swipe coordinates
             val displayMetrics = resources.displayMetrics
             val screenHeight = displayMetrics.heightPixels
             val screenWidth = displayMetrics.widthPixels
+
+            val nodeBounds = Rect()
+            scrollableNode.getBoundsInScreen(nodeBounds)
+
+            val startY: Float
+            val swipeStartX: Float
+            val swipeEndX: Float
+
+            if (nodeBounds.width() > 0 && nodeBounds.height() > 0) {
+                startY = nodeBounds.centerY().toFloat()
+                // For content to scroll left, finger swipes from Left to Right.
+                swipeStartX = nodeBounds.left + nodeBounds.width() * 0.2f // Start left part of the node
+                swipeEndX = nodeBounds.left + nodeBounds.width() * 0.8f   // End right part of the node
+            } else {
+                startY = screenHeight / 2f
+                swipeStartX = screenWidth * 0.2f // Start left part of the screen
+                swipeEndX = screenWidth * 0.8f   // End right part of the screen
+            }
+
+            if (swipeStartX >= swipeEndX) { // Corrected condition for L-R swipe
+                Log.w(TAG, "scrollLeft: Calculated swipe points are invalid (startX $swipeStartX >= endX $swipeEndX). Using screen defaults.")
+                swipeStartX = screenWidth * 0.2f
+                swipeEndX = screenWidth * 0.8f
+            }
             
-            // Create a path for the gesture (swipe from left to right, content moves left)
+            Log.d(TAG, "scrollLeft: Swipe from ($swipeStartX, $startY) to ($swipeEndX, $startY) for ACTION_SCROLL_LEFT")
+
             val swipePath = Path()
-            swipePath.moveTo(screenWidth * 0.3f, screenHeight / 2f) // Start from 30% across the screen
-            swipePath.lineTo(screenWidth * 0.7f, screenHeight / 2f) // Move to 70% across the screen
+            swipePath.moveTo(swipeStartX, startY)
+            swipePath.lineTo(swipeEndX, startY)
             
-            // Create a gesture builder and add the swipe
             val gestureBuilder = GestureDescription.Builder()
-            val gesture = GestureDescription.StrokeDescription(
-                swipePath, 
-                0, // start time
-                300 // duration in milliseconds
-            )
+            val gesture = GestureDescription.StrokeDescription(swipePath, 0, 400) // Duration 400ms
             gestureBuilder.addStroke(gesture)
             
-            // Dispatch the gesture
             val result = dispatchGesture(
                 gestureBuilder.build(),
                 object : GestureResultCallback() {
                     override fun onCompleted(gestureDescription: GestureDescription) {
                         super.onCompleted(gestureDescription)
-                        Log.d(TAG, "Scroll left gesture completed")
-                        showToast("Successfully scrolled left", false)
+                        Log.d(TAG, "scrollLeft: Gesture completed.")
+                        showToast("Scrolled left.", false)
+                        scrollableNode.recycle()
                         scheduleNextCommandProcessing()
                     }
                     
                     override fun onCancelled(gestureDescription: GestureDescription) {
                         super.onCancelled(gestureDescription)
-                        Log.e(TAG, "Scroll left gesture cancelled")
-                        showToast("Scroll left cancelled", true)
+                        Log.e(TAG, "scrollLeft: Gesture cancelled.")
+                        showToast("Scroll left cancelled.", true)
+                        scrollableNode.recycle()
                         scheduleNextCommandProcessing()
                     }
                 },
-                null // handler
+                null
             )
             
             if (!result) {
-                Log.e(TAG, "Failed to dispatch scroll left gesture")
-                showToast("Error scrolling left", true)
+                Log.e(TAG, "scrollLeft: Failed to dispatch scroll left gesture.")
+                showToast("Error performing scroll left.", true)
+                scrollableNode.recycle()
                 scheduleNextCommandProcessing()
             }
         } catch (e: Exception) {
-            Log.e(TAG, "Error scrolling left: ${e.message}")
+            Log.e(TAG, "scrollLeft: Error during scroll: ${e.message}", e)
             showToast("Error scrolling left: ${e.message}", true)
+            scrollableNode.recycle()
             scheduleNextCommandProcessing()
         }
     }
@@ -2365,58 +2634,80 @@ fun pressEnterKey() {
      * @param duration Duration of the scroll gesture in milliseconds
      */
     fun scrollLeft(x: Float, y: Float, distance: Float, duration: Long) {
-        Log.d(TAG, "scrollLeft method: Received x=$x, y=$y, distance=$distance, duration=$duration")
-        showToast("Scrolling left from specific position...", false)
-        
+        Log.d(TAG, "scrollLeft (coords): Initiating scroll left from ($x, $y), distance $distance, duration $duration. Content moves L, Finger L to R.")
+        val scrollableNode = findScrollableNode(x, y, AccessibilityNodeInfo.ACTION_SCROLL_LEFT)
+
+        if (scrollableNode == null) {
+            Log.w(TAG, "scrollLeft (coords): No scrollable node found at or containing ($x, $y) that supports ACTION_SCROLL_LEFT.")
+            showToast("No scrollable area found at the specified coordinates to scroll left.", true)
+            scheduleNextCommandProcessing()
+            return
+        }
+
+        val canScrollLeft = scrollableNode.actionList.any { it.id == AccessibilityNodeInfo.ACTION_SCROLL_LEFT }
+        if (!canScrollLeft) {
+            Log.i(TAG, "scrollLeft (coords): Node does not support ACTION_SCROLL_LEFT. Node: $scrollableNode")
+            showToast("Reached end of scrollable area (left side of content) at coordinates or node not scrollable left.", false)
+            scrollableNode.recycle()
+            scheduleNextCommandProcessing()
+            return
+        }
+        Log.d(TAG, "scrollLeft (coords): Found scrollable node: $scrollableNode, attempting scroll (finger L to R).")
+
         try {
-            // Create a path for the gesture (swipe L-R, content moves Left)
+            // For content to scroll left, finger swipes from Left to Right.
+            val startGestureX = x
+            val startGestureY = y
+            val endGestureX = x + distance
+
+            val nodeBounds = Rect()
+            scrollableNode.getBoundsInScreen(nodeBounds)
+            if (!nodeBounds.contains(x.toInt(), y.toInt())) {
+                Log.w(TAG, "scrollLeft (coords): Provided coordinates ($x, $y) are outside the bounds of the found scrollable node $nodeBounds. Gesture might be inaccurate.")
+            }
+
+            Log.d(TAG, "scrollLeft (coords): Swipe from ($startGestureX, $startGestureY) to ($endGestureX, $startGestureY) over $duration ms for ACTION_SCROLL_LEFT")
+
             val swipePath = Path()
-            val startX = x
-            val startY = y
-            val endX = x + distance // Finger swipes L-R, content moves Left
-            val endY = y
-            swipePath.moveTo(startX, startY)
-            swipePath.lineTo(endX, endY)
-            Log.d(TAG, "scrollLeft method: Creating swipePath from ($startX, $startY) to ($endX, $endY) over $duration ms")
-            
-            // Create a gesture builder and add the swipe
+            swipePath.moveTo(startGestureX, startGestureY)
+            swipePath.lineTo(endGestureX, startGestureY)
+
             val gestureBuilder = GestureDescription.Builder()
-            val gesture = GestureDescription.StrokeDescription(
-                swipePath, 
-                0, // start time
-                duration // custom duration in milliseconds
-            )
+            val gesture = GestureDescription.StrokeDescription(swipePath, 0, duration)
             gestureBuilder.addStroke(gesture)
             
-            // Dispatch the gesture
             val result = dispatchGesture(
                 gestureBuilder.build(),
                 object : GestureResultCallback() {
                     override fun onCompleted(gestureDescription: GestureDescription) {
                         super.onCompleted(gestureDescription)
-                        Log.d(TAG, "scrollLeft method: Gesture completed for path from ($startX, $startY) to ($endX, $endY)")
-                        showToast("Successfully scrolled left from position ($startX, $startY)", false)
+                        Log.d(TAG, "scrollLeft (coords): Gesture completed.")
+                        showToast("Scrolled left from ($x, $y).", false)
+                        scrollableNode.recycle()
                         scheduleNextCommandProcessing()
                     }
                     
                     override fun onCancelled(gestureDescription: GestureDescription) {
                         super.onCancelled(gestureDescription)
-                        Log.e(TAG, "scrollLeft method: Gesture CANCELLED for path from ($startX, $startY) to ($endX, $endY). GestureDescription: $gestureDescription")
-                        showToast("Scroll left from position ($startX, $startY) cancelled", true)
+                        Log.e(TAG, "scrollLeft (coords): Gesture cancelled.")
+                        showToast("Scroll left from ($x, $y) cancelled.", true)
+                        scrollableNode.recycle()
                         scheduleNextCommandProcessing()
                     }
                 },
-                null // handler
+                null
             )
             
             if (!result) {
-                Log.e(TAG, "Failed to dispatch coordinate-based scroll left gesture for path from ($startX, $startY) to ($endX, $endY)")
-                showToast("Error scrolling left from position ($startX, $startY)", true)
+                Log.e(TAG, "scrollLeft (coords): Failed to dispatch scroll left gesture.")
+                showToast("Error performing scroll left from ($x, $y).", true)
+                scrollableNode.recycle()
                 scheduleNextCommandProcessing()
             }
         } catch (e: Exception) {
-            Log.e(TAG, "Error scrolling left from coordinates: ${e.message}")
-            showToast("Error scrolling left from position ($x, $y): ${e.message}", true)
+            Log.e(TAG, "scrollLeft (coords): Error during scroll: ${e.message}", e)
+            showToast("Error scrolling left from ($x, $y): ${e.message}", true)
+            scrollableNode.recycle()
             scheduleNextCommandProcessing()
         }
     }
@@ -2425,58 +2716,98 @@ fun pressEnterKey() {
      * Scroll right on the screen using gesture
      */
     fun scrollRight() {
-        Log.d(TAG, "Scrolling right")
-        showToast("Scrolling right...", false)
-        
+        Log.d(TAG, "scrollRight: Initiating scroll right (content moves right, viewport moves left).")
+        // ACTION_SCROLL_RIGHT: Action to scroll the content of the node to the right.
+        // Gesture: Finger swipes from Right to Left.
+        val scrollableNode = findScrollableNode(null, null, AccessibilityNodeInfo.ACTION_SCROLL_RIGHT)
+
+        if (scrollableNode == null) {
+            Log.w(TAG, "scrollRight: No scrollable node found supporting ACTION_SCROLL_RIGHT.")
+            showToast("No scrollable area found to scroll right.", true)
+            scheduleNextCommandProcessing()
+            return
+        }
+
+        val canScrollRight = scrollableNode.actionList.any { it.id == AccessibilityNodeInfo.ACTION_SCROLL_RIGHT }
+        if (!canScrollRight) {
+            Log.i(TAG, "scrollRight: Node does not support ACTION_SCROLL_RIGHT. Node: $scrollableNode")
+            showToast("Reached end of scrollable area (right side of content visible) or node not scrollable right.", false)
+            scrollableNode.recycle()
+            scheduleNextCommandProcessing()
+            return
+        }
+        Log.d(TAG, "scrollRight: Found scrollable node: $scrollableNode, attempting to scroll right (finger R to L).")
+
         try {
-            // Get display metrics to calculate swipe coordinates
             val displayMetrics = resources.displayMetrics
             val screenHeight = displayMetrics.heightPixels
             val screenWidth = displayMetrics.widthPixels
+
+            val nodeBounds = Rect()
+            scrollableNode.getBoundsInScreen(nodeBounds)
+
+            val startY: Float
+            val swipeStartX: Float // Finger starts on the right
+            val swipeEndX: Float   // Finger ends on the left
+
+            if (nodeBounds.width() > 0 && nodeBounds.height() > 0) {
+                startY = nodeBounds.centerY().toFloat()
+                swipeStartX = nodeBounds.left + nodeBounds.width() * 0.8f // Start right part of the node
+                swipeEndX = nodeBounds.left + nodeBounds.width() * 0.2f   // End left part of the node
+            } else {
+                startY = screenHeight / 2f
+                swipeStartX = screenWidth * 0.8f // Start right part of the screen
+                swipeEndX = screenWidth * 0.2f   // End left part of the screen
+            }
+
+            if (swipeStartX <= swipeEndX) { // For R-L swipe, startX must be > endX
+                Log.w(TAG, "scrollRight: Calculated swipe points are invalid (startX $swipeStartX <= endX $swipeEndX). Using screen defaults.")
+                swipeStartX = screenWidth * 0.8f
+                swipeEndX = screenWidth * 0.2f
+            }
             
-            // Create a path for the gesture (swipe from right to left, content moves right)
+            Log.d(TAG, "scrollRight: Swipe from ($swipeStartX, $startY) to ($swipeEndX, $startY) for ACTION_SCROLL_RIGHT")
+
             val swipePath = Path()
-            swipePath.moveTo(screenWidth * 0.7f, screenHeight / 2f) // Start from 70% across the screen
-            swipePath.lineTo(screenWidth * 0.3f, screenHeight / 2f) // Move to 30% across the screen
+            swipePath.moveTo(swipeStartX, startY)
+            swipePath.lineTo(swipeEndX, startY)
             
-            // Create a gesture builder and add the swipe
             val gestureBuilder = GestureDescription.Builder()
-            val gesture = GestureDescription.StrokeDescription(
-                swipePath, 
-                0, // start time
-                300 // duration in milliseconds
-            )
+            val gesture = GestureDescription.StrokeDescription(swipePath, 0, 400) // Duration 400ms
             gestureBuilder.addStroke(gesture)
             
-            // Dispatch the gesture
             val result = dispatchGesture(
                 gestureBuilder.build(),
                 object : GestureResultCallback() {
                     override fun onCompleted(gestureDescription: GestureDescription) {
                         super.onCompleted(gestureDescription)
-                        Log.d(TAG, "Scroll right gesture completed")
-                        showToast("Successfully scrolled right", false)
+                        Log.d(TAG, "scrollRight: Gesture completed.")
+                        showToast("Scrolled right.", false)
+                        scrollableNode.recycle()
                         scheduleNextCommandProcessing()
                     }
                     
                     override fun onCancelled(gestureDescription: GestureDescription) {
                         super.onCancelled(gestureDescription)
-                        Log.e(TAG, "Scroll right gesture cancelled")
-                        showToast("Scroll right cancelled", true)
+                        Log.e(TAG, "scrollRight: Gesture cancelled.")
+                        showToast("Scroll right cancelled.", true)
+                        scrollableNode.recycle()
                         scheduleNextCommandProcessing()
                     }
                 },
-                null // handler
+                null
             )
             
             if (!result) {
-                Log.e(TAG, "Failed to dispatch scroll right gesture")
-                showToast("Error scrolling right", true)
+                Log.e(TAG, "scrollRight: Failed to dispatch scroll right gesture.")
+                showToast("Error performing scroll right.", true)
+                scrollableNode.recycle()
                 scheduleNextCommandProcessing()
             }
         } catch (e: Exception) {
-            Log.e(TAG, "Error scrolling right: ${e.message}")
+            Log.e(TAG, "scrollRight: Error during scroll: ${e.message}", e)
             showToast("Error scrolling right: ${e.message}", true)
+            scrollableNode.recycle()
             scheduleNextCommandProcessing()
         }
     }
@@ -2490,58 +2821,80 @@ fun pressEnterKey() {
      * @param duration Duration of the scroll gesture in milliseconds
      */
     fun scrollRight(x: Float, y: Float, distance: Float, duration: Long) {
-        Log.d(TAG, "scrollRight method: Received x=$x, y=$y, distance=$distance, duration=$duration")
-        showToast("Scrolling right from specific position...", false)
-        
+        Log.d(TAG, "scrollRight (coords): Initiating scroll right from ($x, $y), distance $distance, duration $duration. Content moves R, Finger R to L.")
+        val scrollableNode = findScrollableNode(x, y, AccessibilityNodeInfo.ACTION_SCROLL_RIGHT)
+
+        if (scrollableNode == null) {
+            Log.w(TAG, "scrollRight (coords): No scrollable node found at or containing ($x, $y) that supports ACTION_SCROLL_RIGHT.")
+            showToast("No scrollable area found at the specified coordinates to scroll right.", true)
+            scheduleNextCommandProcessing()
+            return
+        }
+
+        val canScrollRight = scrollableNode.actionList.any { it.id == AccessibilityNodeInfo.ACTION_SCROLL_RIGHT }
+        if (!canScrollRight) {
+            Log.i(TAG, "scrollRight (coords): Node does not support ACTION_SCROLL_RIGHT. Node: $scrollableNode")
+            showToast("Reached end of scrollable area (right side of content) at coordinates or node not scrollable right.", false)
+            scrollableNode.recycle()
+            scheduleNextCommandProcessing()
+            return
+        }
+        Log.d(TAG, "scrollRight (coords): Found scrollable node: $scrollableNode, attempting scroll (finger R to L).")
+
         try {
-            // Create a path for the gesture (swipe R-L, content moves Right)
+            // For content to scroll right, finger swipes from Right to Left.
+            val startGestureX = x
+            val startGestureY = y
+            val endGestureX = x - distance // Swipe finger leftwards
+
+            val nodeBounds = Rect()
+            scrollableNode.getBoundsInScreen(nodeBounds)
+            if (!nodeBounds.contains(x.toInt(), y.toInt())) {
+                Log.w(TAG, "scrollRight (coords): Provided coordinates ($x, $y) are outside the bounds of the found scrollable node $nodeBounds. Gesture might be inaccurate.")
+            }
+
+            Log.d(TAG, "scrollRight (coords): Swipe from ($startGestureX, $startGestureY) to ($endGestureX, $startGestureY) over $duration ms for ACTION_SCROLL_RIGHT")
+
             val swipePath = Path()
-            val startX = x
-            val startY = y
-            val endX = x - distance // Finger swipes R-L, content moves Right
-            val endY = y
-            swipePath.moveTo(startX, startY)
-            swipePath.lineTo(endX, endY)
-            Log.d(TAG, "scrollRight method: Creating swipePath from ($startX, $startY) to ($endX, $endY) over $duration ms")
-            
-            // Create a gesture builder and add the swipe
+            swipePath.moveTo(startGestureX, startGestureY)
+            swipePath.lineTo(endGestureX, startGestureY)
+
             val gestureBuilder = GestureDescription.Builder()
-            val gesture = GestureDescription.StrokeDescription(
-                swipePath, 
-                0, // start time
-                duration // custom duration in milliseconds
-            )
+            val gesture = GestureDescription.StrokeDescription(swipePath, 0, duration)
             gestureBuilder.addStroke(gesture)
             
-            // Dispatch the gesture
             val result = dispatchGesture(
                 gestureBuilder.build(),
                 object : GestureResultCallback() {
                     override fun onCompleted(gestureDescription: GestureDescription) {
                         super.onCompleted(gestureDescription)
-                        Log.d(TAG, "scrollRight method: Gesture completed for path from ($startX, $startY) to ($endX, $endY)")
-                        showToast("Successfully scrolled right from position ($startX, $startY)", false)
+                        Log.d(TAG, "scrollRight (coords): Gesture completed.")
+                        showToast("Scrolled right from ($x, $y).", false)
+                        scrollableNode.recycle()
                         scheduleNextCommandProcessing()
                     }
                     
                     override fun onCancelled(gestureDescription: GestureDescription) {
                         super.onCancelled(gestureDescription)
-                        Log.e(TAG, "scrollRight method: Gesture CANCELLED for path from ($startX, $startY) to ($endX, $endY). GestureDescription: $gestureDescription")
-                        showToast("Scroll right from position ($startX, $startY) cancelled", true)
+                        Log.e(TAG, "scrollRight (coords): Gesture cancelled.")
+                        showToast("Scroll right from ($x, $y) cancelled.", true)
+                        scrollableNode.recycle()
                         scheduleNextCommandProcessing()
                     }
                 },
-                null // handler
+                null
             )
             
             if (!result) {
-                Log.e(TAG, "Failed to dispatch coordinate-based scroll right gesture for path from ($startX, $startY) to ($endX, $endY)")
-                showToast("Error scrolling right from position ($startX, $startY)", true)
+                Log.e(TAG, "scrollRight (coords): Failed to dispatch scroll right gesture.")
+                showToast("Error performing scroll right from ($x, $y).", true)
+                scrollableNode.recycle()
                 scheduleNextCommandProcessing()
             }
         } catch (e: Exception) {
-            Log.e(TAG, "Error scrolling right from coordinates: ${e.message}")
-            showToast("Error scrolling right from position ($x, $y): ${e.message}", true)
+            Log.e(TAG, "scrollRight (coords): Error during scroll: ${e.message}", e)
+            showToast("Error scrolling right from ($x, $y): ${e.message}", true)
+            scrollableNode.recycle()
             scheduleNextCommandProcessing()
         }
     }
@@ -2549,19 +2902,12 @@ fun pressEnterKey() {
     /**
      * Show a toast message
      */
+    // Companion object's showToast is private, this one is for instance-level use if needed
+    // or could be removed if all toasts go through companion's static method.
+    // For consistency and to ensure MainActivity context for status updates,
+    // it's better to use the static showToast via Companion.showToast().
     private fun showToast(message: String, isError: Boolean) {
-        try {
-            // Show the toast on the main thread
-            Handler(Looper.getMainLooper()).post {
-                val mainActivity = MainActivity.getInstance()
-                if (mainActivity != null) {
-                    mainActivity.updateStatusMessage(message, isError)
-                } else {
-                    Toast.makeText(applicationContext, message, Toast.LENGTH_SHORT).show()
-                }
-            }
-        } catch (e: Exception) {
-            Log.e(TAG, "Error showing toast: ${e.message}")
-        }
+        // Use the static showToast from Companion to centralize toast logic
+        ScreenOperatorAccessibilityService.showToast(message, isError)
     }
 }
