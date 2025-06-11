@@ -113,16 +113,16 @@ class MainActivity : ComponentActivity() {
             val uri = result.data?.data
             if (uri != null) {
                 Log.i(PERMISSION_WORKFLOW_TAG, "SAF URI selected: $uri")
-                Toast.makeText(this, "File selected: $uri", Toast.LENGTH_LONG).show()
+                Toast.makeText(this, "File selected: $uri", Toast.LENGTH_LONG).show() // Keeping this specific one as is, for dev info.
                 mediaPermissionManager.resetMediaPermissionDenialCount() // Reset counter on successful SAF selection
                 // TODO: Proceed with media access using this URI
             } else {
                 Log.e(PERMISSION_WORKFLOW_TAG, "SAF selection OK but URI is null.")
-                Toast.makeText(this, "Failed to get file URI.", Toast.LENGTH_SHORT).show()
+                Toast.makeText(this, stringResource(R.string.failed_to_get_file_uri_toast), Toast.LENGTH_SHORT).show()
             }
         } else {
             Log.i(PERMISSION_WORKFLOW_TAG, "SAF selection cancelled or failed by user. ResultCode: ${result.resultCode}")
-            Toast.makeText(this, "File selection cancelled.", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, stringResource(R.string.file_selection_cancelled_toast), Toast.LENGTH_SHORT).show()
         }
     }
 
@@ -294,7 +294,7 @@ class MainActivity : ComponentActivity() {
             if (allGranted) {
                 Log.i(PERMISSION_WORKFLOW_TAG, "All required permissions granted by user.")
                 mediaPermissionManager.resetMediaPermissionDenialCount()
-                updateStatusMessage("All required permissions granted")
+                updateStatusMessage(stringResource(R.string.all_permissions_granted_toast))
                 // TODO: Proceed with media access
             } else {
                 val deniedPermissions = permissions.entries.filter { !it.value }.map { it.key }
@@ -430,13 +430,13 @@ class MainActivity : ComponentActivity() {
                                     safLauncher.launch(intent)
                                 } catch (e: Exception) {
                                     Log.e(PERMISSION_WORKFLOW_TAG, "Exception launching SAF intent: ${e.localizedMessage}", e)
-                                    Toast.makeText(this@MainActivity, "Could not open file picker.", Toast.LENGTH_SHORT).show()
+                                    Toast.makeText(this@MainActivity, stringResource(R.string.cannot_open_file_picker_toast), Toast.LENGTH_SHORT).show()
                                 }
                             },
                             onCancel = {
                                 showSafGuidanceDialog = false
                                 Log.i(PERMISSION_WORKFLOW_TAG, "SafGuidanceDialog: 'Cancel' clicked.")
-                                Toast.makeText(this, "Screenshots cannot be accessed without permission or SAF.", Toast.LENGTH_SHORT).show()
+                                Toast.makeText(this, stringResource(R.string.screenshots_not_accessible_toast), Toast.LENGTH_SHORT).show()
                             }
                         )
                     }

@@ -29,4 +29,12 @@
     <string name="dialog_button_ok">OK</string>
     <string name="dialog_button_cancel">Cancel</string>
 
+    <!-- Toast Messages -->
+    <string name="permissions_needed_toast">Permission needed to access screenshots.</string>
+    <string name="screenshots_not_accessible_toast">Screenshots cannot be accessed without permission or SAF.</string>
+    <string name="file_selection_cancelled_toast">File selection cancelled.</string>
+    <string name="failed_to_get_file_uri_toast">Failed to get file URI.</string>
+    <string name="cannot_open_file_picker_toast">Could not open file picker.</string>
+    <string name="all_permissions_granted_toast">All required permissions granted.</string>
+
 </resources>
