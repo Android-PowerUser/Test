@@ -13,8 +13,6 @@ import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
 import com.google.ai.sample.MainActivity
-import android.os.Build // Added import
-import android.util.Log // Added import
 // Import R class if needed for custom drawables, for android.R.drawable it's not needed.
 // import com.google.ai.sample.R
 
