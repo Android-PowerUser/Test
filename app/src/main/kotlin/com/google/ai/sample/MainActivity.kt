@@ -46,6 +46,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.core.content.ContextCompat
@@ -94,36 +95,52 @@ class MainActivity : ComponentActivity() {
     private var showTrialInfoDialog by mutableStateOf(false)
     private var trialInfoMessage by mutableStateOf("")
 
-    private var showPermissionRationaleDialog by mutableStateOf(false)
-    private var permissionRequestCount by mutableStateOf(0)
+    // private var showPermissionRationaleDialog by mutableStateOf(false) // Old dialog state, removed
+    private var showMediaRationaleDialogNew by mutableStateOf(false)
+    private var showSafGuidanceDialog by mutableStateOf(false)
+    private lateinit var mediaPermissionManager: com.google.ai.sample.util.MediaPermissionManager
+    private val PERMISSION_WORKFLOW_TAG = "PermissionWorkflow"
 
     private lateinit var navController: NavHostController
+
+    // SAF Launcher
+    private val safLauncher = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri: Uri? ->
+        if (uri != null) {
+            Log.i(PERMISSION_WORKFLOW_TAG, "SAF URI selected: $uri")
+            Toast.makeText(this, "File selected: $uri", Toast.LENGTH_LONG).show()
+            mediaPermissionManager.resetMediaPermissionDenialCount() // Reset counter on successful SAF selection
+            // TODO: Proceed with media access using this URI
+        } else {
+            Log.i(PERMISSION_WORKFLOW_TAG, "SAF selection cancelled or failed by user.")
+            Toast.makeText(this, "File selection cancelled.", Toast.LENGTH_SHORT).show()
+            // Optionally, handle repeated SAF cancellations if necessary
+        }
+    }
 
     // Permission Launchers
     private lateinit var requestNotificationPermissionLauncher: ActivityResultLauncher<String>
     private val requestPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
     ) { permissions ->
-        Log.d(TAG, "requestPermissionLauncher callback received. Permissions: $permissions")
+        Log.d(PERMISSION_WORKFLOW_TAG, "requestPermissionLauncher callback received. Permissions: $permissions")
         val allGranted = permissions.entries.all { it.value }
         if (allGranted) {
-            Log.i(TAG, "All required permissions granted by user.")
+            Log.i(PERMISSION_WORKFLOW_TAG, "All required permissions granted by user.")
+            mediaPermissionManager.resetMediaPermissionDenialCount()
             updateStatusMessage("All required permissions granted")
+            // TODO: Proceed with media access
         } else {
             val deniedPermissions = permissions.entries.filter { !it.value }.map { it.key }
-            Log.w(TAG, "Permissions denied. Current request count: $permissionRequestCount. Denied permissions: $deniedPermissions")
+            Log.w(PERMISSION_WORKFLOW_TAG, "Permissions denied: $deniedPermissions")
+            mediaPermissionManager.incrementMediaPermissionDenialCount() // Logs count internally
+            val denialCount = mediaPermissionManager.getMediaPermissionDenialCount() // Logs count internally
 
-            if (permissionRequestCount == 1) {
-                Log.i(TAG, "Permissions denied once. Showing rationale dialog again for a second attempt.")
-                showPermissionRationaleDialog = true
-            } else if (permissionRequestCount >= 2) {
-                Log.w(TAG, "Permissions denied after second formal request (request count: $permissionRequestCount). App will exit.")
-                Toast.makeText(this, "Without this authorization, operation is not possible.", Toast.LENGTH_LONG).show()
-                finish()
-            } else {
-                Log.e(TAG, "Permissions denied with unexpected permissionRequestCount: $permissionRequestCount. Exiting.")
-                Toast.makeText(this, "Permissions repeatedly denied. Operation not possible.", Toast.LENGTH_LONG).show()
-                finish()
+            if (denialCount == 1) {
+                Log.i(PERMISSION_WORKFLOW_TAG, "Denial count is 1. Proceeding to show MediaPermissionRationaleDialogNew.")
+                showMediaRationaleDialogNew = true
+            } else if (denialCount >= 2) {
+                Log.i(PERMISSION_WORKFLOW_TAG, "Denial count is $denialCount (>=2). Proceeding to show SafGuidanceDialog.")
+                showSafGuidanceDialog = true
             }
         }
     }
@@ -270,8 +287,8 @@ class MainActivity : ComponentActivity() {
         )
     } else {
         arrayOf(
-            Manifest.permission.READ_EXTERNAL_STORAGE,
-            Manifest.permission.WRITE_EXTERNAL_STORAGE
+            Manifest.permission.READ_EXTERNAL_STORAGE
+            // Manifest.permission.WRITE_EXTERNAL_STORAGE // Removed as per requirement
         )
     }
 
@@ -280,6 +297,9 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         instance = this
         Log.d(TAG, "onCreate: MainActivity instance set.")
+
+        mediaPermissionManager = com.google.ai.sample.util.MediaPermissionManager(applicationContext)
+        Log.d(TAG, "onCreate: MediaPermissionManager initialized.")
 
         apiKeyManager = ApiKeyManager.getInstance(this)
         Log.d(TAG, "onCreate: ApiKeyManager initialized.")
@@ -369,19 +389,37 @@ class MainActivity : ComponentActivity() {
                     Log.d(TAG, "setContent: Rendering AppNavigation.")
                     AppNavigation(navController)
 
-                    if (showPermissionRationaleDialog) {
-                        Log.d(TAG, "setContent: Rendering PermissionRationaleDialog. Request count before dialog action: $permissionRequestCount")
-                        PermissionRationaleDialog(
-                            onDismiss = {
-                                Log.i(TAG, "PermissionRationaleDialog OK clicked. Current request count: $permissionRequestCount")
-                                permissionRequestCount++
-                                Log.i(TAG, "Permission request count incremented to: $permissionRequestCount")
-                                showPermissionRationaleDialog = false
-                                Log.i(TAG, "Requesting permissions now. Required: ${requiredPermissions.joinToString()}")
+                    if (showMediaRationaleDialogNew) {
+                        Log.d(PERMISSION_WORKFLOW_TAG, "Displaying MediaPermissionRationaleDialogNew.")
+                        MediaPermissionRationaleDialogNew(
+                            onTryAgain = {
+                                showMediaRationaleDialogNew = false
+                                Log.i(PERMISSION_WORKFLOW_TAG, "MediaPermissionRationaleDialogNew: 'Try Again' clicked. Requesting permissions: ${requiredPermissions.joinToString()}")
                                 requestPermissionLauncher.launch(requiredPermissions)
+                            },
+                            onCancel = {
+                                showMediaRationaleDialogNew = false
+                                Log.i(PERMISSION_WORKFLOW_TAG, "MediaPermissionRationaleDialogNew: 'Cancel' clicked.")
+                                Toast.makeText(this, "Permission needed to access screenshots.", Toast.LENGTH_SHORT).show()
                             }
                         )
-                    } else if (showFirstLaunchInfoDialog) {
+                    } else if (showSafGuidanceDialog) {
+                        Log.d(PERMISSION_WORKFLOW_TAG, "Displaying SafGuidanceDialog.")
+                        SafGuidanceDialog(
+                            onGoToSettings = {
+                                showSafGuidanceDialog = false
+                                Log.i(PERMISSION_WORKFLOW_TAG, "SafGuidanceDialog: 'Use File Picker' clicked. Launching SAF.")
+                                safLauncher.launch(arrayOf("image/*"))
+                            },
+                            onCancel = {
+                                showSafGuidanceDialog = false
+                                Log.i(PERMISSION_WORKFLOW_TAG, "SafGuidanceDialog: 'Cancel' clicked.")
+                                Toast.makeText(this, "Screenshots cannot be accessed without permission or SAF.", Toast.LENGTH_SHORT).show()
+                            }
+                        )
+                    }
+                    // Removed old "else if (showPermissionRationaleDialog)" block
+                    else if (showFirstLaunchInfoDialog) {
                         Log.d(TAG, "setContent: Rendering FirstLaunchInfoDialog.")
                         FirstLaunchInfoDialog(
                             onDismiss = {
@@ -885,15 +923,34 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun checkAndRequestPermissions() {
-        Log.d(TAG, "checkAndRequestPermissions called.")
+        Log.d(PERMISSION_WORKFLOW_TAG, "checkAndRequestPermissions called.")
         val permissionsToRequest = requiredPermissions.filter {
             ContextCompat.checkSelfPermission(this, it) != PackageManager.PERMISSION_GRANTED
         }.toTypedArray()
+
+        val currentDenialCount = mediaPermissionManager.getMediaPermissionDenialCount() // Logs internally in getter
+        Log.i(PERMISSION_WORKFLOW_TAG, "Initial check: Required permissions: ${requiredPermissions.joinToString()}, To request: ${permissionsToRequest.joinToString()}, Current denial count: $currentDenialCount")
+
         if (permissionsToRequest.isNotEmpty()) {
-            Log.i(TAG, "Required permissions not granted. Showing rationale dialog. Permissions: ${permissionsToRequest.joinToString()}")
-            showPermissionRationaleDialog = true
+            Log.i(PERMISSION_WORKFLOW_TAG, "Need to request permissions: ${permissionsToRequest.joinToString()}")
+            if (currentDenialCount >= 2) {
+                Log.i(PERMISSION_WORKFLOW_TAG, "Denial count is $currentDenialCount (>=2). Proceeding to show SafGuidanceDialog.")
+                showSafGuidanceDialog = true
+            } else if (currentDenialCount == 1) {
+                Log.i(PERMISSION_WORKFLOW_TAG, "Denial count is 1. Proceeding to show MediaPermissionRationaleDialogNew.")
+                showMediaRationaleDialogNew = true
+            } else { // No denials yet (denialCount == 0), or after a reset.
+                 Log.i(PERMISSION_WORKFLOW_TAG, "Denial count is 0. Launching system permission request directly for: ${permissionsToRequest.joinToString()}")
+                 requestPermissionLauncher.launch(permissionsToRequest)
+            }
         } else {
-            Log.i(TAG, "All required permissions already granted.")
+            Log.i(PERMISSION_WORKFLOW_TAG, "All required media permissions already granted.")
+            // If permissions are already granted, it's good practice to ensure the denial count is reset,
+            // especially if it could have been incremented in a previous session before permission was granted outside this specific flow.
+            if (currentDenialCount > 0) { // Only log and reset if it was actually non-zero
+                 mediaPermissionManager.resetMediaPermissionDenialCount() // Logs internally
+            }
+            // TODO: Proceed with media access if needed on startup
         }
     }
 
@@ -964,44 +1021,54 @@ fun FirstLaunchInfoDialog(onDismiss: () -> Unit) {
     }
 }
 
+// Old PermissionRationaleDialog has been removed.
+
 @Composable
-fun PermissionRationaleDialog(onDismiss: () -> Unit) {
-    Log.d("PermissionRationaleDialog", "Composing PermissionRationaleDialog")
-    Dialog(onDismissRequest = {
-        Log.d("PermissionRationaleDialog", "onDismissRequest called")
-        onDismiss()
-    }) {
-        Card(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(16.dp),
-        ) {
+fun MediaPermissionRationaleDialogNew(onTryAgain: () -> Unit, onCancel: () -> Unit) {
+    Log.d("MediaPermissionRationaleDialogNew", "Composing new media permission rationale dialog")
+    Dialog(onDismissRequest = onCancel) {
+        Card(modifier = Modifier.fillMaxWidth().padding(16.dp)) {
             Column(
-                modifier = Modifier
-                    .padding(16.dp)
-                    .fillMaxWidth(),
-                verticalArrangement = Arrangement.Center,
+                modifier = Modifier.padding(16.dp).fillMaxWidth(),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                Text(
-                    text = "Permission Required",
-                    style = MaterialTheme.typography.titleLarge
-                )
+                Text(stringResource(id = R.string.permission_rationale_title), style = MaterialTheme.typography.titleLarge)
                 Spacer(modifier = Modifier.height(16.dp))
-                Text(
-                    text = "You'll immediately be asked for photo and video permissions. These is necessary so the AI ​​can see the screenshots and thus also the screen taken by the Screen Operator. It will never access media that the Screen Operator didn't create themselves.",
-                    style = MaterialTheme.typography.bodyMedium,
-                    modifier = Modifier.align(Alignment.CenterHorizontally)
-                )
+                Text(stringResource(id = R.string.permission_rationale_message_media), style = MaterialTheme.typography.bodyMedium)
                 Spacer(modifier = Modifier.height(24.dp))
-                TextButton(
-                    onClick = {
-                        Log.d("PermissionRationaleDialog", "OK button clicked")
-                        onDismiss()
-                    },
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Text("OK")
+                Column(modifier = Modifier.fillMaxWidth()) {
+                    TextButton(onClick = onTryAgain, modifier = Modifier.fillMaxWidth()) {
+                        Text(stringResource(id = R.string.dialog_button_try_again))
+                    }
+                    TextButton(onClick = onCancel, modifier = Modifier.fillMaxWidth()) {
+                        Text(stringResource(id = R.string.dialog_button_cancel))
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun SafGuidanceDialog(onGoToSettings: () -> Unit, onCancel: () -> Unit) {
+    Log.d("SafGuidanceDialog", "Composing SAF guidance dialog")
+    Dialog(onDismissRequest = onCancel) {
+        Card(modifier = Modifier.fillMaxWidth().padding(16.dp)) {
+            Column(
+                modifier = Modifier.padding(16.dp).fillMaxWidth(),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Text(stringResource(id = R.string.permission_saf_guidance_title), style = MaterialTheme.typography.titleLarge)
+                Spacer(modifier = Modifier.height(16.dp))
+                Text(stringResource(id = R.string.permission_saf_guidance_message), style = MaterialTheme.typography.bodyMedium)
+                Spacer(modifier = Modifier.height(24.dp))
+                 Column(modifier = Modifier.fillMaxWidth()) {
+                    TextButton(onClick = onGoToSettings, modifier = Modifier.fillMaxWidth()) {
+                        Text(stringResource(id = R.string.dialog_button_use_file_picker))
+                    }
+                    TextButton(onClick = onCancel, modifier = Modifier.fillMaxWidth()) {
+                        Text(stringResource(id = R.string.dialog_button_cancel))
+                    }
                 }
             }
         }

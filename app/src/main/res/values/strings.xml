@@ -18,4 +18,16 @@
          <!-- Screen Operator -->
     <string name="accessibility_service_description">Screen Operator accessibility service is needed for screen operations with vision LLMs</string>
 
+    <!-- Permission Handling -->
+    <string name="permission_rationale_title">Permission Required</string>
+    <string name="permission_rationale_message_media">The app needs access to your photos/media to display screenshots. Please grant the permission.</string>
+    <string name="permission_saf_guidance_title">Alternative Photo Access</string>
+    <string name="permission_saf_guidance_message">Since the standard permission was not granted, please use the following file picker to access your screenshots. Look for folders like \'Pictures/Screenshots\' or \'DCIM/Screenshots\'.</string>
+
+    <!-- Dialog Buttons -->
+    <string name="dialog_button_try_again">Try Again</string>
+    <string name="dialog_button_use_file_picker">Use File Picker</string>
+    <string name="dialog_button_ok">OK</string>
+    <string name="dialog_button_cancel">Cancel</string>
+
 </resources>
