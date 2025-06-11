@@ -128,31 +128,7 @@ class MainActivity : ComponentActivity() {
 
     // Permission Launchers
     private lateinit var requestNotificationPermissionLauncher: ActivityResultLauncher<String>
-    private val requestPermissionLauncher: ActivityResultLauncher<Array<String>> = registerForActivityResult(
-        ActivityResultContracts.RequestMultiplePermissions()
-    ) { permissions: Map<String, Boolean> ->
-        Log.d(PERMISSION_WORKFLOW_TAG, "requestPermissionLauncher callback received. Permissions: $permissions")
-        val allGranted = permissions.entries.all { it.value }
-        if (allGranted) {
-            Log.i(PERMISSION_WORKFLOW_TAG, "All required permissions granted by user.")
-            mediaPermissionManager.resetMediaPermissionDenialCount()
-            updateStatusMessage("All required permissions granted")
-            // TODO: Proceed with media access
-        } else {
-            val deniedPermissions = permissions.entries.filter { !it.value }.map { it.key }
-            Log.w(PERMISSION_WORKFLOW_TAG, "Permissions denied: $deniedPermissions")
-            mediaPermissionManager.incrementMediaPermissionDenialCount() // Logs count internally
-            val denialCount = mediaPermissionManager.getMediaPermissionDenialCount() // Logs count internally
-
-            if (denialCount == 1) {
-                Log.i(PERMISSION_WORKFLOW_TAG, "Denial count is 1. Re-requesting permissions immediately for the second time.")
-                requestPermissionLauncher.launch(requiredPermissions)
-            } else if (denialCount >= 2) {
-                Log.i(PERMISSION_WORKFLOW_TAG, "Denial count is $denialCount (>=2). Proceeding to show SafGuidanceDialog.")
-                showSafGuidanceDialog = true
-            }
-        }
-    }
+    private lateinit var requestPermissionLauncher: ActivityResultLauncher<Array<String>>
 
     // START: Added for Accessibility Service Status
     private val _isAccessibilityServiceEnabled = MutableStateFlow(false)
@@ -309,6 +285,34 @@ class MainActivity : ComponentActivity() {
 
         mediaPermissionManager = com.google.ai.sample.util.MediaPermissionManager(applicationContext)
         Log.d(TAG, "onCreate: MediaPermissionManager initialized.")
+
+        requestPermissionLauncher = registerForActivityResult(
+            ActivityResultContracts.RequestMultiplePermissions()
+        ) { permissions: Map<String, Boolean> ->
+            Log.d(PERMISSION_WORKFLOW_TAG, "requestPermissionLauncher callback received. Permissions: $permissions")
+            val allGranted = permissions.entries.all { it.value }
+            if (allGranted) {
+                Log.i(PERMISSION_WORKFLOW_TAG, "All required permissions granted by user.")
+                mediaPermissionManager.resetMediaPermissionDenialCount()
+                updateStatusMessage("All required permissions granted")
+                // TODO: Proceed with media access
+            } else {
+                val deniedPermissions = permissions.entries.filter { !it.value }.map { it.key }
+                Log.w(PERMISSION_WORKFLOW_TAG, "Permissions denied: $deniedPermissions")
+                mediaPermissionManager.incrementMediaPermissionDenialCount() // Logs count internally
+                val denialCount = mediaPermissionManager.getMediaPermissionDenialCount() // Logs count internally
+
+                if (denialCount == 1) {
+                    Log.i(PERMISSION_WORKFLOW_TAG, "Denial count is 1. Re-requesting permissions immediately for the second time.")
+                    // Note: This recursive call to launch on the same launcher instance is fine.
+                    requestPermissionLauncher.launch(requiredPermissions)
+                } else if (denialCount >= 2) {
+                    Log.i(PERMISSION_WORKFLOW_TAG, "Denial count is $denialCount (>=2). Proceeding to show SafGuidanceDialog.")
+                    showSafGuidanceDialog = true
+                }
+            }
+        }
+        Log.d(TAG, "onCreate: requestPermissionLauncher initialized.")
 
         apiKeyManager = ApiKeyManager.getInstance(this)
         Log.d(TAG, "onCreate: ApiKeyManager initialized.")
