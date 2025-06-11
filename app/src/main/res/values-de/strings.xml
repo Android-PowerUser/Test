@@ -20,7 +20,6 @@
 
     <!-- Permission Handling -->
     <string name="permission_rationale_title">Berechtigung erforderlich</string>
-    <string name="permission_rationale_message_media">Die App benötigt Zugriff auf Ihre Fotos/Medien, um Screenshots anzeigen zu können. Bitte erteilen Sie die Berechtigung.</string>
     <string name="permission_saf_guidance_title">Alternativer Zugriff auf Fotos</string>
     <string name="permission_saf_guidance_message">Da die Standardberechtigung nicht erteilt wurde, verwenden Sie bitte die folgende Dateiauswahl, um auf Ihre Screenshots zuzugreifen. Suchen Sie nach Ordnern wie \'Pictures/Screenshots\' oder \'DCIM/Screenshots\'.</string>
 

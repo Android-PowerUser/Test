@@ -50,6 +50,10 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.core.content.ContextCompat
+import androidx.core.content.FileProvider
+import android.os.Environment
+import java.io.File
+import android.provider.DocumentsContract
 import androidx.lifecycle.lifecycleScope
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
@@ -96,24 +100,29 @@ class MainActivity : ComponentActivity() {
     private var trialInfoMessage by mutableStateOf("")
 
     // private var showPermissionRationaleDialog by mutableStateOf(false) // Old dialog state, removed
-    private var showMediaRationaleDialogNew by mutableStateOf(false)
+    // private var showMediaRationaleDialogNew by mutableStateOf(false) // Removed as per new flow
     private var showSafGuidanceDialog by mutableStateOf(false)
     private lateinit var mediaPermissionManager: com.google.ai.sample.util.MediaPermissionManager
     private val PERMISSION_WORKFLOW_TAG = "PermissionWorkflow"
 
     private lateinit var navController: NavHostController
 
-    // SAF Launcher
-    private val safLauncher = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri: Uri? ->
-        if (uri != null) {
-            Log.i(PERMISSION_WORKFLOW_TAG, "SAF URI selected: $uri")
-            Toast.makeText(this, "File selected: $uri", Toast.LENGTH_LONG).show()
-            mediaPermissionManager.resetMediaPermissionDenialCount() // Reset counter on successful SAF selection
-            // TODO: Proceed with media access using this URI
+    // SAF Launcher - updated to StartActivityForResult to allow custom Intent
+    private val safLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+        if (result.resultCode == Activity.RESULT_OK) {
+            val uri = result.data?.data
+            if (uri != null) {
+                Log.i(PERMISSION_WORKFLOW_TAG, "SAF URI selected: $uri")
+                Toast.makeText(this, "File selected: $uri", Toast.LENGTH_LONG).show()
+                mediaPermissionManager.resetMediaPermissionDenialCount() // Reset counter on successful SAF selection
+                // TODO: Proceed with media access using this URI
+            } else {
+                Log.e(PERMISSION_WORKFLOW_TAG, "SAF selection OK but URI is null.")
+                Toast.makeText(this, "Failed to get file URI.", Toast.LENGTH_SHORT).show()
+            }
         } else {
-            Log.i(PERMISSION_WORKFLOW_TAG, "SAF selection cancelled or failed by user.")
+            Log.i(PERMISSION_WORKFLOW_TAG, "SAF selection cancelled or failed by user. ResultCode: ${result.resultCode}")
             Toast.makeText(this, "File selection cancelled.", Toast.LENGTH_SHORT).show()
-            // Optionally, handle repeated SAF cancellations if necessary
         }
     }
 
@@ -136,8 +145,8 @@ class MainActivity : ComponentActivity() {
             val denialCount = mediaPermissionManager.getMediaPermissionDenialCount() // Logs count internally
 
             if (denialCount == 1) {
-                Log.i(PERMISSION_WORKFLOW_TAG, "Denial count is 1. Proceeding to show MediaPermissionRationaleDialogNew.")
-                showMediaRationaleDialogNew = true
+                Log.i(PERMISSION_WORKFLOW_TAG, "Denial count is 1. Re-requesting permissions immediately for the second time.")
+                requestPermissionLauncher.launch(requiredPermissions)
             } else if (denialCount >= 2) {
                 Log.i(PERMISSION_WORKFLOW_TAG, "Denial count is $denialCount (>=2). Proceeding to show SafGuidanceDialog.")
                 showSafGuidanceDialog = true
@@ -389,27 +398,36 @@ class MainActivity : ComponentActivity() {
                     Log.d(TAG, "setContent: Rendering AppNavigation.")
                     AppNavigation(navController)
 
-                    if (showMediaRationaleDialogNew) {
-                        Log.d(PERMISSION_WORKFLOW_TAG, "Displaying MediaPermissionRationaleDialogNew.")
-                        MediaPermissionRationaleDialogNew(
-                            onTryAgain = {
-                                showMediaRationaleDialogNew = false
-                                Log.i(PERMISSION_WORKFLOW_TAG, "MediaPermissionRationaleDialogNew: 'Try Again' clicked. Requesting permissions: ${requiredPermissions.joinToString()}")
-                                requestPermissionLauncher.launch(requiredPermissions)
-                            },
-                            onCancel = {
-                                showMediaRationaleDialogNew = false
-                                Log.i(PERMISSION_WORKFLOW_TAG, "MediaPermissionRationaleDialogNew: 'Cancel' clicked.")
-                                Toast.makeText(this, "Permission needed to access screenshots.", Toast.LENGTH_SHORT).show()
-                            }
-                        )
-                    } else if (showSafGuidanceDialog) {
+                    // Removed MediaPermissionRationaleDialogNew block
+                    if (showSafGuidanceDialog) {
                         Log.d(PERMISSION_WORKFLOW_TAG, "Displaying SafGuidanceDialog.")
                         SafGuidanceDialog(
                             onGoToSettings = {
                                 showSafGuidanceDialog = false
-                                Log.i(PERMISSION_WORKFLOW_TAG, "SafGuidanceDialog: 'Use File Picker' clicked. Launching SAF.")
-                                safLauncher.launch(arrayOf("image/*"))
+                                Log.i(PERMISSION_WORKFLOW_TAG, "SafGuidanceDialog: 'Use File Picker' clicked. Preparing and launching SAF intent.")
+
+                                val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
+                                    type = "image/*"
+                                    addCategory(Intent.CATEGORY_OPENABLE)
+                                    // Optionally, enable multiple selection if your app handles it
+                                    // putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true)
+
+                                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                                        val initialUri = getInitialSafDirectoryUri()
+                                        if (initialUri != null) {
+                                            putExtra(DocumentsContract.EXTRA_INITIAL_URI, initialUri)
+                                            Log.i(PERMISSION_WORKFLOW_TAG, "Setting EXTRA_INITIAL_URI to: $initialUri")
+                                        } else {
+                                            Log.i(PERMISSION_WORKFLOW_TAG, "No specific initial SAF URI determined or usable for EXTRA_INITIAL_URI.")
+                                        }
+                                    }
+                                }
+                                try {
+                                    safLauncher.launch(intent)
+                                } catch (e: Exception) {
+                                    Log.e(PERMISSION_WORKFLOW_TAG, "Exception launching SAF intent: ${e.localizedMessage}", e)
+                                    Toast.makeText(this@MainActivity, "Could not open file picker.", Toast.LENGTH_SHORT).show()
+                                }
                             },
                             onCancel = {
                                 showSafGuidanceDialog = false
@@ -937,14 +955,14 @@ class MainActivity : ComponentActivity() {
                 Log.i(PERMISSION_WORKFLOW_TAG, "Denial count is $currentDenialCount (>=2). Proceeding to show SafGuidanceDialog.")
                 showSafGuidanceDialog = true
             } else if (currentDenialCount == 1) {
-                Log.i(PERMISSION_WORKFLOW_TAG, "Denial count is 1. Proceeding to show MediaPermissionRationaleDialogNew.")
-                showMediaRationaleDialogNew = true
-            } else { // No denials yet (denialCount == 0), or after a reset.
-                 Log.i(PERMISSION_WORKFLOW_TAG, "Denial count is 0. Launching system permission request directly for: ${permissionsToRequest.joinToString()}")
+                Log.i(PERMISSION_WORKFLOW_TAG, "Denial count is 1. Re-requesting permissions immediately (second attempt) for: ${permissionsToRequest.joinToString()}")
+                requestPermissionLauncher.launch(permissionsToRequest)
+            } else { // currentDenialCount == 0
+                 Log.i(PERMISSION_WORKFLOW_TAG, "Denial count is 0. Launching system permission request for the first time for: ${permissionsToRequest.joinToString()}")
                  requestPermissionLauncher.launch(permissionsToRequest)
             }
         } else {
-            Log.i(PERMISSION_WORKFLOW_TAG, "All required media permissions already granted.")
+            Log.i(PERMISSION_WORKFLOW_TAG, "All required media permissions already granted on check.")
             // If permissions are already granted, it's good practice to ensure the denial count is reset,
             // especially if it could have been incremented in a previous session before permission was granted outside this specific flow.
             if (currentDenialCount > 0) { // Only log and reset if it was actually non-zero
@@ -952,6 +970,55 @@ class MainActivity : ComponentActivity() {
             }
             // TODO: Proceed with media access if needed on startup
         }
+    }
+
+    private fun getInitialSafDirectoryUri(): Uri? {
+        val authority = "${packageName}.provider"
+
+        // Try Pictures/Screenshots
+        val picturesScreenshotsDir = File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES), "Screenshots")
+        if (picturesScreenshotsDir.exists() && picturesScreenshotsDir.isDirectory) {
+            try {
+                val uri = FileProvider.getUriForFile(this, authority, picturesScreenshotsDir)
+                Log.d(PERMISSION_WORKFLOW_TAG, "Determined Pictures/Screenshots URI: $uri")
+                return uri
+            } catch (e: Exception) {
+                Log.e(PERMISSION_WORKFLOW_TAG, "Error getting FileProvider URI for Pictures/Screenshots", e)
+            }
+        } else {
+            Log.d(PERMISSION_WORKFLOW_TAG, "Pictures/Screenshots directory does not exist or is not a directory.")
+        }
+
+        // Try DCIM/Screenshots
+        val dcimScreenshotsDir = File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DCIM), "Screenshots")
+        if (dcimScreenshotsDir.exists() && dcimScreenshotsDir.isDirectory) {
+            try {
+                val uri = FileProvider.getUriForFile(this, authority, dcimScreenshotsDir)
+                Log.d(PERMISSION_WORKFLOW_TAG, "Determined DCIM/Screenshots URI: $uri")
+                return uri
+            } catch (e: Exception) {
+                Log.e(PERMISSION_WORKFLOW_TAG, "Error getting FileProvider URI for DCIM/Screenshots", e)
+            }
+        } else {
+            Log.d(PERMISSION_WORKFLOW_TAG, "DCIM/Screenshots directory does not exist or is not a directory.")
+        }
+
+        // Try Pictures directory itself as a broader fallback
+        val picturesDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES)
+        if (picturesDir.exists() && picturesDir.isDirectory) {
+            try {
+                val uri = FileProvider.getUriForFile(this, authority, picturesDir)
+                Log.d(PERMISSION_WORKFLOW_TAG, "Determined Pictures URI: $uri")
+                return uri
+            } catch (e: Exception) {
+                Log.e(PERMISSION_WORKFLOW_TAG, "Error getting FileProvider URI for Pictures directory", e)
+            }
+        } else {
+            Log.d(PERMISSION_WORKFLOW_TAG, "Pictures directory does not exist or is not a directory.")
+        }
+
+        Log.i(PERMISSION_WORKFLOW_TAG, "No specific initial SAF URI could be determined.")
+        return null
     }
 
     companion object {
@@ -1021,33 +1088,7 @@ fun FirstLaunchInfoDialog(onDismiss: () -> Unit) {
     }
 }
 
-// Old PermissionRationaleDialog has been removed.
-
-@Composable
-fun MediaPermissionRationaleDialogNew(onTryAgain: () -> Unit, onCancel: () -> Unit) {
-    Log.d("MediaPermissionRationaleDialogNew", "Composing new media permission rationale dialog")
-    Dialog(onDismissRequest = onCancel) {
-        Card(modifier = Modifier.fillMaxWidth().padding(16.dp)) {
-            Column(
-                modifier = Modifier.padding(16.dp).fillMaxWidth(),
-                horizontalAlignment = Alignment.CenterHorizontally
-            ) {
-                Text(stringResource(id = R.string.permission_rationale_title), style = MaterialTheme.typography.titleLarge)
-                Spacer(modifier = Modifier.height(16.dp))
-                Text(stringResource(id = R.string.permission_rationale_message_media), style = MaterialTheme.typography.bodyMedium)
-                Spacer(modifier = Modifier.height(24.dp))
-                Column(modifier = Modifier.fillMaxWidth()) {
-                    TextButton(onClick = onTryAgain, modifier = Modifier.fillMaxWidth()) {
-                        Text(stringResource(id = R.string.dialog_button_try_again))
-                    }
-                    TextButton(onClick = onCancel, modifier = Modifier.fillMaxWidth()) {
-                        Text(stringResource(id = R.string.dialog_button_cancel))
-                    }
-                }
-            }
-        }
-    }
-}
+// MediaPermissionRationaleDialogNew has been removed.
 
 @Composable
 fun SafGuidanceDialog(onGoToSettings: () -> Unit, onCancel: () -> Unit) {
@@ -1066,9 +1107,7 @@ fun SafGuidanceDialog(onGoToSettings: () -> Unit, onCancel: () -> Unit) {
                     TextButton(onClick = onGoToSettings, modifier = Modifier.fillMaxWidth()) {
                         Text(stringResource(id = R.string.dialog_button_use_file_picker))
                     }
-                    TextButton(onClick = onCancel, modifier = Modifier.fillMaxWidth()) {
-                        Text(stringResource(id = R.string.dialog_button_cancel))
-                    }
+                    // Removed Cancel TextButton below
                 }
             }
         }
