@@ -35,6 +35,9 @@ import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.unit.sp
 import android.widget.Toast
+import android.Manifest // For Manifest.permission.POST_NOTIFICATIONS
+import androidx.compose.material3.AlertDialog // For the rationale dialog
+import androidx.compose.runtime.saveable.rememberSaveable
 
 data class MenuItem(
     val routeId: String,
@@ -51,6 +54,7 @@ fun MenuScreen(
     isPurchased: Boolean = false
 ) {
     val context = LocalContext.current
+    var showRationaleDialogForPhotoReasoning by rememberSaveable { mutableStateOf(false) }
     val menuItems = listOf(
         MenuItem("photo_reasoning", R.string.menu_reason_title, R.string.menu_reason_description)
     )
@@ -186,7 +190,26 @@ fun MenuScreen(
                             if (isTrialExpired) {
                                 Toast.makeText(context, "Please subscribe to the app to continue.", Toast.LENGTH_LONG).show()
                             } else {
-                                onItemClicked(menuItem.routeId)
+                                if (menuItem.routeId == "photo_reasoning") {
+                                    val mainActivity = context as? MainActivity
+                                    if (mainActivity != null && !mainActivity.isNotificationPermissionGranted()) {
+                                        // Check if rationale should be shown
+                                        if (mainActivity.shouldShowRequestPermissionRationale(Manifest.permission.POST_NOTIFICATIONS) && !mainActivity.hasShownNotificationRationale()) {
+                                            showRationaleDialogForPhotoReasoning = true
+                                            // onItemClicked will be called from the dialog's OK button or if rationale is not shown
+                                        } else {
+                                            // Rationale not needed or already shown and dismissed, directly request permission
+                                            mainActivity.requestNotificationPermission()
+                                            onItemClicked(menuItem.routeId) // Proceed to navigate
+                                        }
+                                    } else {
+                                        // Permission already granted or not on Android 13+ or mainActivity is null
+                                        onItemClicked(menuItem.routeId) // Proceed to navigate
+                                    }
+                                } else {
+                                    // For other menu items, navigate directly
+                                    onItemClicked(menuItem.routeId)
+                                }
                             }
                         },
                         enabled = !isTrialExpired, // Disable button if trial is expired
@@ -272,6 +295,42 @@ fun MenuScreen(
                 )
             }
         }
+    }
+
+    if (showRationaleDialogForPhotoReasoning) {
+        val mainActivity = LocalContext.current as? MainActivity
+        AlertDialog(
+            onDismissRequest = {
+                showRationaleDialogForPhotoReasoning = false
+                // If dismissed, still proceed to the item, permission will be asked by OS if needed later by other flows, or user can try again.
+                // Or, we can choose not to navigate if they dismiss. For now, let's navigate.
+                 mainActivity?.let { onItemClicked("photo_reasoning") }
+            },
+            title = { Text("Notification Permission") },
+            text = { Text("You can grant notification permission if you want to be able to stop Screen Operator via notifications.") },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        showRationaleDialogForPhotoReasoning = false
+                        mainActivity?.setNotificationRationaleShown(true)
+                        mainActivity?.requestNotificationPermission()
+                        mainActivity?.let { onItemClicked("photo_reasoning") } // Proceed to navigate
+                    }
+                ) {
+                    Text("OK")
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = {
+                        showRationaleDialogForPhotoReasoning = false
+                        mainActivity?.let { onItemClicked("photo_reasoning") } // Proceed to navigate even on cancel
+                    }
+                ) {
+                    Text("Cancel")
+                }
+            }
+        )
     }
 }
 

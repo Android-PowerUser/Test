@@ -146,7 +146,7 @@ internal fun PhotoReasoningRoute(
 
     // Hoisted: var showNotificationRationaleDialog by rememberSaveable { mutableStateOf(false) }
     // This state will now be managed in PhotoReasoningRoute and passed down.
-    var showNotificationRationaleDialogStateInRoute by rememberSaveable { mutableStateOf(false) }
+    // var showNotificationRationaleDialogStateInRoute by rememberSaveable { mutableStateOf(false) } // Removed
 
 
     val coroutineScope = rememberCoroutineScope()
@@ -208,8 +208,8 @@ internal fun PhotoReasoningRoute(
         },
         isKeyboardOpen = isKeyboardOpen,
         onStopClicked = { viewModel.onStopClicked() },
-        showNotificationRationaleDialog = showNotificationRationaleDialogStateInRoute,
-        onShowNotificationRationaleDialogChange = { showNotificationRationaleDialogStateInRoute = it },
+        // showNotificationRationaleDialog = showNotificationRationaleDialogStateInRoute, // Removed
+        // onShowNotificationRationaleDialogChange = { showNotificationRationaleDialogStateInRoute = it }, // Removed
         isInitialized = isInitialized // Pass the collected state
     )
 }
@@ -228,8 +228,8 @@ fun PhotoReasoningScreen(
     onClearChatHistory: () -> Unit = {},
     isKeyboardOpen: Boolean,
     onStopClicked: () -> Unit = {},
-    showNotificationRationaleDialog: Boolean, // New parameter
-    onShowNotificationRationaleDialogChange: (Boolean) -> Unit, // New parameter
+    // showNotificationRationaleDialog: Boolean, // Removed
+    // onShowNotificationRationaleDialogChange: (Boolean) -> Unit, // Removed
     isInitialized: Boolean = true // Added parameter with default for preview
 ) {
     var userQuestion by rememberSaveable { mutableStateOf("") }
@@ -363,37 +363,14 @@ fun PhotoReasoningScreen(
                         modifier = Modifier.weight(1f).padding(end = 8.dp)
                     )
                     IconButton(onClick = {
-                        val activity = context as? MainActivity
-                        if (activity != null && !activity.isNotificationPermissionGranted()) {
-                            if (!activity.hasShownNotificationRationale()) {
-                                onShowNotificationRationaleDialogChange(true) // Use new callback
-                            } else {
-                                // Rationale already shown, or user previously denied.
-                                // Directly request permission or decide if reasoning should be blocked.
-                                // For now, let's request again. System handles "don't ask again".
-                                activity.requestNotificationPermission()
-                                // Optionally, delay onReasonClicked until permission result,
-                                // but for now, let it proceed as notification is a value-add.
-                                 if (isAccessibilityServiceEnabled) {
-                                    if (userQuestion.isNotBlank()) {
-                                        onReasonClicked(userQuestion, imageUris.toList())
-                                        userQuestion = ""
-                                    }
-                                } else {
-                                    onEnableAccessibilityService()
-                                    Toast.makeText(context, "Enable the Accessibility service for Screen Operator", Toast.LENGTH_LONG).show()
-                                }
+                        if (isAccessibilityServiceEnabled) {
+                            if (userQuestion.isNotBlank()) {
+                                onReasonClicked(userQuestion, imageUris.toList())
+                                userQuestion = ""
                             }
-                        } else { // Permission granted or not needed (older OS)
-                            if (isAccessibilityServiceEnabled) {
-                                if (userQuestion.isNotBlank()) {
-                                    onReasonClicked(userQuestion, imageUris.toList())
-                                    userQuestion = ""
-                                }
-                            } else {
-                                onEnableAccessibilityService()
-                                Toast.makeText(context, "Enable the Accessibility service for Screen Operator", Toast.LENGTH_LONG).show()
-                            }
+                        } else {
+                            onEnableAccessibilityService()
+                            Toast.makeText(context, "Enable the Accessibility service for Screen Operator", Toast.LENGTH_LONG).show()
                         }
                     },
                     enabled = isInitialized && isAccessibilityServiceEnabled && userQuestion.isNotBlank(), // Modified enabled state
@@ -493,40 +470,7 @@ fun PhotoReasoningScreen(
         }
     }
 
-    if (showNotificationRationaleDialog) { // Use new parameter
-        AlertDialog(
-            onDismissRequest = { onShowNotificationRationaleDialogChange(false) }, // Use new callback
-            title = { Text("Notification Permission") },
-            text = { Text("You can grant notification permission if you want to be able to stop Screen Operator via notifications.") },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        onShowNotificationRationaleDialogChange(false) // Use new callback
-                        val activity = context as? MainActivity
-                        activity?.setNotificationRationaleShown(true)
-                        activity?.requestNotificationPermission()
-                        // Proceed with reasonClicked after user acknowledges rationale and permission is requested
-                        // This is a choice: either proceed or wait for permission result.
-                        // For simplicity and as it's a value-add, let's allow proceeding.
-                        if (isAccessibilityServiceEnabled) {
-                            if (userQuestion.isNotBlank()) { // Check again, user might have cleared it
-                                onReasonClicked(userQuestion, imageUris.toList())
-                                userQuestion = ""
-                            }
-                        } else {
-                           onEnableAccessibilityService()
-                           Toast.makeText(context, "Enable the Accessibility service for Screen Operator", Toast.LENGTH_LONG).show()
-                        }
-                    }
-                ) {
-                    Text("OK")
-                }
-            },
-            dismissButton = {
-                 TextButton(onClick = { onShowNotificationRationaleDialogChange(false) }) { Text("Cancel") } // Use new callback
-            }
-        )
-    }
+    // Removed AlertDialog for notification rationale
 }
 
 @Composable
@@ -1069,8 +1013,6 @@ fun PhotoReasoningScreenPreviewWithContent() {
             ),
             isKeyboardOpen = false,
             onStopClicked = {},
-            showNotificationRationaleDialog = false,
-            onShowNotificationRationaleDialogChange = {},
             isInitialized = true
         )
     }
@@ -1173,8 +1115,6 @@ fun PhotoReasoningScreenPreviewEmpty() {
         PhotoReasoningScreen(
             isKeyboardOpen = false,
             onStopClicked = {},
-            showNotificationRationaleDialog = false,
-            onShowNotificationRationaleDialogChange = {},
             isInitialized = true
         )
     }
