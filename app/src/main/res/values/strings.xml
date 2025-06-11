@@ -37,4 +37,8 @@
     <string name="cannot_open_file_picker_toast">Could not open file picker.</string>
     <string name="all_permissions_granted_toast">All required permissions granted.</string>
 
+    <!-- First Launch Info Dialog -->
+    <string name="first_launch_dialog_title">Trial Information</string>
+    <string name="first_launch_dialog_message">You can try Screen Operator for 30 minutes before you have to subscribe to support the development of more features.</string>
+
 </resources>

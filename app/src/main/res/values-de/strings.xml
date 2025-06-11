@@ -37,4 +37,8 @@
     <string name="cannot_open_file_picker_toast">Dateiauswahl konnte nicht geöffnet werden.</string>
     <string name="all_permissions_granted_toast">Alle erforderlichen Berechtigungen erteilt.</string>
 
+    <!-- First Launch Info Dialog -->
+    <string name="first_launch_dialog_title">Testversion-Informationen</string>
+    <string name="first_launch_dialog_message">Sie können Screen Operator 30 Minuten lang testen, bevor Sie ein Abonnement abschließen müssen, um die Entwicklung weiterer Funktionen zu unterstützen.</string>
+
 </resources>

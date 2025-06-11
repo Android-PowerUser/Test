@@ -118,11 +118,11 @@ class MainActivity : ComponentActivity() {
                 // TODO: Proceed with media access using this URI
             } else {
                 Log.e(PERMISSION_WORKFLOW_TAG, "SAF selection OK but URI is null.")
-                Toast.makeText(this, stringResource(R.string.failed_to_get_file_uri_toast), Toast.LENGTH_SHORT).show()
+                Toast.makeText(this, getString(R.string.failed_to_get_file_uri_toast), Toast.LENGTH_SHORT).show()
             }
         } else {
             Log.i(PERMISSION_WORKFLOW_TAG, "SAF selection cancelled or failed by user. ResultCode: ${result.resultCode}")
-            Toast.makeText(this, stringResource(R.string.file_selection_cancelled_toast), Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, getString(R.string.file_selection_cancelled_toast), Toast.LENGTH_SHORT).show()
         }
     }
 
@@ -294,7 +294,7 @@ class MainActivity : ComponentActivity() {
             if (allGranted) {
                 Log.i(PERMISSION_WORKFLOW_TAG, "All required permissions granted by user.")
                 mediaPermissionManager.resetMediaPermissionDenialCount()
-                updateStatusMessage(stringResource(R.string.all_permissions_granted_toast))
+                updateStatusMessage(getString(R.string.all_permissions_granted_toast))
                 // TODO: Proceed with media access
             } else {
                 val deniedPermissions = permissions.entries.filter { !it.value }.map { it.key }
@@ -430,13 +430,13 @@ class MainActivity : ComponentActivity() {
                                     safLauncher.launch(intent)
                                 } catch (e: Exception) {
                                     Log.e(PERMISSION_WORKFLOW_TAG, "Exception launching SAF intent: ${e.localizedMessage}", e)
-                                    Toast.makeText(this@MainActivity, stringResource(R.string.cannot_open_file_picker_toast), Toast.LENGTH_SHORT).show()
+                                    Toast.makeText(this@MainActivity, getString(R.string.cannot_open_file_picker_toast), Toast.LENGTH_SHORT).show()
                                 }
                             },
                             onCancel = {
                                 showSafGuidanceDialog = false
                                 Log.i(PERMISSION_WORKFLOW_TAG, "SafGuidanceDialog: 'Cancel' clicked.")
-                                Toast.makeText(this, stringResource(R.string.screenshots_not_accessible_toast), Toast.LENGTH_SHORT).show()
+                                Toast.makeText(this, getString(R.string.screenshots_not_accessible_toast), Toast.LENGTH_SHORT).show()
                             }
                         )
                     }
@@ -1068,12 +1068,12 @@ fun FirstLaunchInfoDialog(onDismiss: () -> Unit) {
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
                 Text(
-                    text = "Trial Information",
+                    text = stringResource(R.string.first_launch_dialog_title),
                     style = MaterialTheme.typography.titleLarge
                 )
                 Spacer(modifier = Modifier.height(16.dp))
                 Text(
-                    text = "You can try Screen Operator for 30 minutes before you have to subscribe to support the development of more features.",
+                    text = stringResource(R.string.first_launch_dialog_message),
                     style = MaterialTheme.typography.bodyMedium,
                     modifier = Modifier.align(Alignment.CenterHorizontally)
                 )
@@ -1085,7 +1085,7 @@ fun FirstLaunchInfoDialog(onDismiss: () -> Unit) {
                     },
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    Text("OK")
+                    Text(stringResource(R.string.dialog_button_ok))
                 }
             }
         }
