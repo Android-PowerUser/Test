@@ -128,9 +128,9 @@ class MainActivity : ComponentActivity() {
 
     // Permission Launchers
     private lateinit var requestNotificationPermissionLauncher: ActivityResultLauncher<String>
-    private val requestPermissionLauncher = registerForActivityResult(
+    private val requestPermissionLauncher: ActivityResultLauncher<Array<String>> = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
-    ) { permissions ->
+    ) { permissions: Map<String, Boolean> ->
         Log.d(PERMISSION_WORKFLOW_TAG, "requestPermissionLauncher callback received. Permissions: $permissions")
         val allGranted = permissions.entries.all { it.value }
         if (allGranted) {
