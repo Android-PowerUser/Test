@@ -51,6 +51,9 @@ class PhotoReasoningViewModel(
     val uiState: StateFlow<PhotoReasoningUiState> =
         _uiState.asStateFlow()
 
+    private val _isInitialized = MutableStateFlow(false)
+    val isInitialized: StateFlow<Boolean> = _isInitialized.asStateFlow()
+
     private val _showStopNotificationFlow = MutableStateFlow(false)
     val showStopNotificationFlow: StateFlow<Boolean> = _showStopNotificationFlow.asStateFlow()
         
@@ -696,7 +699,9 @@ class PhotoReasoningViewModel(
         _systemMessage.value = message
         
         // Also load chat history
-        loadChatHistory(context)
+        loadChatHistory(context) // This line calls rebuildChatHistory internally
+
+        _isInitialized.value = true // Add this line
     }
 
     /**

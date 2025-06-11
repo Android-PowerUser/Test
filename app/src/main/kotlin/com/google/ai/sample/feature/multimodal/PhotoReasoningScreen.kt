@@ -142,6 +142,7 @@ internal fun PhotoReasoningRoute(
     val detectedCommands by viewModel.detectedCommands.collectAsState()
     val systemMessage by viewModel.systemMessage.collectAsState()
     val chatMessages by viewModel.chatMessagesFlow.collectAsState()
+    val isInitialized by viewModel.isInitialized.collectAsState()
 
     // Hoisted: var showNotificationRationaleDialog by rememberSaveable { mutableStateOf(false) }
     // This state will now be managed in PhotoReasoningRoute and passed down.
@@ -208,7 +209,8 @@ internal fun PhotoReasoningRoute(
         isKeyboardOpen = isKeyboardOpen,
         onStopClicked = { viewModel.onStopClicked() },
         showNotificationRationaleDialog = showNotificationRationaleDialogStateInRoute,
-        onShowNotificationRationaleDialogChange = { showNotificationRationaleDialogStateInRoute = it }
+        onShowNotificationRationaleDialogChange = { showNotificationRationaleDialogStateInRoute = it },
+        isInitialized = isInitialized // Pass the collected state
     )
 }
 
@@ -227,7 +229,8 @@ fun PhotoReasoningScreen(
     isKeyboardOpen: Boolean,
     onStopClicked: () -> Unit = {},
     showNotificationRationaleDialog: Boolean, // New parameter
-    onShowNotificationRationaleDialogChange: (Boolean) -> Unit // New parameter
+    onShowNotificationRationaleDialogChange: (Boolean) -> Unit, // New parameter
+    isInitialized: Boolean = true // Added parameter with default for preview
 ) {
     var userQuestion by rememberSaveable { mutableStateOf("") }
     val imageUris = rememberSaveable(saver = UriSaver()) { mutableStateListOf() }
@@ -392,7 +395,10 @@ fun PhotoReasoningScreen(
                                 Toast.makeText(context, "Enable the Accessibility service for Screen Operator", Toast.LENGTH_LONG).show()
                             }
                         }
-                    }, modifier = Modifier.padding(all = 4.dp).align(Alignment.CenterVertically)) {
+                    },
+                    enabled = isInitialized && isAccessibilityServiceEnabled && userQuestion.isNotBlank(), // Modified enabled state
+                    modifier = Modifier.padding(all = 4.dp).align(Alignment.CenterVertically)
+                    ) {
                         Icon(Icons.Default.Send, stringResource(R.string.action_go), tint = MaterialTheme.colorScheme.primary)
                     }
                 }
@@ -1064,7 +1070,8 @@ fun PhotoReasoningScreenPreviewWithContent() {
             isKeyboardOpen = false,
             onStopClicked = {},
             showNotificationRationaleDialog = false,
-            onShowNotificationRationaleDialogChange = {}
+            onShowNotificationRationaleDialogChange = {},
+            isInitialized = true
         )
     }
 }
@@ -1167,7 +1174,8 @@ fun PhotoReasoningScreenPreviewEmpty() {
             isKeyboardOpen = false,
             onStopClicked = {},
             showNotificationRationaleDialog = false,
-            onShowNotificationRationaleDialogChange = {}
+            onShowNotificationRationaleDialogChange = {},
+            isInitialized = true
         )
     }
 }
