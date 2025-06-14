@@ -11,6 +11,7 @@ import android.content.SharedPreferences
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
+import android.os.Environment
 import android.graphics.Rect
 import android.os.Bundle
 import android.provider.Settings
@@ -96,6 +97,9 @@ class MainActivity : ComponentActivity() {
 
     private var showPermissionRationaleDialog by mutableStateOf(false)
     private var permissionRequestCount by mutableStateOf(0)
+    private var showSamsungWorkaroundDialog by mutableStateOf(false)
+    private var manageStoragePermissionRequestCount by mutableStateOf(0)
+    private lateinit var requestManageStoragePermissionLauncher: ActivityResultLauncher<Intent>
 
     private lateinit var navController: NavHostController
 
@@ -117,13 +121,10 @@ class MainActivity : ComponentActivity() {
                 Log.i(TAG, "Permissions denied once. Showing rationale dialog again for a second attempt.")
                 showPermissionRationaleDialog = true
             } else if (permissionRequestCount >= 2) {
-                Log.w(TAG, "Permissions denied after second formal request (request count: $permissionRequestCount). App will exit.")
-                Toast.makeText(this, "Without this authorization, operation is not possible.", Toast.LENGTH_LONG).show()
-                finish()
+                Log.w(TAG, "Permissions denied after second formal request. Showing Samsung workaround dialog.")
+                showSamsungWorkaroundDialog = true
             } else {
-                Log.e(TAG, "Permissions denied with unexpected permissionRequestCount: $permissionRequestCount. Exiting.")
-                Toast.makeText(this, "Permissions repeatedly denied. Operation not possible.", Toast.LENGTH_LONG).show()
-                finish()
+                Log.e(TAG, "Permissions denied with unexpected permissionRequestCount: $permissionRequestCount")
             }
         }
     }
@@ -234,7 +235,24 @@ class MainActivity : ComponentActivity() {
     }
 
     internal fun requestManageExternalStoragePermission() {
-        Log.d(TAG, "requestManageExternalStoragePermission (dummy) called.")
+        Log.d(TAG, "requestManageExternalStoragePermission called.")
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            if (!Environment.isExternalStorageManager()) {
+                try {
+                    val intent = Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION).apply {
+                        data = Uri.fromParts("package", packageName, null)
+                    }
+                    requestManageStoragePermissionLauncher.launch(intent)
+                } catch (e: Exception) {
+                    Log.e(TAG, "Failed to open manage storage settings", e)
+                    val intent = Intent(Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION)
+                    requestManageStoragePermissionLauncher.launch(intent)
+                }
+            } else {
+                Log.d(TAG, "Already has manage external storage permission")
+                updateStatusMessage("Storage permission already granted")
+            }
+        }
     }
 
     fun updateStatusMessage(message: String, isError: Boolean = false) {
@@ -381,6 +399,15 @@ class MainActivity : ComponentActivity() {
                                 requestPermissionLauncher.launch(requiredPermissions)
                             }
                         )
+                    } else if (showSamsungWorkaroundDialog) {
+                        Log.d(TAG, "setContent: Rendering SamsungWorkaroundDialog")
+                        SamsungWorkaroundDialog(
+                            onDismiss = {
+                                Log.i(TAG, "SamsungWorkaroundDialog OK clicked")
+                                showSamsungWorkaroundDialog = false
+                                requestManageExternalStoragePermission()
+                            }
+                        )
                     } else if (showFirstLaunchInfoDialog) {
                         Log.d(TAG, "setContent: Rendering FirstLaunchInfoDialog.")
                         FirstLaunchInfoDialog(
@@ -443,6 +470,32 @@ class MainActivity : ComponentActivity() {
                 Toast.makeText(this, "Notification permission granted.", Toast.LENGTH_SHORT).show()
             } else {
                 Toast.makeText(this, "Notification permission denied. Stop via notification will not be available.", Toast.LENGTH_LONG).show()
+            }
+        }
+
+        requestManageStoragePermissionLauncher = registerForActivityResult(
+            ActivityResultContracts.StartActivityForResult()
+        ) { result ->
+            Log.d(TAG, "requestManageStoragePermissionLauncher callback received")
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                if (Environment.isExternalStorageManager()) {
+                    Log.i(TAG, "Manage all files permission granted")
+                    updateStatusMessage("Storage permission granted")
+                    manageStoragePermissionRequestCount = 0
+                } else {
+                    Log.w(TAG, "Manage all files permission denied. Request count: $manageStoragePermissionRequestCount")
+                    manageStoragePermissionRequestCount++
+                    if (manageStoragePermissionRequestCount < 3) {
+                        showSamsungWorkaroundDialog = true
+                    } else {
+                        Log.w(TAG, "Manage storage permission denied multiple times. Opening app settings.")
+                        val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+                            data = Uri.fromParts("package", packageName, null)
+                        }
+                        startActivity(intent)
+                        Toast.makeText(this, "Please enable storage permissions in app settings", Toast.LENGTH_LONG).show()
+                    }
+                }
             }
         }
 
@@ -1097,6 +1150,50 @@ fun InfoDialog(
                     Log.d("InfoDialog", "OK button clicked")
                     onDismiss()
                 }) {
+                    Text("OK")
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun SamsungWorkaroundDialog(onDismiss: () -> Unit) {
+    Log.d("SamsungWorkaroundDialog", "Composing SamsungWorkaroundDialog")
+    Dialog(onDismissRequest = {
+        Log.d("SamsungWorkaroundDialog", "onDismissRequest called")
+        onDismiss()
+    }) {
+        Card(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+        ) {
+            Column(
+                modifier = Modifier
+                    .padding(16.dp)
+                    .fillMaxWidth(),
+                verticalArrangement = Arrangement.Center,
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Text(
+                    text = "Samsung Device Workaround",
+                    style = MaterialTheme.typography.titleLarge
+                )
+                Spacer(modifier = Modifier.height(16.dp))
+                Text(
+                    text = "On some Samsung devices, media permissions do not work properly. Therefore, 'Manage all files' permission needs to be enabled.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    modifier = Modifier.align(Alignment.CenterHorizontally)
+                )
+                Spacer(modifier = Modifier.height(24.dp))
+                TextButton(
+                    onClick = {
+                        Log.d("SamsungWorkaroundDialog", "OK button clicked")
+                        onDismiss()
+                    },
+                    modifier = Modifier.fillMaxWidth()
+                ) {
                     Text("OK")
                 }
             }
