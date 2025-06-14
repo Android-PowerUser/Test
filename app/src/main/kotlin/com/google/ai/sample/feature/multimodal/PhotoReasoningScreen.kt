@@ -476,8 +476,6 @@ fun PhotoReasoningScreen(
         }
     }
 
-    // Removed AlertDialog for notification rationale
-
 
 @Composable
 fun DatabaseListPopup(
