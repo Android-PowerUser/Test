@@ -113,31 +113,50 @@ class PhotoReasoningViewModel(
         Log.d(TAG, "_showStopNotificationFlow value is now: ${_showStopNotificationFlow.value}")
         stopExecutionFlag.set(false)
 
-        val prompt = "FOLLOW THE INSTRUCTIONS STRICTLY: $userInput"
+        // Prüfe ob es die erste Nachricht ist
+val isFirstMessage = chatMessages.isEmpty() || 
+    chatMessages.all { it.participant != PhotoParticipant.MODEL || it.isPending }
 
-        // Store the current user input and selected images
-        currentUserInput = userInput
-        currentSelectedImages = selectedImages
+// Erstelle den kompletten Prompt
+val prompt = if (isFirstMessage && _systemMessage.value.isNotBlank()) {
+    // Bei der ersten Nachricht: System-Nachricht + Database Entries + User Input
+    val dbEntries = formatDatabaseEntriesAsText(MainActivity.getInstance()?.applicationContext ?: return)
+    buildString {
+        append(_systemMessage.value)
+        if (dbEntries.isNotBlank()) {
+            append("\n\n")
+            append(dbEntries)
+        }
+        append("\n\nFOLLOW THE INSTRUCTIONS STRICTLY: ")
+        append(userInput)
+    }
+} else {
+    "FOLLOW THE INSTRUCTIONS STRICTLY: $userInput"
+}
 
-        // Clear previous commands
-        _detectedCommands.value = emptyList()
-        _commandExecutionStatus.value = ""
+// Store the current user input and selected images
+currentUserInput = userInput
+currentSelectedImages = selectedImages
 
-        // Add user message to chat history
-        val userMessage = PhotoReasoningMessage(
-            text = userInput,
-            participant = PhotoParticipant.USER,
-            isPending = false
-        )
-        _chatState.addMessage(userMessage)
-        _chatMessagesFlow.value = chatMessages
+// Clear previous commands
+_detectedCommands.value = emptyList()
+_commandExecutionStatus.value = ""
 
-        // Add AI message with pending status
-        val pendingAiMessage = PhotoReasoningMessage(
-            text = "",
-            participant = PhotoParticipant.MODEL,
-            isPending = true
-        )
+// Add user message to chat history
+val userMessage = PhotoReasoningMessage(
+    text = userInput,
+    participant = PhotoParticipant.USER,
+    isPending = false
+)
+_chatState.addMessage(userMessage)
+_chatMessagesFlow.value = chatMessages
+
+// Add AI message with pending status
+val pendingAiMessage = PhotoReasoningMessage(
+    text = "",
+    participant = PhotoParticipant.MODEL,
+    isPending = true
+)
         _chatState.addMessage(pendingAiMessage)
         _chatMessagesFlow.value = chatMessages
 
