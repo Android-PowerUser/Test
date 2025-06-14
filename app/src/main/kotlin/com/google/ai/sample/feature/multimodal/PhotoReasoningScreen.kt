@@ -194,15 +194,13 @@ internal fun PhotoReasoningRoute(
         },
         isAccessibilityServiceEnabled = isAccessibilityServiceEffectivelyEnabled,
         onEnableAccessibilityService = {
-            mainActivity?.let {
-                val intent = it.getAccessibilitySettingsIntent()
-                try {
-                    accessibilitySettingsLauncher.launch(intent)
-                } catch (e: Exception) {
-                    it.updateStatusMessage("Error opening Accessibility Settings.", true)
-                }
-            }
-        },
+    val intent = Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)
+    try {
+        accessibilitySettingsLauncher.launch(intent)
+    } catch (e: Exception) {
+        Toast.makeText(context, "Error opening Accessibility Settings.", Toast.LENGTH_LONG).show()
+    }
+},
         onClearChatHistory = {
             mainActivity?.getPhotoReasoningViewModel()?.clearChatHistory(context)
         },
