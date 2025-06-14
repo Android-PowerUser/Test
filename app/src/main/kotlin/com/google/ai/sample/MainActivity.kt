@@ -13,6 +13,8 @@ import android.net.Uri
 import android.os.Build
 import android.graphics.Rect
 import android.os.Bundle
+import android.provider.DocumentsContract
+import android.provider.MediaStore
 import android.provider.Settings
 import android.util.Log
 import android.view.View
@@ -96,6 +98,7 @@ class MainActivity : ComponentActivity() {
 
     private var showPermissionRationaleDialog by mutableStateOf(false)
     private var permissionRequestCount by mutableStateOf(0)
+    private var showSamsungWarningDialog by mutableStateOf(false)
 
     private lateinit var navController: NavHostController
 
@@ -117,14 +120,27 @@ class MainActivity : ComponentActivity() {
                 Log.i(TAG, "Permissions denied once. Showing rationale dialog again for a second attempt.")
                 showPermissionRationaleDialog = true
             } else if (permissionRequestCount >= 2) {
-                Log.w(TAG, "Permissions denied after second formal request (request count: $permissionRequestCount). App will exit.")
-                Toast.makeText(this, "Without this authorization, operation is not possible.", Toast.LENGTH_LONG).show()
-                finish()
-            } else {
-                Log.e(TAG, "Permissions denied with unexpected permissionRequestCount: $permissionRequestCount. Exiting.")
-                Toast.makeText(this, "Permissions repeatedly denied. Operation not possible.", Toast.LENGTH_LONG).show()
-                finish()
+                Log.w(TAG, "Permissions denied after second formal request (request count: $permissionRequestCount). Showing Samsung warning.")
+                showSamsungWarningDialog = true
             }
+        }
+    }
+
+    // Storage Access Framework launcher for directory selection
+    private val safLauncher = registerForActivityResult(
+        ActivityResultContracts.OpenDocumentTree()
+    ) { uri ->
+        Log.d(TAG, "SAF launcher callback received. URI: $uri")
+        if (uri != null) {
+            // Take persistable URI permission
+            val takeFlags = Intent.FLAG_GRANT_READ_URI_PERMISSION
+            contentResolver.takePersistableUriPermission(uri, takeFlags)
+            Log.i(TAG, "SAF directory selected and permission granted: $uri")
+            updateStatusMessage("Directory access granted")
+        } else {
+            Log.w(TAG, "SAF directory selection cancelled by user. Showing warning again.")
+            // Show Samsung warning again to retry SAF
+            showSamsungWarningDialog = true
         }
     }
 
@@ -379,6 +395,23 @@ class MainActivity : ComponentActivity() {
                                 showPermissionRationaleDialog = false
                                 Log.i(TAG, "Requesting permissions now. Required: ${requiredPermissions.joinToString()}")
                                 requestPermissionLauncher.launch(requiredPermissions)
+                            }
+                        )
+                    } else if (showSamsungWarningDialog) {
+                        Log.d(TAG, "setContent: Rendering SamsungWarningDialog")
+                        SamsungWarningDialog(
+                            onDismiss = {
+                                Log.i(TAG, "SamsungWarningDialog OK clicked. Launching SAF for DCIM/Screenshots")
+                                showSamsungWarningDialog = false
+                                // Launch SAF pointing to DCIM/Screenshots if possible
+                                val intent = Intent(Intent.ACTION_OPEN_DOCUMENT_TREE).apply {
+                                    // Try to pre-select DCIM/Screenshots directory
+                                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                                        putExtra(DocumentsContract.EXTRA_INITIAL_URI,
+                                            MediaStore.Images.Media.EXTERNAL_CONTENT_URI)
+                                    }
+                                }
+                                safLauncher.launch(null) // Changed from intent to null based on SAF behavior
                             }
                         )
                     } else if (showFirstLaunchInfoDialog) {
@@ -920,6 +953,50 @@ class MainActivity : ComponentActivity() {
             Log.d(TAG, "ACTION_STOP_OPERATION received from notification.")
             photoReasoningViewModel?.onStopClicked() ?: run {
                 Log.w(TAG, "PhotoReasoningViewModel not initialized when trying to handle stop action from notification.")
+            }
+        }
+    }
+}
+
+@Composable
+fun SamsungWarningDialog(onDismiss: () -> Unit) {
+    Log.d("SamsungWarningDialog", "Composing SamsungWarningDialog")
+    Dialog(onDismissRequest = {
+        Log.d("SamsungWarningDialog", "onDismissRequest called")
+        onDismiss()
+    }) {
+        Card(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+        ) {
+            Column(
+                modifier = Modifier
+                    .padding(16.dp)
+                    .fillMaxWidth(),
+                verticalArrangement = Arrangement.Center,
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Text(
+                    text = "Samsung Device Issue",
+                    style = MaterialTheme.typography.titleLarge
+                )
+                Spacer(modifier = Modifier.height(16.dp))
+                Text(
+                    text = "On some Samsung devices there is an issue with media permissions. You will now be asked to select a directory instead.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    modifier = Modifier.align(Alignment.CenterHorizontally)
+                )
+                Spacer(modifier = Modifier.height(24.dp))
+                TextButton(
+                    onClick = {
+                        Log.d("SamsungWarningDialog", "OK button clicked")
+                        onDismiss()
+                    },
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text("OK")
+                }
             }
         }
     }
