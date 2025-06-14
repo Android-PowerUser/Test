@@ -372,7 +372,7 @@ fun PhotoReasoningScreen(
                                     // Accessibility is OFF
                                     onEnableAccessibilityService()
                                     Toast.makeText(context, "Enable the Accessibility service for Screen Operator", Toast.LENGTH_LONG).show()
-                            }
+                                } // Closes the else block
                             },
                             enabled = isInitialized && ((isAccessibilityServiceEnabled && userQuestion.isNotBlank()) || !isAccessibilityServiceEnabled),
                             modifier = Modifier.padding(all = 4.dp).align(Alignment.CenterVertically)
