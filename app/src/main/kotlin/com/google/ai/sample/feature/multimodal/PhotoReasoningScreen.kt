@@ -383,11 +383,11 @@ fun PhotoReasoningScreen(
                                 tint = if ((isAccessibilityServiceEnabled && userQuestion.isNotBlank()) || !isAccessibilityServiceEnabled) MaterialTheme.colorScheme.primary else Color.Gray,
                             )
                         }
+                    } // Closes Row
+                    LazyRow(modifier = Modifier.padding(all = 8.dp)) {
+                        items(imageUris) { uri -> AsyncImage(uri, null, Modifier.padding(4.dp).requiredSize(72.dp)) }
                     }
-                }
-                LazyRow(modifier = Modifier.padding(all = 8.dp)) {
-                    items(imageUris) { uri -> AsyncImage(uri, null, Modifier.padding(4.dp).requiredSize(72.dp)) }
-                }
+                } // Closes Card
             }
         }
 
