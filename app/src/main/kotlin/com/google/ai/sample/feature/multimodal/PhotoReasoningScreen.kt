@@ -360,21 +360,29 @@ fun PhotoReasoningScreen(
                         onValueChange = { userQuestion = it },
                         modifier = Modifier.weight(1f).padding(end = 8.dp)
                     )
-                    IconButton(onClick = {
-                        if (isAccessibilityServiceEnabled) {
-                            if (userQuestion.isNotBlank()) {
-                                onReasonClicked(userQuestion, imageUris.toList())
-                                userQuestion = ""
+                        IconButton(
+                            onClick = {
+                                if (isAccessibilityServiceEnabled) {
+                                    if (userQuestion.isNotBlank()) {
+                                        onReasonClicked(userQuestion, imageUris.toList())
+                                        userQuestion = ""
+                                    }
+                                    // If accessibility is ON but userQuestion is BLANK, no action is needed here as the button's enabled state and tint convey this.
+                                } else {
+                                    // Accessibility is OFF
+                                    onEnableAccessibilityService()
+                                    Toast.makeText(context, "Enable the Accessibility service for Screen Operator", Toast.LENGTH_LONG).show()
                             }
-                        } else {
-                            onEnableAccessibilityService()
-                            Toast.makeText(context, "Enable the Accessibility service for Screen Operator", Toast.LENGTH_LONG).show()
+                            },
+                            enabled = isInitialized && ((isAccessibilityServiceEnabled && userQuestion.isNotBlank()) || !isAccessibilityServiceEnabled),
+                            modifier = Modifier.padding(all = 4.dp).align(Alignment.CenterVertically)
+                        ) {
+                            Icon(
+                                Icons.Default.Send,
+                                stringResource(R.string.action_go),
+                                tint = if ((isAccessibilityServiceEnabled && userQuestion.isNotBlank()) || !isAccessibilityServiceEnabled) MaterialTheme.colorScheme.primary else Color.Gray,
+                            )
                         }
-                    },
-                    enabled = isInitialized && isAccessibilityServiceEnabled && userQuestion.isNotBlank(), // Modified enabled state
-                    modifier = Modifier.padding(all = 4.dp).align(Alignment.CenterVertically)
-                    ) {
-                        Icon(Icons.Default.Send, stringResource(R.string.action_go), tint = MaterialTheme.colorScheme.primary)
                     }
                 }
                 LazyRow(modifier = Modifier.padding(all = 8.dp)) {
