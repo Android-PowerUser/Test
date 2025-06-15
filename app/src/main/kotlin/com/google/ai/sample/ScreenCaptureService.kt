@@ -154,8 +154,21 @@ private fun takeScreenshot() {
         val displayMetrics = DisplayMetrics()
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            display?.getRealMetrics(displayMetrics)
+            // For API 30 and above, get defaultDisplay from windowManager
+            val defaultDisplay = windowManager.defaultDisplay
+            if (defaultDisplay != null) {
+                defaultDisplay.getRealMetrics(displayMetrics)
+            } else {
+                // Fallback if defaultDisplay is somehow null on API 30+
+                // (should be rare, but good to have a contingency)
+                val bounds = windowManager.currentWindowMetrics.bounds
+                displayMetrics.widthPixels = bounds.width()
+                displayMetrics.heightPixels = bounds.height()
+                // Attempt to get density from resources as a last resort for fallback
+                displayMetrics.densityDpi = resources.displayMetrics.densityDpi
+            }
         } else {
+            // For older versions (below API 30)
             @Suppress("DEPRECATION")
             windowManager.defaultDisplay.getMetrics(displayMetrics)
         }
@@ -173,7 +186,7 @@ private fun takeScreenshot() {
             width, height, density,
             DisplayManager.VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR,
             imageReader!!.surface,
-            object : VirtualDisplay.Callback() { // Non-null Callback
+            object : VirtualDisplay.Callback() {
                 override fun onPaused() {
                     Log.d(TAG, "VirtualDisplay paused")
                 }
@@ -184,7 +197,7 @@ private fun takeScreenshot() {
                     Log.d(TAG, "VirtualDisplay stopped")
                 }
             },
-            Handler(Looper.getMainLooper()) // Handler for the callback
+            Handler(Looper.getMainLooper())
         )
 
         imageReader!!.setOnImageAvailableListener({ reader ->
@@ -211,7 +224,7 @@ private fun takeScreenshot() {
                 Log.e(TAG, "Error processing image", e)
             } finally {
                 image?.close()
-                cleanup() // This was in the user's provided code
+                cleanup() // As per user's version
             }
         }, Handler(Looper.getMainLooper()))
 
