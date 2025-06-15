@@ -34,7 +34,7 @@ class ScreenCaptureService : Service() {
     companion object {
         private const val TAG = "ScreenCaptureService"
         private const val CHANNEL_ID = "ScreenCaptureChannel"
-        private const val NOTIFICATION_ID = 1
+        private const val NOTIFICATION_ID = 2001 // Changed as per user
         const val ACTION_START_CAPTURE = "com.google.ai.sample.START_CAPTURE"
         const val EXTRA_RESULT_CODE = "result_code"
         const val EXTRA_RESULT_DATA = "result_data"
@@ -46,79 +46,101 @@ class ScreenCaptureService : Service() {
 
     override fun onCreate() {
         super.onCreate()
+        Log.d(TAG, "onCreate: Service created")
         createNotificationChannel()
     }
 
-override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-    // IMPORTANT: Call startForeground immediately
-    startForegroundImmediately()
+    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        Log.d(TAG, "onStartCommand: action=${intent?.action}")
 
-    if (intent?.action == ACTION_START_CAPTURE) {
-        val resultCode = intent.getIntExtra(EXTRA_RESULT_CODE, -1)
-        val resultData = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            intent.getParcelableExtra(EXTRA_RESULT_DATA, Intent::class.java)
-        } else {
-            @Suppress("DEPRECATION")
-            intent.getParcelableExtra<Intent>(EXTRA_RESULT_DATA)
-        }
-
-        Log.d(TAG, "onStartCommand: resultCode=$resultCode, resultData=$resultData")
-
-        if (resultCode != -1 && resultData != null) {
-            startCapture(resultCode, resultData)
-        } else {
-            Log.e(TAG, "Invalid result code or data: resultCode=$resultCode, resultData=$resultData")
-            stopSelf()
-        }
-    } else {
-        Log.e(TAG, "Invalid action: ${intent?.action}")
-        stopSelf()
-    }
-    return START_NOT_STICKY
-}
-
-    private fun startForegroundImmediately() {
-        val notification = NotificationCompat.Builder(this, CHANNEL_ID)
-            .setContentTitle("Taking Screenshot")
-            .setContentText("Processing...")
-            .setSmallIcon(android.R.drawable.ic_menu_camera)
-            .setPriority(NotificationCompat.PRIORITY_LOW)
-            .setOngoing(true)
-            .build()
-
+        // Start foreground immediately
+        val notification = createNotification()
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             startForeground(NOTIFICATION_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION)
         } else {
             startForeground(NOTIFICATION_ID, notification)
         }
+
+        if (intent?.action == ACTION_START_CAPTURE) {
+            val resultCode = intent.getIntExtra(EXTRA_RESULT_CODE, -1)
+            val resultData = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                intent.getParcelableExtra(EXTRA_RESULT_DATA, Intent::class.java)
+            } else {
+                @Suppress("DEPRECATION")
+                intent.getParcelableExtra<Intent>(EXTRA_RESULT_DATA)
+            }
+
+            Log.d(TAG, "onStartCommand: resultCode=$resultCode, hasResultData=${resultData != null}")
+
+            if (resultCode != -1 && resultData != null) {
+                // Added delay as per user's new code
+                Handler(Looper.getMainLooper()).postDelayed({
+                    startCapture(resultCode, resultData)
+                }, 200)
+            } else {
+                Log.e(TAG, "Invalid parameters: resultCode=$resultCode, resultData=$resultData")
+                stopSelf() // Ensure service stops if params are bad
+            }
+        } else {
+            Log.e(TAG, "Invalid action: ${intent?.action}")
+            stopSelf() // Ensure service stops if action is bad
+        }
+
+        return START_NOT_STICKY
+    }
+
+    private fun createNotification(): Notification { // New method from user
+        return NotificationCompat.Builder(this, CHANNEL_ID)
+            .setContentTitle("Screen Capture")
+            .setContentText("Taking screenshot...")
+            .setSmallIcon(android.R.drawable.ic_menu_camera)
+            .setPriority(NotificationCompat.PRIORITY_LOW)
+            .setOngoing(true)
+            .build()
     }
 
     private fun createNotificationChannel() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val channel = NotificationChannel(
                 CHANNEL_ID,
-                "Screen Capture",
+                "Screen Capture Service", // Updated name
                 NotificationManager.IMPORTANCE_LOW
             ).apply {
-                description = "Used for taking screenshots"
+                description = "Notifications for screen capture service" // Updated description
                 setShowBadge(false)
             }
             val notificationManager = getSystemService(NotificationManager::class.java)
             notificationManager.createNotificationChannel(channel)
+            Log.d(TAG, "Notification channel created")
         }
     }
 
     private fun startCapture(resultCode: Int, data: Intent) {
         try {
+            Log.d(TAG, "startCapture: Getting MediaProjection")
             val mediaProjectionManager = getSystemService(Context.MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
             mediaProjection = mediaProjectionManager.getMediaProjection(resultCode, data)
 
-            Handler(Looper.getMainLooper()).postDelayed({
-                takeScreenshot()
-            }, 100)
+            if (mediaProjection == null) { // Added null check
+                Log.e(TAG, "MediaProjection is null after getMediaProjection call")
+                stopSelf()
+                return
+            }
+
+            // Register callback for media projection
+            mediaProjection?.registerCallback(object : MediaProjection.Callback() {
+                override fun onStop() {
+                    Log.w(TAG, "MediaProjection session stopped via callback.")
+                    cleanup() // Ensure cleanup when projection is stopped externally
+                }
+            }, Handler(Looper.getMainLooper()))
+
+
+            Log.d(TAG, "startCapture: MediaProjection obtained, taking screenshot")
+            takeScreenshot() // Call takeScreenshot without delay here, delay is in onStartCommand
         } catch (e: Exception) {
-            Log.e(TAG, "Error starting capture", e)
-            cleanup()
+            Log.e(TAG, "Error in startCapture", e)
+            stopSelf() // Ensure service stops on error
         }
     }
 
@@ -128,7 +150,6 @@ override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
             val displayMetrics = DisplayMetrics()
 
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-                val display = display
                 display?.getRealMetrics(displayMetrics)
             } else {
                 @Suppress("DEPRECATION")
@@ -139,14 +160,22 @@ override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
             val height = displayMetrics.heightPixels
             val density = displayMetrics.densityDpi
 
+            Log.d(TAG, "Display dimensions: ${width}x${height}, density: $density")
+
             imageReader = ImageReader.newInstance(width, height, PixelFormat.RGBA_8888, 1)
 
             virtualDisplay = mediaProjection?.createVirtualDisplay(
                 "ScreenCapture",
                 width, height, density,
                 DisplayManager.VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR,
-                imageReader!!.surface, null, null
+                imageReader!!.surface, null, null // Assuming imageReader is not null here
             )
+
+            if (virtualDisplay == null) {
+                Log.e(TAG, "VirtualDisplay could not be created.")
+                cleanup()
+                return
+            }
 
             imageReader!!.setOnImageAvailableListener({ reader ->
                 var image: android.media.Image? = null
@@ -167,17 +196,27 @@ override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
                         bitmap.copyPixelsFromBuffer(buffer)
 
                         saveScreenshot(bitmap)
+                    } else {
+                        Log.w(TAG, "acquireLatestImage returned null")
                     }
                 } catch (e: Exception) {
                     Log.e(TAG, "Error processing image", e)
                 } finally {
                     image?.close()
-                    cleanup()
+                    // Cleanup is called after saving screenshot or if image is null/error
+                    // This specific cleanup call in the listener ensures resources are freed promptly
+                    // The main cleanup() in takeScreenshot's catch or onDestroy handles broader failures
+                    if (image != null) { // Only call full cleanup if image processing was attempted
+                        cleanup()
+                    } else { // If image was null, perhaps a more limited cleanup or just stop service
+                        stopSelf() // Or cleanup() if appropriate
+                    }
                 }
             }, Handler(Looper.getMainLooper()))
+
         } catch (e: Exception) {
             Log.e(TAG, "Error taking screenshot", e)
-            cleanup()
+            cleanup() // Call cleanup if takeScreenshot fails
         }
     }
 
@@ -211,26 +250,32 @@ override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
                 Toast.makeText(applicationContext, "Failed to save screenshot: ${e.message}", Toast.LENGTH_LONG).show()
             }
         }
+        // Note: The user's version of the service code calls cleanup() from the image listener's finally block.
+        // So, after saving, cleanup() will be invoked by that path.
     }
 
     private fun cleanup() {
+        Log.d(TAG, "Cleaning up resources")
         try {
             virtualDisplay?.release()
             virtualDisplay = null
-            imageReader?.close()
+            imageReader?.close() // Close the reader
             imageReader = null
-            mediaProjection?.stop()
+            mediaProjection?.unregisterCallback(null) // Unregister callback
+            mediaProjection?.stop() // Stop the projection
             mediaProjection = null
         } catch (e: Exception) {
             Log.e(TAG, "Error during cleanup", e)
         } finally {
-            stopForeground(STOP_FOREGROUND_REMOVE)
+            stopForeground(STOP_FOREGROUND_REMOVE) // Use STOP_FOREGROUND_REMOVE
             stopSelf()
+            Log.d(TAG, "Cleanup finished, service stopped.")
         }
     }
 
     override fun onDestroy() {
-        cleanup()
+        Log.d(TAG, "onDestroy: Service being destroyed")
+        cleanup() // Ensure cleanup is called
         super.onDestroy()
     }
 
