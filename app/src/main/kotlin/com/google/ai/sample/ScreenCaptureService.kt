@@ -129,13 +129,14 @@ class ScreenCaptureService : Service() {
             }
 
             // Create and store the callback instance
-            mediaProjectionCallback = object : MediaProjection.Callback() {
+            val callback = object : MediaProjection.Callback() { // Assign to local val
                 override fun onStop() {
                     Log.w(TAG, "MediaProjection session stopped via callback.")
-                    cleanup() // Ensure cleanup when projection is stopped externally
+                    cleanup()
                 }
             }
-            mediaProjection?.registerCallback(mediaProjectionCallback, Handler(Looper.getMainLooper()))
+            this.mediaProjectionCallback = callback // Store it in the class member
+            mediaProjection?.registerCallback(callback, Handler(Looper.getMainLooper())) // Use local val
 
             Log.d(TAG, "startCapture: MediaProjection obtained, taking screenshot")
             takeScreenshot() // Call takeScreenshot without delay here, delay is in onStartCommand
