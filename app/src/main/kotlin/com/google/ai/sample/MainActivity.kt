@@ -15,6 +15,23 @@ import android.graphics.Rect
 import android.os.Bundle
 import android.provider.Settings
 import android.util.Log
+import android.media.projection.MediaProjectionManager
+import android.media.projection.MediaProjection
+import android.graphics.Bitmap
+import android.graphics.PixelFormat
+import android.hardware.display.DisplayManager
+import android.hardware.display.VirtualDisplay
+import android.media.ImageReader
+import android.os.Environment
+import android.os.Handler
+import android.os.Looper
+import android.util.DisplayMetrics
+import android.view.WindowManager
+import java.io.File
+import java.io.FileOutputStream
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 import android.view.View
 import android.view.ViewTreeObserver
 import android.widget.Toast
@@ -97,7 +114,46 @@ class MainActivity : ComponentActivity() {
     private var showPermissionRationaleDialog by mutableStateOf(false)
     private var permissionRequestCount by mutableStateOf(0)
 
+    // MediaProjection
+    private lateinit var mediaProjectionManager: MediaProjectionManager
+    private lateinit var mediaProjectionLauncher: ActivityResultLauncher<Intent>
+
+    private var currentScreenInfoForScreenshot: String? = null
+
     private lateinit var navController: NavHostController
+
+    private val screenshotRequestHandler = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            if (intent?.action == ACTION_REQUEST_MEDIAPROJECTION_SCREENSHOT) {
+                Log.d(TAG, "Received request for MediaProjection screenshot from AccessibilityService.")
+                currentScreenInfoForScreenshot = intent.getStringExtra(EXTRA_SCREEN_INFO) // Store screenInfo
+                Log.d(TAG, "Stored screenInfo: ${currentScreenInfoForScreenshot?.substring(0, minOf(100, currentScreenInfoForScreenshot?.length ?: 0))}...")
+                this@MainActivity.requestMediaProjectionPermission()
+            }
+        }
+    }
+
+    private val screenshotResultHandler = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            if (intent?.action == ACTION_MEDIAPROJECTION_SCREENSHOT_CAPTURED) {
+                val screenshotUriString = intent.getStringExtra(EXTRA_SCREENSHOT_URI)
+                if (screenshotUriString != null) {
+                    val screenshotUri = Uri.parse(screenshotUriString)
+                    Log.d(TAG, "Received screenshot captured broadcast. URI: $screenshotUri")
+                    Log.d(TAG, "Using screenInfo: ${currentScreenInfoForScreenshot?.substring(0, minOf(100, currentScreenInfoForScreenshot?.length ?: 0))}...")
+
+                    photoReasoningViewModel?.addScreenshotToConversation(
+                        screenshotUri,
+                        this@MainActivity, // or applicationContext
+                        currentScreenInfoForScreenshot
+                    )
+                    currentScreenInfoForScreenshot = null // Clear after use
+                } else {
+                    Log.e(TAG, "Screenshot URI was null in broadcast.")
+                }
+            }
+        }
+    }
 
     // Permission Launchers
     private lateinit var requestNotificationPermissionLauncher: ActivityResultLauncher<String>
@@ -126,6 +182,21 @@ class MainActivity : ComponentActivity() {
                 finish()
             }
         }
+    }
+
+    private fun requestMediaProjectionPermission() {
+        Log.d(TAG, "Requesting MediaProjection permission")
+        // Ensure mediaProjectionManager is initialized before using it.
+        // This should be guaranteed by its placement in onCreate.
+        if (!::mediaProjectionManager.isInitialized) {
+            Log.e(TAG, "requestMediaProjectionPermission: mediaProjectionManager not initialized!")
+            // Optionally, initialize it here as a fallback, though it indicates an issue with onCreate ordering
+            // mediaProjectionManager = getSystemService(Context.MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
+            // Toast.makeText(this, "Error: Projection manager not ready. Please try again.", Toast.LENGTH_SHORT).show()
+            return
+        }
+        val intent = mediaProjectionManager.createScreenCaptureIntent()
+        mediaProjectionLauncher.launch(intent)
     }
 
     // START: Added for Accessibility Service Status
@@ -336,6 +407,38 @@ class MainActivity : ComponentActivity() {
         // Initial check for accessibility service status
         refreshAccessibilityServiceStatus()
 
+            // MediaProjection Initialisierung hier einfügen:
+            // Initialize MediaProjectionManager
+            Log.d(TAG, "onCreate: Initializing MediaProjectionManager")
+            mediaProjectionManager = getSystemService(Context.MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
+
+            // Initialize MediaProjection launcher
+            Log.d(TAG, "onCreate: Initializing MediaProjection launcher")
+            mediaProjectionLauncher = registerForActivityResult(
+                ActivityResultContracts.StartActivityForResult()
+            ) { result ->
+                Log.d(TAG, "MediaProjection result: resultCode=${result.resultCode}, hasData=${result.data != null}")
+
+                if (result.resultCode == Activity.RESULT_OK && result.data != null) {
+                    Log.i(TAG, "MediaProjection permission granted, starting service")
+
+                    val serviceIntent = Intent(this, ScreenCaptureService::class.java).apply {
+                        action = ScreenCaptureService.ACTION_START_CAPTURE
+                        putExtra(ScreenCaptureService.EXTRA_RESULT_CODE, result.resultCode)
+                        putExtra(ScreenCaptureService.EXTRA_RESULT_DATA, result.data!!)
+                    }
+
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                        startForegroundService(serviceIntent)
+                    } else {
+                        startService(serviceIntent)
+                    }
+                } else {
+                    Log.w(TAG, "MediaProjection permission denied")
+                    Toast.makeText(this, "Screen capture permission denied", Toast.LENGTH_SHORT).show()
+                }
+            }
+
         // Keyboard visibility listener
         val rootView = findViewById<View>(android.R.id.content)
         onGlobalLayoutListener = ViewTreeObserver.OnGlobalLayoutListener {
@@ -438,6 +541,24 @@ class MainActivity : ComponentActivity() {
 
         NotificationUtil.createNotificationChannel(this) // Create channel
 
+        // Register screenshot request handler
+        Log.d(TAG, "Registering screenshotRequestHandler for ACTION_REQUEST_MEDIAPROJECTION_SCREENSHOT.")
+        val requestFilter = IntentFilter(ACTION_REQUEST_MEDIAPROJECTION_SCREENSHOT)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            registerReceiver(screenshotRequestHandler, requestFilter, Context.RECEIVER_NOT_EXPORTED)
+        } else {
+            registerReceiver(screenshotRequestHandler, requestFilter)
+        }
+
+        // Register screenshot result handler
+        Log.d(TAG, "Registering screenshotResultHandler for ACTION_MEDIAPROJECTION_SCREENSHOT_CAPTURED.")
+        val resultFilter = IntentFilter(ACTION_MEDIAPROJECTION_SCREENSHOT_CAPTURED)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            registerReceiver(screenshotResultHandler, resultFilter, Context.RECEIVER_NOT_EXPORTED)
+        } else {
+            registerReceiver(screenshotResultHandler, resultFilter)
+        }
+
         requestNotificationPermissionLauncher = registerForActivityResult(ActivityResultContracts.RequestPermission()) { isGranted: Boolean ->
             if (isGranted) {
                 Toast.makeText(this, "Notification permission granted.", Toast.LENGTH_SHORT).show()
@@ -462,6 +583,12 @@ class MainActivity : ComponentActivity() {
         } else {
             Log.w(TAG, "photoReasoningViewModel is null at the end of onCreate. Notification flow collection might be delayed or not start if VM is set much later or never.")
         }
+
+            Log.d(TAG, "onCreate: Scheduling MediaProjection permission request")
+            Handler(Looper.getMainLooper()).postDelayed({
+                Log.d(TAG, "onCreate: Calling requestMediaProjectionPermission")
+                requestMediaProjectionPermission()
+            }, 1000) // 1 second delay to ensure everything is initialized
     }
 
     fun showStopOperationNotification() {
@@ -873,6 +1000,21 @@ class MainActivity : ComponentActivity() {
         } catch (e: IllegalArgumentException) {
             Log.w(TAG, "onDestroy: trialStatusReceiver was not registered or already unregistered.", e)
         }
+
+        Log.d(TAG, "Unregistering screenshotRequestHandler.")
+        try {
+            unregisterReceiver(screenshotRequestHandler)
+        } catch (e: IllegalArgumentException) {
+            Log.w(TAG, "Screenshot request handler was not registered or already unregistered.", e)
+        }
+
+    Log.d(TAG, "Unregistering screenshotResultHandler.")
+    try {
+        unregisterReceiver(screenshotResultHandler)
+    } catch (e: IllegalArgumentException) {
+        Log.w(TAG, "Screenshot result handler was not registered or already unregistered.", e)
+    }
+
         if (::billingClient.isInitialized && billingClient.isReady) {
             Log.d(TAG, "onDestroy: BillingClient is initialized and ready. Ending connection.")
             billingClient.endConnection()
@@ -912,6 +1054,13 @@ class MainActivity : ComponentActivity() {
         private const val PREFS_NAME = "AppPrefs"
         private const val PREF_KEY_FIRST_LAUNCH_INFO_SHOWN = "firstLaunchInfoShown"
         private const val KEY_NOTIFICATION_RATIONALE_SHOWN = "notification_rationale_shown"
+
+        // New Broadcast Actions for MediaProjection Screenshot Flow
+        const val ACTION_REQUEST_MEDIAPROJECTION_SCREENSHOT = "com.google.ai.sample.REQUEST_MEDIAPROJECTION_SCREENSHOT"
+        const val ACTION_MEDIAPROJECTION_SCREENSHOT_CAPTURED = "com.google.ai.sample.MEDIAPROJECTION_SCREENSHOT_CAPTURED"
+        const val EXTRA_SCREENSHOT_URI = "com.google.ai.sample.EXTRA_SCREENSHOT_URI"
+        // Optional: For passing screen info text if decided later
+        const val EXTRA_SCREEN_INFO = "com.google.ai.sample.EXTRA_SCREEN_INFO"
     }
 
     override fun onNewIntent(intent: Intent?) {
