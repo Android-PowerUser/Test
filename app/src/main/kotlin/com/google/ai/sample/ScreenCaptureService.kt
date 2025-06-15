@@ -43,6 +43,7 @@ class ScreenCaptureService : Service() {
     private var mediaProjection: MediaProjection? = null
     private var virtualDisplay: VirtualDisplay? = null
     private var imageReader: ImageReader? = null
+    private var mediaProjectionCallback: MediaProjection.Callback? = null // Add this line
 
     override fun onCreate() {
         super.onCreate()
@@ -127,14 +128,14 @@ class ScreenCaptureService : Service() {
                 return
             }
 
-            // Register callback for media projection
-            mediaProjection?.registerCallback(object : MediaProjection.Callback() {
+            // Create and store the callback instance
+            mediaProjectionCallback = object : MediaProjection.Callback() {
                 override fun onStop() {
                     Log.w(TAG, "MediaProjection session stopped via callback.")
                     cleanup() // Ensure cleanup when projection is stopped externally
                 }
-            }, Handler(Looper.getMainLooper()))
-
+            }
+            mediaProjection?.registerCallback(mediaProjectionCallback, Handler(Looper.getMainLooper()))
 
             Log.d(TAG, "startCapture: MediaProjection obtained, taking screenshot")
             takeScreenshot() // Call takeScreenshot without delay here, delay is in onStartCommand
@@ -256,10 +257,15 @@ private fun takeScreenshot() {
         try {
             virtualDisplay?.release()
             virtualDisplay = null
-            imageReader?.close() // Close the reader
+            imageReader?.close()
             imageReader = null
-            mediaProjection?.unregisterCallback(null) // Unregister callback
-            mediaProjection?.stop() // Stop the projection
+
+            // Use the stored callback instance for unregistering
+            if (mediaProjectionCallback != null) {
+                mediaProjection?.unregisterCallback(mediaProjectionCallback)
+                mediaProjectionCallback = null // Clear the stored callback
+            }
+            mediaProjection?.stop()
             mediaProjection = null
         } catch (e: Exception) {
             Log.e(TAG, "Error during cleanup", e)
