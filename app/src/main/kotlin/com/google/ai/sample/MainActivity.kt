@@ -15,6 +15,24 @@ import android.graphics.Rect
 import android.os.Bundle
 import android.provider.Settings
 import android.util.Log
+// Nach Zeile 14 hinzufügen:
+import android.media.projection.MediaProjectionManager
+import android.media.projection.MediaProjection
+import android.graphics.Bitmap
+import android.graphics.PixelFormat
+import android.hardware.display.DisplayManager
+import android.hardware.display.VirtualDisplay
+import android.media.ImageReader
+import android.os.Environment
+import android.os.Handler
+import android.os.Looper
+import android.util.DisplayMetrics
+import android.view.WindowManager
+import java.io.File
+import java.io.FileOutputStream
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 import android.view.View
 import android.view.ViewTreeObserver
 import android.widget.Toast
@@ -97,6 +115,15 @@ class MainActivity : ComponentActivity() {
     private var showPermissionRationaleDialog by mutableStateOf(false)
     private var permissionRequestCount by mutableStateOf(0)
 
+// Nach Zeile 98 hinzufügen:
+    // MediaProjection
+    private var mediaProjection: MediaProjection? = null
+    private lateinit var mediaProjectionManager: MediaProjectionManager
+    private val MEDIA_PROJECTION_REQUEST_CODE = 1001
+    private lateinit var mediaProjectionLauncher: ActivityResultLauncher<Intent>
+    private var virtualDisplay: VirtualDisplay? = null
+    private var imageReader: ImageReader? = null
+
     private lateinit var navController: NavHostController
 
     // Permission Launchers
@@ -125,6 +152,86 @@ class MainActivity : ComponentActivity() {
                 Toast.makeText(this, "Permissions repeatedly denied. Operation not possible.", Toast.LENGTH_LONG).show()
                 finish()
             }
+        }
+    }
+
+// Nach Zeile 920 (vor companion object) hinzufügen:
+    private fun requestMediaProjectionPermission() {
+        Log.d(TAG, "Requesting MediaProjection permission")
+        val intent = mediaProjectionManager.createScreenCaptureIntent()
+        mediaProjectionLauncher.launch(intent)
+    }
+
+    private fun takeScreenshot() {
+        Log.d(TAG, "Taking screenshot")
+
+        val windowManager = getSystemService(Context.WINDOW_SERVICE) as WindowManager
+        val displayMetrics = DisplayMetrics()
+        windowManager.defaultDisplay.getMetrics(displayMetrics)
+
+        val width = displayMetrics.widthPixels
+        val height = displayMetrics.heightPixels
+        val density = displayMetrics.densityDpi
+
+        imageReader = ImageReader.newInstance(width, height, PixelFormat.RGBA_8888, 1)
+
+        virtualDisplay = mediaProjection?.createVirtualDisplay(
+            "ScreenCapture",
+            width, height, density,
+            DisplayManager.VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR,
+            imageReader!!.surface, null, null
+        )
+
+        imageReader!!.setOnImageAvailableListener({ reader ->
+            val image = reader.acquireLatestImage()
+            if (image != null) {
+                val planes = image.planes
+                val buffer = planes[0].buffer
+                val pixelStride = planes[0].pixelStride
+                val rowStride = planes[0].rowStride
+                val rowPadding = rowStride - pixelStride * width
+
+                val bitmap = Bitmap.createBitmap(
+                    width + rowPadding / pixelStride,
+                    height,
+                    Bitmap.Config.ARGB_8888
+                )
+                bitmap.copyPixelsFromBuffer(buffer)
+
+                // Save screenshot
+                saveScreenshot(bitmap)
+
+                image.close()
+                virtualDisplay?.release()
+                imageReader?.close()
+            }
+        }, Handler(Looper.getMainLooper()))
+    }
+
+    private fun saveScreenshot(bitmap: Bitmap) {
+        try {
+            val picturesDir = File(getExternalFilesDir(Environment.DIRECTORY_PICTURES), "Screenshots")
+            if (!picturesDir.exists()) {
+                picturesDir.mkdirs()
+            }
+
+            val timestamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(Date())
+            val file = File(picturesDir, "screenshot_$timestamp.png")
+
+            val outputStream = FileOutputStream(file)
+            bitmap.compress(Bitmap.CompressFormat.PNG, 100, outputStream)
+            outputStream.flush()
+            outputStream.close()
+
+            Log.i(TAG, "Screenshot saved to: ${file.absolutePath}")
+            Toast.makeText(
+                this,
+                "Screenshot saved to: Android/data/com.google.ai.sample/files/Pictures/Screenshots/",
+                Toast.LENGTH_LONG
+            ).show()
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to save screenshot", e)
+            Toast.makeText(this, "Failed to save screenshot: ${e.message}", Toast.LENGTH_LONG).show()
         }
     }
 
@@ -356,6 +463,30 @@ class MainActivity : ComponentActivity() {
             }
         }
         rootView.viewTreeObserver.addOnGlobalLayoutListener(onGlobalLayoutListener)
+
+// Nach Zeile 261 (vor setContent) hinzufügen:
+        // Initialize MediaProjectionManager
+        mediaProjectionManager = getSystemService(Context.MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
+
+        // Initialize MediaProjection launcher
+        mediaProjectionLauncher = registerForActivityResult(
+            ActivityResultContracts.StartActivityForResult()
+        ) { result ->
+            if (result.resultCode == Activity.RESULT_OK && result.data != null) {
+                Log.i(TAG, "MediaProjection permission granted")
+                mediaProjection = mediaProjectionManager.getMediaProjection(result.resultCode, result.data!!)
+                // Take screenshot after permission granted
+                Handler(Looper.getMainLooper()).postDelayed({
+                    takeScreenshot()
+                }, 500) // Small delay to ensure everything is ready
+            } else {
+                Log.w(TAG, "MediaProjection permission denied")
+                Toast.makeText(this, "Screen capture permission denied", Toast.LENGTH_SHORT).show()
+            }
+        }
+
+        // Request MediaProjection permission on app start
+        requestMediaProjectionPermission()
 
         Log.d(TAG, "onCreate: Calling setContent.")
         setContent {
@@ -873,6 +1004,13 @@ class MainActivity : ComponentActivity() {
         } catch (e: IllegalArgumentException) {
             Log.w(TAG, "onDestroy: trialStatusReceiver was not registered or already unregistered.", e)
         }
+
+// Nach Zeile 906 (in onDestroy, vor billingClient cleanup) hinzufügen:
+        // Clean up MediaProjection resources
+        virtualDisplay?.release()
+        imageReader?.close()
+        mediaProjection?.stop()
+
         if (::billingClient.isInitialized && billingClient.isReady) {
             Log.d(TAG, "onDestroy: BillingClient is initialized and ready. Ending connection.")
             billingClient.endConnection()
