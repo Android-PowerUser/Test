@@ -387,34 +387,34 @@ class MainActivity : ComponentActivity() {
         }
         rootView.viewTreeObserver.addOnGlobalLayoutListener(onGlobalLayoutListener)
 
-// Zeilen 262-283 ersetzen durch:
-        // Initialize MediaProjectionManager
-        mediaProjectionManager = getSystemService(Context.MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
+// Initialize MediaProjection launcher
+mediaProjectionLauncher = registerForActivityResult(
+    ActivityResultContracts.StartActivityForResult()
+) { result ->
+    Log.d(TAG, "MediaProjection result: resultCode=${result.resultCode}, data=${result.data}")
 
-        // Initialize MediaProjection launcher
-        mediaProjectionLauncher = registerForActivityResult(
-            ActivityResultContracts.StartActivityForResult()
-        ) { result ->
-            if (result.resultCode == Activity.RESULT_OK && result.data != null) {
-                Log.i(TAG, "MediaProjection permission granted")
+    if (result.resultCode == Activity.RESULT_OK && result.data != null) {
+        Log.i(TAG, "MediaProjection permission granted")
 
-                // Start the foreground service with the result
-                val serviceIntent = Intent(this, ScreenCaptureService::class.java).apply {
-                    action = ScreenCaptureService.ACTION_START_CAPTURE
-                    putExtra(ScreenCaptureService.EXTRA_RESULT_CODE, result.resultCode)
-                    putExtra(ScreenCaptureService.EXTRA_RESULT_DATA, result.data)
-                }
-
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                    startForegroundService(serviceIntent)
-                } else {
-                    startService(serviceIntent)
-                }
-            } else {
-                Log.w(TAG, "MediaProjection permission denied")
-                Toast.makeText(this, "Screen capture permission denied", Toast.LENGTH_SHORT).show()
-            }
+        // Start the foreground service with the result
+        val serviceIntent = Intent(this, ScreenCaptureService::class.java).apply {
+            action = ScreenCaptureService.ACTION_START_CAPTURE
+            putExtra(ScreenCaptureService.EXTRA_RESULT_CODE, result.resultCode)
+            putExtra(ScreenCaptureService.EXTRA_RESULT_DATA, result.data!!) // Ensure data is not null here
         }
+
+        Log.d(TAG, "Starting ScreenCaptureService with intent: $serviceIntent")
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            startForegroundService(serviceIntent)
+        } else {
+            startService(serviceIntent)
+        }
+    } else {
+        Log.w(TAG, "MediaProjection permission denied or cancelled")
+        Toast.makeText(this, "Screen capture permission denied", Toast.LENGTH_SHORT).show()
+    }
+}
 
         // Request MediaProjection permission on app start
         requestMediaProjectionPermission()

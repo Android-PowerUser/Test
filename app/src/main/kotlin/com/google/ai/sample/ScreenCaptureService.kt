@@ -49,26 +49,33 @@ class ScreenCaptureService : Service() {
         createNotificationChannel()
     }
 
-    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        // IMPORTANT: Call startForeground immediately
-        startForegroundImmediately()
+override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+    // IMPORTANT: Call startForeground immediately
+    startForegroundImmediately()
 
-        if (intent?.action == ACTION_START_CAPTURE) {
-            val resultCode = intent.getIntExtra(EXTRA_RESULT_CODE, -1)
-            val resultData = intent.getParcelableExtra<Intent>(EXTRA_RESULT_DATA)
-
-            if (resultCode != -1 && resultData != null) {
-                startCapture(resultCode, resultData)
-            } else {
-                Log.e(TAG, "Invalid result code or data")
-                stopSelf()
-            }
+    if (intent?.action == ACTION_START_CAPTURE) {
+        val resultCode = intent.getIntExtra(EXTRA_RESULT_CODE, -1)
+        val resultData = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            intent.getParcelableExtra(EXTRA_RESULT_DATA, Intent::class.java)
         } else {
-            Log.e(TAG, "Invalid action")
+            @Suppress("DEPRECATION")
+            intent.getParcelableExtra<Intent>(EXTRA_RESULT_DATA)
+        }
+
+        Log.d(TAG, "onStartCommand: resultCode=$resultCode, resultData=$resultData")
+
+        if (resultCode != -1 && resultData != null) {
+            startCapture(resultCode, resultData)
+        } else {
+            Log.e(TAG, "Invalid result code or data: resultCode=$resultCode, resultData=$resultData")
             stopSelf()
         }
-        return START_NOT_STICKY
+    } else {
+        Log.e(TAG, "Invalid action: ${intent?.action}")
+        stopSelf()
     }
+    return START_NOT_STICKY
+}
 
     private fun startForegroundImmediately() {
         val notification = NotificationCompat.Builder(this, CHANNEL_ID)
