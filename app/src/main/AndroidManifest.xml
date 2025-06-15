@@ -16,6 +16,7 @@
      
         <!-- Foreground service permission for background operation -->
         <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+<uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION" />
 
     <!-- Notification permission for Android 13+ (API 33+) -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
@@ -68,6 +69,10 @@
                 android:name="android.support.FILE_PROVIDER_PATHS"
                 android:resource="@xml/file_paths" />
         </provider>
+<service
+    android:name=".ScreenCaptureService"
+    android:exported="false"
+    android:foregroundServiceType="mediaProjection" />
     </application>
 </manifest>
 
