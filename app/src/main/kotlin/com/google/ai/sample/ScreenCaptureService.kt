@@ -4,6 +4,7 @@ import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.Service
+import android.app.Activity
 import android.content.Context
 import android.content.Intent
 import android.content.pm.ServiceInfo
@@ -51,44 +52,45 @@ class ScreenCaptureService : Service() {
         createNotificationChannel()
     }
 
-    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        Log.d(TAG, "onStartCommand: action=${intent?.action}")
+override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+    Log.d(TAG, "onStartCommand: action=${intent?.action}")
 
-        // Start foreground immediately
-        val notification = createNotification()
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            startForeground(NOTIFICATION_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION)
-        } else {
-            startForeground(NOTIFICATION_ID, notification)
-        }
-
-        if (intent?.action == ACTION_START_CAPTURE) {
-            val resultCode = intent.getIntExtra(EXTRA_RESULT_CODE, -1)
-            val resultData = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                intent.getParcelableExtra(EXTRA_RESULT_DATA, Intent::class.java)
-            } else {
-                @Suppress("DEPRECATION")
-                intent.getParcelableExtra<Intent>(EXTRA_RESULT_DATA)
-            }
-
-            Log.d(TAG, "onStartCommand: resultCode=$resultCode, hasResultData=${resultData != null}")
-
-            if (resultCode != -1 && resultData != null) {
-                // Added delay as per user's new code
-                Handler(Looper.getMainLooper()).postDelayed({
-                    startCapture(resultCode, resultData)
-                }, 200)
-            } else {
-                Log.e(TAG, "Invalid parameters: resultCode=$resultCode, resultData=$resultData")
-                stopSelf() // Ensure service stops if params are bad
-            }
-        } else {
-            Log.e(TAG, "Invalid action: ${intent?.action}")
-            stopSelf() // Ensure service stops if action is bad
-        }
-
-        return START_NOT_STICKY
+    // Start foreground immediately
+    val notification = createNotification()
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+        startForeground(NOTIFICATION_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION)
+    } else {
+        startForeground(NOTIFICATION_ID, notification)
     }
+
+    if (intent?.action == ACTION_START_CAPTURE) {
+        // Use Activity.RESULT_CANCELED as default and check against Activity.RESULT_OK
+        val resultCode = intent.getIntExtra(EXTRA_RESULT_CODE, Activity.RESULT_CANCELED)
+        val resultData = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            intent.getParcelableExtra(EXTRA_RESULT_DATA, Intent::class.java)
+        } else {
+            @Suppress("DEPRECATION")
+            intent.getParcelableExtra<Intent>(EXTRA_RESULT_DATA)
+        }
+
+        Log.d(TAG, "onStartCommand: resultCode=$resultCode, hasResultData=${resultData != null}")
+
+        // Correctly check if resultCode is Activity.RESULT_OK
+        if (resultCode == Activity.RESULT_OK && resultData != null) {
+            Handler(Looper.getMainLooper()).postDelayed({
+                startCapture(resultCode, resultData)
+            }, 200)
+        } else {
+            Log.e(TAG, "Invalid parameters or permission denied: resultCode=$resultCode (expected ${Activity.RESULT_OK}), resultDataIsPresent=${resultData != null}")
+            stopSelf()
+        }
+    } else {
+        Log.e(TAG, "Invalid action: ${intent?.action}")
+        stopSelf()
+    }
+
+    return START_NOT_STICKY
+}
 
     private fun createNotification(): Notification { // New method from user
         return NotificationCompat.Builder(this, CHANNEL_ID)
