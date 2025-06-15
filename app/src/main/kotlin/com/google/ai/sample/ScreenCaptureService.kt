@@ -144,81 +144,78 @@ class ScreenCaptureService : Service() {
         }
     }
 
-    private fun takeScreenshot() {
-        try {
-            val windowManager = getSystemService(Context.WINDOW_SERVICE) as WindowManager
-            val displayMetrics = DisplayMetrics()
+private fun takeScreenshot() {
+    try {
+        val windowManager = getSystemService(Context.WINDOW_SERVICE) as WindowManager
+        val displayMetrics = DisplayMetrics()
 
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-                display?.getRealMetrics(displayMetrics)
-            } else {
-                @Suppress("DEPRECATION")
-                windowManager.defaultDisplay.getMetrics(displayMetrics)
-            }
-
-            val width = displayMetrics.widthPixels
-            val height = displayMetrics.heightPixels
-            val density = displayMetrics.densityDpi
-
-            Log.d(TAG, "Display dimensions: ${width}x${height}, density: $density")
-
-            imageReader = ImageReader.newInstance(width, height, PixelFormat.RGBA_8888, 1)
-
-            virtualDisplay = mediaProjection?.createVirtualDisplay(
-                "ScreenCapture",
-                width, height, density,
-                DisplayManager.VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR,
-                imageReader!!.surface, null, null // Assuming imageReader is not null here
-            )
-
-            if (virtualDisplay == null) {
-                Log.e(TAG, "VirtualDisplay could not be created.")
-                cleanup()
-                return
-            }
-
-            imageReader!!.setOnImageAvailableListener({ reader ->
-                var image: android.media.Image? = null
-                try {
-                    image = reader.acquireLatestImage()
-                    if (image != null) {
-                        val planes = image.planes
-                        val buffer = planes[0].buffer
-                        val pixelStride = planes[0].pixelStride
-                        val rowStride = planes[0].rowStride
-                        val rowPadding = rowStride - pixelStride * width
-
-                        val bitmap = Bitmap.createBitmap(
-                            width + rowPadding / pixelStride,
-                            height,
-                            Bitmap.Config.ARGB_8888
-                        )
-                        bitmap.copyPixelsFromBuffer(buffer)
-
-                        saveScreenshot(bitmap)
-                    } else {
-                        Log.w(TAG, "acquireLatestImage returned null")
-                    }
-                } catch (e: Exception) {
-                    Log.e(TAG, "Error processing image", e)
-                } finally {
-                    image?.close()
-                    // Cleanup is called after saving screenshot or if image is null/error
-                    // This specific cleanup call in the listener ensures resources are freed promptly
-                    // The main cleanup() in takeScreenshot's catch or onDestroy handles broader failures
-                    if (image != null) { // Only call full cleanup if image processing was attempted
-                        cleanup()
-                    } else { // If image was null, perhaps a more limited cleanup or just stop service
-                        stopSelf() // Or cleanup() if appropriate
-                    }
-                }
-            }, Handler(Looper.getMainLooper()))
-
-        } catch (e: Exception) {
-            Log.e(TAG, "Error taking screenshot", e)
-            cleanup() // Call cleanup if takeScreenshot fails
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            display?.getRealMetrics(displayMetrics)
+        } else {
+            @Suppress("DEPRECATION")
+            windowManager.defaultDisplay.getMetrics(displayMetrics)
         }
+
+        val width = displayMetrics.widthPixels
+        val height = displayMetrics.heightPixels
+        val density = displayMetrics.densityDpi
+
+        Log.d(TAG, "Display dimensions: ${width}x${height}, density: $density")
+
+        imageReader = ImageReader.newInstance(width, height, PixelFormat.RGBA_8888, 1)
+
+        virtualDisplay = mediaProjection?.createVirtualDisplay(
+            "ScreenCapture",
+            width, height, density,
+            DisplayManager.VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR,
+            imageReader!!.surface,
+            object : VirtualDisplay.Callback() { // Non-null Callback
+                override fun onPaused() {
+                    Log.d(TAG, "VirtualDisplay paused")
+                }
+                override fun onResumed() {
+                    Log.d(TAG, "VirtualDisplay resumed")
+                }
+                override fun onStopped() {
+                    Log.d(TAG, "VirtualDisplay stopped")
+                }
+            },
+            Handler(Looper.getMainLooper()) // Handler for the callback
+        )
+
+        imageReader!!.setOnImageAvailableListener({ reader ->
+            var image: android.media.Image? = null
+            try {
+                image = reader.acquireLatestImage()
+                if (image != null) {
+                    val planes = image.planes
+                    val buffer = planes[0].buffer
+                    val pixelStride = planes[0].pixelStride
+                    val rowStride = planes[0].rowStride
+                    val rowPadding = rowStride - pixelStride * width
+
+                    val bitmap = Bitmap.createBitmap(
+                        width + rowPadding / pixelStride,
+                        height,
+                        Bitmap.Config.ARGB_8888
+                    )
+                    bitmap.copyPixelsFromBuffer(buffer)
+
+                    saveScreenshot(bitmap)
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Error processing image", e)
+            } finally {
+                image?.close()
+                cleanup() // This was in the user's provided code
+            }
+        }, Handler(Looper.getMainLooper()))
+
+    } catch (e: Exception) {
+        Log.e(TAG, "Error taking screenshot", e)
+        cleanup()
     }
+}
 
     private fun saveScreenshot(bitmap: Bitmap) {
         try {
