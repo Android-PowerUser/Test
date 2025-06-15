@@ -115,13 +115,11 @@ class MainActivity : ComponentActivity() {
     private var showPermissionRationaleDialog by mutableStateOf(false)
     private var permissionRequestCount by mutableStateOf(0)
 
-// Zeilen 99-104 ersetzen durch:
+// Nach Zeile 98 hinzufügen:
     // MediaProjection
     private lateinit var mediaProjectionManager: MediaProjectionManager
     private lateinit var mediaProjectionLauncher: ActivityResultLauncher<Intent>
-    private var directMediaProjection: MediaProjection? = null
-    private var directVirtualDisplay: VirtualDisplay? = null
-    private var directImageReader: ImageReader? = null
+    private var pendingScreenshot = false
 
     private lateinit var navController: NavHostController
 
@@ -154,95 +152,108 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-// Zeilen 921-996 ersetzen durch:
+    // Nach Zeile 920, vor "companion object {":
     private fun requestMediaProjectionPermission() {
         Log.d(TAG, "Requesting MediaProjection permission")
-        val intent = mediaProjectionManager.createScreenCaptureIntent()
-        mediaProjectionLauncher.launch(intent)
+        if (::mediaProjectionManager.isInitialized) {
+            pendingScreenshot = true
+            val intent = mediaProjectionManager.createScreenCaptureIntent()
+            mediaProjectionLauncher.launch(intent)
+        } else {
+            Log.e(TAG, "mediaProjectionManager not initialized!")
+        }
     }
 
     private fun takeScreenshotDirect(resultCode: Int, data: Intent) {
-        Log.d(TAG, "takeScreenshotDirect called in MainActivity")
+        lifecycleScope.launch {
+            try {
+                val mediaProjection = mediaProjectionManager.getMediaProjection(resultCode, data)
 
-        // Initialize MediaProjectionManager if it's not already (it should be from onCreate)
-        if (!::mediaProjectionManager.isInitialized) {
-             mediaProjectionManager = getSystemService(Context.MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
-        }
-        directMediaProjection = mediaProjectionManager.getMediaProjection(resultCode, data)
-
-        // Add a callback to detect when the MediaProjection session is stopped (e.g., by the system)
-        // This is important for resource cleanup if the projection stops unexpectedly.
-        directMediaProjection?.registerCallback(object : MediaProjection.Callback() {
-            override fun onStop() {
-                super.onStop()
-                Log.w(TAG, "MediaProjection session stopped (direct). Cleaning up resources.")
-                cleanupDirectScreenshotResources()
-            }
-        }, Handler(Looper.getMainLooper()))
-
-        try {
-            val windowManager = getSystemService(Context.WINDOW_SERVICE) as WindowManager
-            val displayMetrics = DisplayMetrics()
-
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-                val display = display
-                display?.getRealMetrics(displayMetrics)
-            } else {
-                @Suppress("DEPRECATION")
-                windowManager.defaultDisplay.getMetrics(displayMetrics)
-            }
-
-            val width = displayMetrics.widthPixels
-            val height = displayMetrics.heightPixels
-            val density = displayMetrics.densityDpi
-
-            directImageReader = ImageReader.newInstance(width, height, PixelFormat.RGBA_8888, 1)
-
-            directVirtualDisplay = directMediaProjection?.createVirtualDisplay(
-                "ScreenCapture_MainActivity",
-                width, height, density,
-                DisplayManager.VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR,
-                directImageReader!!.surface, null, null
-            )
-
-            directImageReader!!.setOnImageAvailableListener({ reader ->
-                var image: android.media.Image? = null
-                try {
-                    image = reader.acquireLatestImage()
-                    if (image != null) {
-                        val planes = image.planes
-                        val buffer = planes[0].buffer
-                        val pixelStride = planes[0].pixelStride
-                        val rowStride = planes[0].rowStride
-                        val rowPadding = rowStride - pixelStride * width
-
-                        val bitmap = Bitmap.createBitmap(
-                            width + rowPadding / pixelStride,
-                            height,
-                            Bitmap.Config.ARGB_8888
-                        )
-                        bitmap.copyPixelsFromBuffer(buffer)
-                        Log.d(TAG, "Bitmap created in MainActivity, proceeding to save.")
-                        saveScreenshotDirect(bitmap) // Changed to saveScreenshotDirect
-                    } else {
-                        Log.w(TAG, "Image was null in onImageAvailable (MainActivity).")
+                // Register a callback to clean up when projection stops.
+                mediaProjection.registerCallback(object : MediaProjection.Callback() {
+                    override fun onStop() {
+                        super.onStop()
+                        Log.w(TAG, "MediaProjection session stopped. (Callback)")
+                        // Note: Resources are cleaned up in the finally block of takeScreenshotDirect's image listener.
+                        // Additional cleanup here might be redundant or could target specific things if needed.
                     }
-                } catch (e: Exception) {
-                    Log.e(TAG, "Error processing image in MainActivity", e)
-                } finally {
-                    image?.close()
-                    // Cleanup is now more robustly handled by MediaProjection.Callback and explicit calls
-                    // cleanupDirectScreenshotResources() // Do not call here directly, call after saving
+                }, Handler(Looper.getMainLooper()))
+
+                val windowManager = getSystemService(Context.WINDOW_SERVICE) as WindowManager
+                val displayMetrics = DisplayMetrics()
+
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                    display?.getRealMetrics(displayMetrics)
+                } else {
+                    @Suppress("DEPRECATION")
+                    windowManager.defaultDisplay.getMetrics(displayMetrics)
                 }
-            }, Handler(Looper.getMainLooper()))
-        } catch (e: Exception) {
-            Log.e(TAG, "Error taking screenshot in MainActivity", e)
-            cleanupDirectScreenshotResources() // Clean up if initial setup fails
+
+                val width = displayMetrics.widthPixels
+                val height = displayMetrics.heightPixels
+                val density = displayMetrics.densityDpi
+
+                val imageReader = ImageReader.newInstance(width, height, PixelFormat.RGBA_8888, 1)
+
+                val virtualDisplay = mediaProjection.createVirtualDisplay(
+                    "ScreenCapture",
+                    width, height, density,
+                    DisplayManager.VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR,
+                    imageReader.surface, null, null
+                )
+
+                imageReader.setOnImageAvailableListener({ reader ->
+                    val image = reader.acquireLatestImage()
+                    if (image != null) {
+                        try {
+                            val planes = image.planes
+                            val buffer = planes[0].buffer
+                            val pixelStride = planes[0].pixelStride
+                            val rowStride = planes[0].rowStride
+                            val rowPadding = rowStride - pixelStride * width
+
+                            val bitmap = Bitmap.createBitmap(
+                                width + rowPadding / pixelStride,
+                                height,
+                                Bitmap.Config.ARGB_8888
+                            )
+                            bitmap.copyPixelsFromBuffer(buffer)
+
+                            saveScreenshot(bitmap) // Calls the new saveScreenshot
+                        } catch (e: Exception) {
+                            Log.e(TAG, "Error processing image in takeScreenshotDirect", e)
+                        } finally {
+                            image.close()
+                            virtualDisplay.release()
+                            imageReader.close() // Close the reader itself
+                            mediaProjection.stop() // Stop the projection
+                            Log.d(TAG, "Cleaned up resources in takeScreenshotDirect's onImageAvailableListener.")
+                            pendingScreenshot = false
+                        }
+                    } else {
+                         Log.w(TAG, "takeScreenshotDirect: acquireLatestImage() returned null")
+                         virtualDisplay.release()
+                         imageReader.close()
+                         mediaProjection.stop()
+                         pendingScreenshot = false
+                    }
+                }, Handler(Looper.getMainLooper()))
+            } catch (e: Exception) {
+                Log.e(TAG, "Error taking screenshot in takeScreenshotDirect", e)
+                Toast.makeText(this@MainActivity, "Failed to take screenshot: ${e.message}", Toast.LENGTH_SHORT).show()
+                pendingScreenshot = false
+                // Attempt to clean up projection if it was created and an error occurred before listener
+                // This part is tricky because mediaProjection might not be assigned if getMediaProjection failed.
+                // However, if it did, it should be stopped. The user's example code for takeScreenshotDirect
+                // implicitly relies on the onImageAvailableListener's finally block for cleanup.
+                // If an exception occurs *before* the listener is set or image is available,
+                // mediaProjection might leak if not handled here.
+                // For now, sticking to the provided code.
+            }
         }
     }
 
-    private fun saveScreenshotDirect(bitmap: Bitmap) { // Renamed from saveScreenshot
-        Log.d(TAG, "saveScreenshotDirect called in MainActivity")
+    private fun saveScreenshot(bitmap: Bitmap) { // This is the new saveScreenshot
         try {
             val picturesDir = File(getExternalFilesDir(Environment.DIRECTORY_PICTURES), "Screenshots")
             if (!picturesDir.exists()) {
@@ -250,37 +261,27 @@ class MainActivity : ComponentActivity() {
             }
 
             val timestamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(Date())
-            val file = File(picturesDir, "screenshot_direct_$timestamp.png") // Added _direct for differentiation
+            val file = File(picturesDir, "screenshot_$timestamp.png")
 
             val outputStream = FileOutputStream(file)
             bitmap.compress(Bitmap.CompressFormat.PNG, 100, outputStream)
             outputStream.flush()
             outputStream.close()
 
-            Log.i(TAG, "Screenshot saved directly by MainActivity to: ${file.absolutePath}")
-            Toast.makeText(
-                this,
-                "Screenshot saved (direct): Android/data/com.google.ai.sample/files/Pictures/Screenshots/",
-                Toast.LENGTH_LONG
-            ).show()
+            Log.i(TAG, "Screenshot saved to: ${file.absolutePath}")
+            runOnUiThread {
+                Toast.makeText(
+                    this,
+                    "Screenshot saved to: Android/data/com.google.ai.sample/files/Pictures/Screenshots/",
+                    Toast.LENGTH_LONG
+                ).show()
+            }
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to save screenshot directly in MainActivity", e)
-            Toast.makeText(this, "Failed to save screenshot (direct): ${e.message}", Toast.LENGTH_LONG).show()
-        } finally {
-            // Clean up resources after saving the bitmap or if an error occurs during save
-            cleanupDirectScreenshotResources()
+            Log.e(TAG, "Failed to save screenshot", e)
+            runOnUiThread {
+                Toast.makeText(this, "Failed to save screenshot: ${e.message}", Toast.LENGTH_LONG).show()
+            }
         }
-    }
-
-    private fun cleanupDirectScreenshotResources() {
-        Log.d(TAG, "Cleaning up direct screenshot resources in MainActivity...")
-        directVirtualDisplay?.release()
-        directVirtualDisplay = null
-        directImageReader?.close()
-        directImageReader = null
-        directMediaProjection?.stop() // This will also trigger the onStop callback if registered
-        directMediaProjection = null // Important to allow re-creation
-         Log.d(TAG, "Direct screenshot resources cleanup finished in MainActivity.")
     }
 
     // START: Added for Accessibility Service Status
@@ -491,6 +492,25 @@ class MainActivity : ComponentActivity() {
         // Initial check for accessibility service status
         refreshAccessibilityServiceStatus()
 
+            // MediaProjection Initialisierung hier einfügen:
+            Log.d(TAG, "onCreate: Initializing MediaProjectionManager")
+            mediaProjectionManager = getSystemService(Context.MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
+
+            Log.d(TAG, "onCreate: Initializing MediaProjection launcher")
+            mediaProjectionLauncher = registerForActivityResult(
+                ActivityResultContracts.StartActivityForResult()
+            ) { result ->
+                if (result.resultCode == Activity.RESULT_OK && result.data != null) {
+                    Log.i(TAG, "MediaProjection permission granted - taking screenshot directly")
+                    Handler(Looper.getMainLooper()).postDelayed({
+                        takeScreenshotDirect(result.resultCode, result.data!!)
+                    }, 100)
+                } else {
+                    Log.w(TAG, "MediaProjection permission denied")
+                    Toast.makeText(this, "Screen capture permission denied", Toast.LENGTH_SHORT).show()
+                }
+            }
+
         // Keyboard visibility listener
         val rootView = findViewById<View>(android.R.id.content)
         onGlobalLayoutListener = ViewTreeObserver.OnGlobalLayoutListener {
@@ -511,24 +531,6 @@ class MainActivity : ComponentActivity() {
             }
         }
         rootView.viewTreeObserver.addOnGlobalLayoutListener(onGlobalLayoutListener)
-
-// Initialize MediaProjection launcher
-mediaProjectionLauncher = registerForActivityResult(
-    ActivityResultContracts.StartActivityForResult()
-) { result ->
-    Log.d(TAG, "MediaProjection result: resultCode=${result.resultCode}, data=${result.data}")
-
-    if (result.resultCode == Activity.RESULT_OK && result.data != null) {
-        Log.i(TAG, "MediaProjection permission granted - taking screenshot directly in MainActivity")
-        // Call takeScreenshotDirect instead of starting service
-        Handler(Looper.getMainLooper()).postDelayed({
-            takeScreenshotDirect(result.resultCode, result.data!!)
-        }, 100) // Small delay as in user's example
-    } else {
-        Log.w(TAG, "MediaProjection permission denied or cancelled")
-        Toast.makeText(this, "Screen capture permission denied", Toast.LENGTH_SHORT).show()
-    }
-}
 
         Log.d(TAG, "onCreate: Calling setContent.")
         setContent {
@@ -636,10 +638,12 @@ mediaProjectionLauncher = registerForActivityResult(
             Log.w(TAG, "photoReasoningViewModel is null at the end of onCreate. Notification flow collection might be delayed or not start if VM is set much later or never.")
         }
 
-        // Request MediaProjection permission after UI is ready and all initializations are done
-        Handler(Looper.getMainLooper()).postDelayed({
-            requestMediaProjectionPermission()
-        }, 500) // Small delay to ensure UI is ready
+        // Ganz am Ende von onCreate, vor der schließenden Klammer:
+            Log.d(TAG, "onCreate: Scheduling MediaProjection permission request")
+            Handler(Looper.getMainLooper()).postDelayed({
+                Log.d(TAG, "onCreate: Calling requestMediaProjectionPermission")
+                requestMediaProjectionPermission()
+            }, 1000) // 1 second delay to ensure everything is initialized
     }
 
     fun showStopOperationNotification() {
@@ -1065,7 +1069,6 @@ mediaProjectionLauncher = registerForActivityResult(
             instance = null
             Log.d(TAG, "onDestroy: MainActivity instance cleared.")
         }
-        cleanupDirectScreenshotResources() // Add this line
         Log.d(TAG, "onDestroy: Finished.")
     }
 
