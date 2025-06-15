@@ -261,17 +261,19 @@ private fun takeScreenshot() {
             imageReader?.close()
             imageReader = null
 
-            // Use the stored callback instance for unregistering
-            if (mediaProjectionCallback != null) {
-                mediaProjection?.unregisterCallback(mediaProjectionCallback)
-                mediaProjectionCallback = null // Clear the stored callback
+            // Assign to a local immutable variable before use for smart cast
+            val callbackInstance = this.mediaProjectionCallback
+            if (callbackInstance != null) {
+                mediaProjection?.unregisterCallback(callbackInstance) // Use local val
+                this.mediaProjectionCallback = null // Nullify the class member
             }
+
             mediaProjection?.stop()
             mediaProjection = null
         } catch (e: Exception) {
             Log.e(TAG, "Error during cleanup", e)
         } finally {
-            stopForeground(STOP_FOREGROUND_REMOVE) // Use STOP_FOREGROUND_REMOVE
+            stopForeground(STOP_FOREGROUND_REMOVE)
             stopSelf()
             Log.d(TAG, "Cleanup finished, service stopped.")
         }
