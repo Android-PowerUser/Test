@@ -195,114 +195,110 @@ private fun takeScreenshot() {
     Log.d(TAG, "takeScreenshot: Preparing to capture.")
 
     try {
-        val windowManager = getSystemService(Context.WINDOW_SERVICE) as WindowManager
-        val displayMetrics = DisplayMetrics()
+        // Check if we need to initialize VirtualDisplay and ImageReader
+        if (virtualDisplay == null || imageReader == null) {
+            val windowManager = getSystemService(Context.WINDOW_SERVICE) as WindowManager
+            val displayMetrics = DisplayMetrics()
 
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            val defaultDisplay = windowManager.defaultDisplay
-            if (defaultDisplay != null) {
-                defaultDisplay.getRealMetrics(displayMetrics)
-            } else {
-                val bounds = windowManager.currentWindowMetrics.bounds
-                displayMetrics.widthPixels = bounds.width()
-                displayMetrics.heightPixels = bounds.height()
-                displayMetrics.densityDpi = resources.displayMetrics.densityDpi
-            }
-        } else {
-            @Suppress("DEPRECATION")
-            windowManager.defaultDisplay.getMetrics(displayMetrics)
-        }
-
-        val width = displayMetrics.widthPixels
-        val height = displayMetrics.heightPixels
-        val density = displayMetrics.densityDpi
-
-        if (width <= 0 || height <= 0) {
-            Log.e(TAG, "Invalid display dimensions: ${width}x${height}. Cannot create ImageReader.")
-            return
-        }
-        Log.d(TAG, "Display dimensions: ${width}x${height}, density: $density")
-
-        // Clean up previous ImageReader and VirtualDisplay if they exist (for subsequent screenshots)
-        // This was in user's latest version for takeScreenshot, ensuring fresh resources per shot
-        this.imageReader?.close()
-        this.virtualDisplay?.release()
-
-        imageReader = ImageReader.newInstance(width, height, PixelFormat.RGBA_8888, 1)
-        val localImageReader = imageReader ?: run { // Check if new instance is null
-            Log.e(TAG, "ImageReader is null after newInstance attempt.")
-            return
-        }
-
-        virtualDisplay = mediaProjection?.createVirtualDisplay(
-            "ScreenCapture",
-            width, height, density,
-            DisplayManager.VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR,
-            localImageReader.surface, // Use the new localImageReader instance
-            object : VirtualDisplay.Callback() {
-                override fun onPaused() { Log.d(TAG, "VirtualDisplay paused") }
-                override fun onResumed() { Log.d(TAG, "VirtualDisplay resumed") }
-                override fun onStopped() { Log.d(TAG, "VirtualDisplay stopped") }
-            },
-            Handler(Looper.getMainLooper())
-        )
-
-        if (virtualDisplay == null) {
-            Log.e(TAG, "Failed to create VirtualDisplay.")
-            localImageReader.close() // Clean up the reader we just created
-            this.imageReader = null
-            return
-        }
-
-        localImageReader.setOnImageAvailableListener({ reader -> // 'reader' here is localImageReader
-            var image: android.media.Image? = null
-            try {
-                image = reader.acquireLatestImage()
-                if (image != null) {
-                    val planes = image.planes
-                    val buffer = planes[0].buffer
-                    val pixelStride = planes[0].pixelStride
-                    val rowStride = planes[0].rowStride
-                    val rowPadding = rowStride - pixelStride * width
-
-                    val bitmap = Bitmap.createBitmap(
-                        width + rowPadding / pixelStride,
-                        height,
-                        Bitmap.Config.ARGB_8888
-                    )
-                    bitmap.copyPixelsFromBuffer(buffer)
-                    Log.d(TAG, "Bitmap created, proceeding to save.")
-                    saveScreenshot(bitmap)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                val defaultDisplay = windowManager.defaultDisplay
+                if (defaultDisplay != null) {
+                    defaultDisplay.getRealMetrics(displayMetrics)
                 } else {
-                    Log.w(TAG, "acquireLatestImage returned null.")
+                    val bounds = windowManager.currentWindowMetrics.bounds
+                    displayMetrics.widthPixels = bounds.width()
+                    displayMetrics.heightPixels = bounds.height()
+                    displayMetrics.densityDpi = resources.displayMetrics.densityDpi
                 }
-            } catch (e: Exception) {
-                Log.e(TAG, "Error processing image", e)
-            } finally {
-                image?.close()
-                // Selective cleanup: only VD and the listener's ImageReader instance.
-                this.virtualDisplay?.release() // Release the class member VD
-                this.virtualDisplay = null
-
-                reader.close() // Close the 'reader' from the listener parameter
-                // If the class member 'imageReader' was indeed this instance, nullify it.
-                // This is important because a new ImageReader is created at the start of takeScreenshot.
-                if (this.imageReader == reader) {
-                     this.imageReader = null
-                }
-                Log.d(TAG, "Per-screenshot resources (VD, IR from listener) cleaned up. MediaProjection remains active.")
+            } else {
+                @Suppress("DEPRECATION")
+                windowManager.defaultDisplay.getMetrics(displayMetrics)
             }
-        }, Handler(Looper.getMainLooper()))
+
+            val width = displayMetrics.widthPixels
+            val height = displayMetrics.heightPixels
+            val density = displayMetrics.densityDpi
+
+            if (width <= 0 || height <= 0) {
+                Log.e(TAG, "Invalid display dimensions: ${width}x${height}. Cannot create ImageReader.")
+                return
+            }
+            Log.d(TAG, "Display dimensions: ${width}x${height}, density: $density")
+
+            imageReader?.close() // Close previous reader if any
+            virtualDisplay?.release() // Release previous display if any
+
+            imageReader = ImageReader.newInstance(width, height, PixelFormat.RGBA_8888, 1)
+            val localImageReader = imageReader ?: run {
+                Log.e(TAG, "ImageReader is null after creation attempt.")
+                return
+            }
+
+            localImageReader.setOnImageAvailableListener({ reader ->
+                var image: android.media.Image? = null
+                try {
+                    image = reader.acquireLatestImage()
+                    if (image != null) {
+                        val planes = image.planes
+                        val buffer = planes[0].buffer
+                        val pixelStride = planes[0].pixelStride
+                        val rowStride = planes[0].rowStride
+                        val rowPadding = rowStride - pixelStride * width
+
+                        val bitmap = Bitmap.createBitmap(
+                            width + rowPadding / pixelStride,
+                            height,
+                            Bitmap.Config.ARGB_8888
+                        )
+                        bitmap.copyPixelsFromBuffer(buffer)
+                        Log.d(TAG, "Bitmap created, proceeding to save.")
+                        saveScreenshot(bitmap)
+                    } else {
+                        Log.w(TAG, "acquireLatestImage returned null.")
+                    }
+                } catch (e: Exception) {
+                    Log.e(TAG, "Error processing image", e)
+                } finally {
+                    image?.close()
+                    // Do NOT release VirtualDisplay or ImageReader here
+                    // They will be reused for the next screenshot
+                    Log.d(TAG, "Screenshot captured, keeping resources for reuse.")
+                }
+            }, Handler(Looper.getMainLooper()))
+
+            virtualDisplay = mediaProjection?.createVirtualDisplay(
+                "ScreenCapture",
+                width, height, density,
+                DisplayManager.VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR,
+                localImageReader.surface,
+                object : VirtualDisplay.Callback() {
+                    override fun onPaused() { Log.d(TAG, "VirtualDisplay paused") }
+                    override fun onResumed() { Log.d(TAG, "VirtualDisplay resumed") }
+                    override fun onStopped() { Log.d(TAG, "VirtualDisplay stopped") }
+                },
+                Handler(Looper.getMainLooper())
+            )
+
+            if (virtualDisplay == null) {
+                Log.e(TAG, "Failed to create VirtualDisplay.")
+                localImageReader.close() // Clean up the reader we just created
+                this.imageReader = null
+                return
+            }
+            Log.d(TAG, "VirtualDisplay and ImageReader initialized for reuse.")
+        } else {
+            // Resources already exist, just trigger a new capture
+            Log.d(TAG, "Using existing VirtualDisplay and ImageReader.")
+            // Force the ImageReader to capture a new frame
+            // The listener is already set up and will handle the new image
+        }
 
     } catch (e: Exception) {
         Log.e(TAG, "Error in takeScreenshot setup", e)
-        // If setup fails, cleanup per-shot resources if they were initialized
         virtualDisplay?.release()
         virtualDisplay = null
-        imageReader?.close() // This refers to the class member
+        imageReader?.close()
         imageReader = null
-        // Do NOT call the main cleanup() here, as MediaProjection should stay alive if possible
-        // and if an error occurs before even getting to the listener.
     }
 }
 
