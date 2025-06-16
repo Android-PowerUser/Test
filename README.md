@@ -27,12 +27,10 @@ For the Play Store link to work you must first join the [Google Group](https://g
 
 If you in your Google account identified as under 18, you need an adult account because Google is (unreasonably) denying you the API key.
 
-Android 11-12.1 doesn't work because of file permission problems with the screenshots path. This seems to mainly affect Samsung devices. Participate in the Project (branch main.
+Android 11-12.1 doesn't work temporary because of file permission problems with the screenshots path. This seems to mainly affect Samsung devices.
 
 ##### Help with development
 
 Current development step:
 
 Fix a bug that prevents some apps from being launched by Screen Operator (branch Better_text). The current workaround is to go from the home screen.
-
-Correct implementation of MediaProjection (Create screenshots for Gemini). Almost finished code in the screenshot branch. The current workaround is to trigger a screenshot via the accessibility service. However, this leads to the thumbnail.
