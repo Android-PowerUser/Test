@@ -121,30 +121,22 @@ class MainActivity : ComponentActivity() {
     private var currentScreenInfoForScreenshot: String? = null
 
     private lateinit var navController: NavHostController
-    private var screenshotRequestedByAI = false
+    private var isProcessingExplicitScreenshotRequest: Boolean = false
 
     private val screenshotRequestHandler = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
             if (intent?.action == ACTION_REQUEST_MEDIAPROJECTION_SCREENSHOT) {
                 Log.d(TAG, "Received request for screenshot via broadcast.")
+                currentScreenInfoForScreenshot = intent.getStringExtra(EXTRA_SCREEN_INFO)
+                Log.d(TAG, "Stored screenInfo for upcoming screenshot.")
 
-                val requestedByAI = intent.getBooleanExtra(EXTRA_REQUESTED_BY_AI, false)
-
-                if (requestedByAI) {
-                    Log.d(TAG, "Screenshot was requested by AI.")
-                    screenshotRequestedByAI = true // Set the flag
-                    currentScreenInfoForScreenshot = intent.getStringExtra(EXTRA_SCREEN_INFO)
-                    Log.d(TAG, "Stored screenInfo for upcoming screenshot.")
-
-                    if (ScreenCaptureService.isRunning()) {
-                        Log.d(TAG, "ScreenCaptureService is running. Calling takeAdditionalScreenshot().")
-                        this@MainActivity.takeAdditionalScreenshot()
-                    } else {
-                        Log.d(TAG, "ScreenCaptureService not running. Calling requestMediaProjectionPermission() to start it.")
-                        this@MainActivity.requestMediaProjectionPermission()
-                    }
+                if (ScreenCaptureService.isRunning()) {
+                    Log.d(TAG, "ScreenCaptureService is running. Calling takeAdditionalScreenshot().")
+                    this@MainActivity.takeAdditionalScreenshot()
                 } else {
-                    Log.d(TAG, "Ignoring screenshot request not from AI (EXTRA_REQUESTED_BY_AI was false or missing).")
+                    Log.d(TAG, "ScreenCaptureService not running. Calling requestMediaProjectionPermission() to start it.")
+                    this@MainActivity.isProcessingExplicitScreenshotRequest = true
+                    this@MainActivity.requestMediaProjectionPermission()
                 }
             }
         }
@@ -217,23 +209,24 @@ class MainActivity : ComponentActivity() {
     }
 
     fun takeAdditionalScreenshot() {
-        if (!screenshotRequestedByAI) {
-            Log.d(TAG, "takeAdditionalScreenshot: Screenshot not requested by AI. Ignoring.")
-            return
-        }
-
         if (ScreenCaptureService.isRunning()) {
             Log.d(TAG, "MainActivity: Instructing ScreenCaptureService to take an additional screenshot.")
             val intent = Intent(this, ScreenCaptureService::class.java).apply {
                 action = ScreenCaptureService.ACTION_TAKE_SCREENSHOT
             }
+            // Use startService as the service is already foreground if running.
+            // If it somehow wasn't foreground but running, this still works.
             startService(intent)
-
-            screenshotRequestedByAI = false
-            Log.d(TAG, "takeAdditionalScreenshot: AI screenshot initiated, screenshotRequestedByAI flag reset.")
         } else {
-            Log.w(TAG, "MainActivity: takeAdditionalScreenshot called but service is not running.")
+            Log.w(TAG, "MainActivity: takeAdditionalScreenshot called but service is not running. Requesting permission first.")
+            // Store a flag or handle the screenInfo persistence if this call implies an immediate need
+            // For now, rely on the standard flow where screenInfo is passed with the initial request.
+            // This situation (service not running but takeAdditionalScreenshot called directly)
+            // should ideally be handled by the caller checking isRunning() first.
+            // If called from screenshotRequestHandler, it would have called requestMediaProjectionPermission instead.
             Toast.makeText(this, "Screenshot service not active. Please grant permission first.", Toast.LENGTH_LONG).show()
+            // Optionally, trigger permission request again if appropriate for the use case.
+            // requestMediaProjectionPermission() // This might be too aggressive if called from unexpected places.
         }
     }
 
@@ -469,20 +462,27 @@ class MainActivity : ComponentActivity() {
             ) { result ->
                 Log.d(TAG, "MediaProjection result: resultCode=${result.resultCode}, hasData=${result.data != null}")
                 if (result.resultCode == Activity.RESULT_OK && result.data != null) {
-                    Log.i(TAG, "MediaProjection permission granted, starting ScreenCaptureService with ACTION_START_CAPTURE")
-                    val serviceIntent = Intent(this, ScreenCaptureService::class.java).apply {
-                        action = ScreenCaptureService.ACTION_START_CAPTURE // Ensure this action
-                        putExtra(ScreenCaptureService.EXTRA_RESULT_CODE, result.resultCode)
-                        putExtra(ScreenCaptureService.EXTRA_RESULT_DATA, result.data!!)
+                    if (this@MainActivity.isProcessingExplicitScreenshotRequest) {
+                        Log.i(TAG, "MediaProjection permission granted (explicit request), starting ScreenCaptureService with ACTION_START_CAPTURE")
+                        val serviceIntent = Intent(this, ScreenCaptureService::class.java).apply {
+                            action = ScreenCaptureService.ACTION_START_CAPTURE // Ensure this action
+                            putExtra(ScreenCaptureService.EXTRA_RESULT_CODE, result.resultCode)
+                            putExtra(ScreenCaptureService.EXTRA_RESULT_DATA, result.data!!)
+                        }
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                            startForegroundService(serviceIntent)
+                        } else {
+                            startService(serviceIntent)
+                        }
                     }
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                        startForegroundService(serviceIntent)
-                    } else {
-                        startService(serviceIntent)
-                    }
+                    this@MainActivity.isProcessingExplicitScreenshotRequest = false
                 } else {
                     Log.w(TAG, "MediaProjection permission denied or cancelled by user.")
                     Toast.makeText(this, "Screen capture permission denied", Toast.LENGTH_SHORT).show()
+                    // Also reset the flag if permission is denied for an explicit request
+                    if (this@MainActivity.isProcessingExplicitScreenshotRequest) {
+                        this@MainActivity.isProcessingExplicitScreenshotRequest = false
+                    }
                 }
             }
 
@@ -1110,8 +1110,8 @@ class MainActivity : ComponentActivity() {
         const val ACTION_REQUEST_MEDIAPROJECTION_SCREENSHOT = "com.google.ai.sample.REQUEST_MEDIAPROJECTION_SCREENSHOT"
         const val ACTION_MEDIAPROJECTION_SCREENSHOT_CAPTURED = "com.google.ai.sample.MEDIAPROJECTION_SCREENSHOT_CAPTURED"
         const val EXTRA_SCREENSHOT_URI = "com.google.ai.sample.EXTRA_SCREENSHOT_URI"
+        // Optional: For passing screen info text if decided later
         const val EXTRA_SCREEN_INFO = "com.google.ai.sample.EXTRA_SCREEN_INFO"
-        const val EXTRA_REQUESTED_BY_AI = "com.google.ai.sample.EXTRA_REQUESTED_BY_AI" // Added constant
     }
 
     override fun onNewIntent(intent: Intent?) {

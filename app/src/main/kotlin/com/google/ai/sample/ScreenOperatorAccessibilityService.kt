@@ -221,12 +221,11 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
 
                 val intent = Intent(MainActivity.ACTION_REQUEST_MEDIAPROJECTION_SCREENSHOT).apply {
                     putExtra(MainActivity.EXTRA_SCREEN_INFO, screenInfo)
-                    putExtra(MainActivity.EXTRA_REQUESTED_BY_AI, true) // Flag this as an AI-requested screenshot
                     // Set package to ensure only our app's receiver gets it
                     `package` = applicationContext.packageName
                 }
                 applicationContext.sendBroadcast(intent)
-                Log.d(TAG, "Sent broadcast ACTION_REQUEST_MEDIAPROJECTION_SCREENSHOT to MainActivity with screenInfo and AI request flag.")
+                Log.d(TAG, "Sent broadcast ACTION_REQUEST_MEDIAPROJECTION_SCREENSHOT to MainActivity with screenInfo.")
 
                 // The command is considered "handled" once the broadcast is sent.
                 // MainActivity and ScreenCaptureService will handle the rest asynchronously.
