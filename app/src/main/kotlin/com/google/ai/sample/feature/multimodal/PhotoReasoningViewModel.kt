@@ -1005,7 +1005,7 @@ class PhotoReasoningViewModel(
                         }
                         
                         // Re-send the query with only the latest screenshot
-                        reason(prompt, listOf(bitmap))
+                        // reason(prompt, listOf(bitmap))
                         
                         // Show a toast to indicate the screenshot was added
                         Toast.makeText(context, "Screenshot added to conversation", Toast.LENGTH_SHORT).show()
