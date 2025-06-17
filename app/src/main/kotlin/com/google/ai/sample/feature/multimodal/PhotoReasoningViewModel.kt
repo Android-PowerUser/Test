@@ -137,7 +137,7 @@ class PhotoReasoningViewModel(
         val userMessage = PhotoReasoningMessage(
             text = aiPromptText, // Use the combined text
             participant = PhotoParticipant.USER,
-            imageUris = imageUrisForChat, // Use the new parameter here
+            imageUris = imageUrisForChat ?: emptyList(), // Use the new parameter here
             isPending = false
         )
         _chatState.addMessage(userMessage)
