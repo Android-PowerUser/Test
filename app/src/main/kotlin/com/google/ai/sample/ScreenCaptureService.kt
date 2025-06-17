@@ -42,6 +42,7 @@ class ScreenCaptureService : Service() {
         const val ACTION_STOP_CAPTURE = "com.google.ai.sample.STOP_CAPTURE"   // New action
         const val EXTRA_RESULT_CODE = "result_code"
         const val EXTRA_RESULT_DATA = "result_data"
+        const val EXTRA_TAKE_SCREENSHOT_ON_START = "take_screenshot_on_start"
 
         private var instance: ScreenCaptureService? = null
 
@@ -93,7 +94,8 @@ class ScreenCaptureService : Service() {
                 Log.d(TAG, "onStartCommand (START_CAPTURE): resultCode=$resultCode, hasResultData=${resultData != null}")
 
                 if (resultCode == Activity.RESULT_OK && resultData != null) {
-                    startCapture(resultCode, resultData)
+                    val takeScreenshotFlag = intent.getBooleanExtra(EXTRA_TAKE_SCREENSHOT_ON_START, false)
+                    startCapture(resultCode, resultData, takeScreenshotFlag)
                 } else {
                     Log.e(TAG, "Invalid parameters for START_CAPTURE: resultCode=$resultCode (expected ${Activity.RESULT_OK}), resultDataIsNull=${resultData == null}")
                     cleanup() // Use cleanup to stop foreground and self
@@ -152,9 +154,9 @@ class ScreenCaptureService : Service() {
         }
     }
 
-    private fun startCapture(resultCode: Int, data: Intent) {
+    private fun startCapture(resultCode: Int, data: Intent, takeScreenshotOnStart: Boolean) {
         try {
-            Log.d(TAG, "startCapture: Getting MediaProjection")
+            Log.d(TAG, "startCapture: Getting MediaProjection, takeScreenshotOnStart: $takeScreenshotOnStart")
             val mediaProjectionManager = getSystemService(Context.MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
 
             mediaProjection?.unregisterCallback(mediaProjectionCallback) // Unregister old before stopping
@@ -172,14 +174,18 @@ class ScreenCaptureService : Service() {
             isReady = true
             Log.d(TAG, "MediaProjection ready.")
 
-            Handler(Looper.getMainLooper()).postDelayed({
-                if(isReady && mediaProjection != null) {
-                    Log.d(TAG, "Taking initial screenshot after delay.")
-                    takeScreenshot()
-                } else {
-                    Log.w(TAG, "Conditions to take initial screenshot not met after delay. isReady=$isReady, mediaProjectionIsNull=${mediaProjection==null}")
-                }
-            }, 500)
+            if (takeScreenshotOnStart) {
+                Handler(Looper.getMainLooper()).postDelayed({
+                    if(isReady && mediaProjection != null) {
+                        Log.d(TAG, "startCapture: Taking initial screenshot after delay because takeScreenshotOnStart was true.")
+                        takeScreenshot()
+                    } else {
+                        Log.w(TAG, "startCapture: Conditions to take initial screenshot not met after delay, even though takeScreenshotOnStart was true. isReady=$isReady, mediaProjectionIsNull=${mediaProjection==null}")
+                    }
+                }, 500)
+            } else {
+                Log.d(TAG, "startCapture: MediaProjection initialized, but skipping immediate screenshot as takeScreenshotOnStart is false.")
+            }
 
         } catch (e: Exception) {
             Log.e(TAG, "Error in startCapture", e)

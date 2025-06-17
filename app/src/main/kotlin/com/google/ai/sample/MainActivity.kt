@@ -461,11 +461,13 @@ class MainActivity : ComponentActivity() {
                 ActivityResultContracts.StartActivityForResult()
             ) { result ->
                 if (result.resultCode == Activity.RESULT_OK && result.data != null) {
-                    Log.i(TAG, "MediaProjection permission granted. Starting ScreenCaptureService.")
+                    val shouldTakeScreenshotOnThisStart = this@MainActivity.isProcessingExplicitScreenshotRequest
+                    Log.i(TAG, "MediaProjection permission granted. Starting ScreenCaptureService. Explicit request: $shouldTakeScreenshotOnThisStart")
                     val serviceIntent = Intent(this, ScreenCaptureService::class.java).apply {
                         action = ScreenCaptureService.ACTION_START_CAPTURE
                         putExtra(ScreenCaptureService.EXTRA_RESULT_CODE, result.resultCode)
                         putExtra(ScreenCaptureService.EXTRA_RESULT_DATA, result.data!!)
+                        putExtra(ScreenCaptureService.EXTRA_TAKE_SCREENSHOT_ON_START, shouldTakeScreenshotOnThisStart)
                     }
                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                         startForegroundService(serviceIntent)
