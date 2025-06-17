@@ -42,6 +42,7 @@ class ScreenCaptureService : Service() {
         const val ACTION_STOP_CAPTURE = "com.google.ai.sample.STOP_CAPTURE"   // New action
         const val EXTRA_RESULT_CODE = "result_code"
         const val EXTRA_RESULT_DATA = "result_data"
+        const val EXTRA_TAKE_SCREENSHOT_ON_START = "take_screenshot_on_start"
 
         private var instance: ScreenCaptureService? = null
 
@@ -52,6 +53,7 @@ class ScreenCaptureService : Service() {
     private var virtualDisplay: VirtualDisplay? = null
     private var imageReader: ImageReader? = null
     private var isReady = false // Flag to indicate if MediaProjection is set up and active
+    private val isScreenshotRequestedRef = java.util.concurrent.atomic.AtomicBoolean(false)
 
     // Callback for MediaProjection
     private val mediaProjectionCallback = object : MediaProjection.Callback() {
@@ -92,7 +94,8 @@ class ScreenCaptureService : Service() {
                 Log.d(TAG, "onStartCommand (START_CAPTURE): resultCode=$resultCode, hasResultData=${resultData != null}")
 
                 if (resultCode == Activity.RESULT_OK && resultData != null) {
-                    startCapture(resultCode, resultData)
+                    val takeScreenshotFlag = intent.getBooleanExtra(EXTRA_TAKE_SCREENSHOT_ON_START, false)
+                    startCapture(resultCode, resultData, takeScreenshotFlag)
                 } else {
                     Log.e(TAG, "Invalid parameters for START_CAPTURE: resultCode=$resultCode (expected ${Activity.RESULT_OK}), resultDataIsNull=${resultData == null}")
                     cleanup() // Use cleanup to stop foreground and self
@@ -151,9 +154,9 @@ class ScreenCaptureService : Service() {
         }
     }
 
-    private fun startCapture(resultCode: Int, data: Intent) {
+    private fun startCapture(resultCode: Int, data: Intent, takeScreenshotOnStart: Boolean) {
         try {
-            Log.d(TAG, "startCapture: Getting MediaProjection")
+            Log.d(TAG, "startCapture: Getting MediaProjection, takeScreenshotOnStart: $takeScreenshotOnStart")
             val mediaProjectionManager = getSystemService(Context.MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
 
             mediaProjection?.unregisterCallback(mediaProjectionCallback) // Unregister old before stopping
@@ -171,14 +174,18 @@ class ScreenCaptureService : Service() {
             isReady = true
             Log.d(TAG, "MediaProjection ready.")
 
-            Handler(Looper.getMainLooper()).postDelayed({
-                if(isReady && mediaProjection != null) {
-                    Log.d(TAG, "Taking initial screenshot after delay.")
-                    takeScreenshot()
-                } else {
-                    Log.w(TAG, "Conditions to take initial screenshot not met after delay. isReady=$isReady, mediaProjectionIsNull=${mediaProjection==null}")
-                }
-            }, 500)
+            if (takeScreenshotOnStart) {
+                Handler(Looper.getMainLooper()).postDelayed({
+                    if(isReady && mediaProjection != null) {
+                        Log.d(TAG, "startCapture: Taking initial screenshot after delay because takeScreenshotOnStart was true.")
+                        takeScreenshot()
+                    } else {
+                        Log.w(TAG, "startCapture: Conditions to take initial screenshot not met after delay, even though takeScreenshotOnStart was true. isReady=$isReady, mediaProjectionIsNull=${mediaProjection==null}")
+                    }
+                }, 500)
+            } else {
+                Log.d(TAG, "startCapture: MediaProjection initialized, but skipping immediate screenshot as takeScreenshotOnStart is false.")
+            }
 
         } catch (e: Exception) {
             Log.e(TAG, "Error in startCapture", e)
@@ -192,7 +199,8 @@ private fun takeScreenshot() {
         Log.e(TAG, "Cannot take screenshot - service not ready or mediaProjection is null. isReady=$isReady, mediaProjectionIsNull=${mediaProjection == null}")
         return
     }
-    Log.d(TAG, "takeScreenshot: Preparing to capture.")
+    isScreenshotRequestedRef.set(true)
+    Log.d(TAG, "takeScreenshot: Preparing to capture. isScreenshotRequestedRef set to true.")
 
     try {
         // Check if we need to initialize VirtualDisplay and ImageReader
@@ -235,34 +243,49 @@ private fun takeScreenshot() {
             }
 
             localImageReader.setOnImageAvailableListener({ reader ->
-                var image: android.media.Image? = null
-                try {
-                    image = reader.acquireLatestImage()
-                    if (image != null) {
-                        val planes = image.planes
-                        val buffer = planes[0].buffer
-                        val pixelStride = planes[0].pixelStride
-                        val rowStride = planes[0].rowStride
-                        val rowPadding = rowStride - pixelStride * width
+                if (isScreenshotRequestedRef.compareAndSet(true, false)) {
+                    Log.d(TAG, "Screenshot request flag consumed, processing image.")
+                    var image: android.media.Image? = null
+                    try {
+                        image = reader.acquireLatestImage()
+                        if (image != null) {
+                            val planes = image.planes
+                            val buffer = planes[0].buffer
+                            val pixelStride = planes[0].pixelStride
+                            val rowStride = planes[0].rowStride
+                            val rowPadding = rowStride - pixelStride * width
 
-                        val bitmap = Bitmap.createBitmap(
-                            width + rowPadding / pixelStride,
-                            height,
-                            Bitmap.Config.ARGB_8888
-                        )
-                        bitmap.copyPixelsFromBuffer(buffer)
-                        Log.d(TAG, "Bitmap created, proceeding to save.")
-                        saveScreenshot(bitmap)
-                    } else {
-                        Log.w(TAG, "acquireLatestImage returned null.")
+                            val bitmap = Bitmap.createBitmap(
+                                width + rowPadding / pixelStride,
+                                height,
+                                Bitmap.Config.ARGB_8888
+                            )
+                            bitmap.copyPixelsFromBuffer(buffer)
+                            Log.d(TAG, "Bitmap created, proceeding to save.")
+                            saveScreenshot(bitmap)
+                        } else {
+                            Log.w(TAG, "acquireLatestImage returned null despite requested flag.")
+                        }
+                    } catch (e: Exception) {
+                        Log.e(TAG, "Error processing image in listener", e)
+                    } finally {
+                        image?.close()
+                        // Do NOT release VirtualDisplay or ImageReader here
+                        // They will be reused for the next screenshot
+                        Log.d(TAG, "Screenshot processed (or attempted), keeping resources for reuse.")
                     }
-                } catch (e: Exception) {
-                    Log.e(TAG, "Error processing image", e)
-                } finally {
-                    image?.close()
-                    // Do NOT release VirtualDisplay or ImageReader here
-                    // They will be reused for the next screenshot
-                    Log.d(TAG, "Screenshot captured, keeping resources for reuse.")
+                } else {
+                    // Logic to discard the frame if no screenshot was formally requested
+                    Log.w(TAG, "OnImageAvailableListener invoked but no screenshot was requested or flag already consumed. Discarding frame.")
+                    var imageToDiscard: android.media.Image? = null
+                    try {
+                        imageToDiscard = reader.acquireLatestImage()
+                    } catch (e: Exception) {
+                        // This catch is important because acquireLatestImage can fail if buffers are truly messed up
+                        Log.e(TAG, "Error acquiring image to discard in OnImageAvailableListener else block", e)
+                    } finally {
+                        imageToDiscard?.close()
+                    }
                 }
             }, Handler(Looper.getMainLooper()))
 
