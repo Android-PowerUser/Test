@@ -121,6 +121,7 @@ class MainActivity : ComponentActivity() {
     private var currentScreenInfoForScreenshot: String? = null
 
     private lateinit var navController: NavHostController
+    private var isProcessingExplicitScreenshotRequest: Boolean = false
 
     private val screenshotRequestHandler = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
@@ -134,6 +135,7 @@ class MainActivity : ComponentActivity() {
                     this@MainActivity.takeAdditionalScreenshot()
                 } else {
                     Log.d(TAG, "ScreenCaptureService not running. Calling requestMediaProjectionPermission() to start it.")
+                    this@MainActivity.isProcessingExplicitScreenshotRequest = true
                     this@MainActivity.requestMediaProjectionPermission()
                 }
             }
@@ -460,20 +462,27 @@ class MainActivity : ComponentActivity() {
             ) { result ->
                 Log.d(TAG, "MediaProjection result: resultCode=${result.resultCode}, hasData=${result.data != null}")
                 if (result.resultCode == Activity.RESULT_OK && result.data != null) {
-                    Log.i(TAG, "MediaProjection permission granted, starting ScreenCaptureService with ACTION_START_CAPTURE")
-                    val serviceIntent = Intent(this, ScreenCaptureService::class.java).apply {
-                        action = ScreenCaptureService.ACTION_START_CAPTURE // Ensure this action
-                        putExtra(ScreenCaptureService.EXTRA_RESULT_CODE, result.resultCode)
-                        putExtra(ScreenCaptureService.EXTRA_RESULT_DATA, result.data!!)
+                    if (this@MainActivity.isProcessingExplicitScreenshotRequest) {
+                        Log.i(TAG, "MediaProjection permission granted (explicit request), starting ScreenCaptureService with ACTION_START_CAPTURE")
+                        val serviceIntent = Intent(this, ScreenCaptureService::class.java).apply {
+                            action = ScreenCaptureService.ACTION_START_CAPTURE // Ensure this action
+                            putExtra(ScreenCaptureService.EXTRA_RESULT_CODE, result.resultCode)
+                            putExtra(ScreenCaptureService.EXTRA_RESULT_DATA, result.data!!)
+                        }
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                            startForegroundService(serviceIntent)
+                        } else {
+                            startService(serviceIntent)
+                        }
                     }
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                        startForegroundService(serviceIntent)
-                    } else {
-                        startService(serviceIntent)
-                    }
+                    this@MainActivity.isProcessingExplicitScreenshotRequest = false
                 } else {
                     Log.w(TAG, "MediaProjection permission denied or cancelled by user.")
                     Toast.makeText(this, "Screen capture permission denied", Toast.LENGTH_SHORT).show()
+                    // Also reset the flag if permission is denied for an explicit request
+                    if (this@MainActivity.isProcessingExplicitScreenshotRequest) {
+                        this@MainActivity.isProcessingExplicitScreenshotRequest = false
+                    }
                 }
             }
 
