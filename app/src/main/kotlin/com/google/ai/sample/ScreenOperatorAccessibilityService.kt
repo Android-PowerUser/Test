@@ -443,8 +443,8 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
     private fun refreshRootNode() {
         val currentTime = System.currentTimeMillis()
         
-        // Only refresh if more than 500ms have passed since the last refresh
-        if (currentTime - lastRootNodeRefreshTime < 500) {
+        // Only refresh if more than 200ms have passed since the last refresh
+        if (currentTime - lastRootNodeRefreshTime < 200) {
             return
         }
         
