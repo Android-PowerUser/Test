@@ -59,6 +59,8 @@ class PhotoReasoningViewModel(
         
     // Keep track of the latest screenshot URI
     private var latestScreenshotUri: Uri? = null
+    private var lastProcessedScreenshotUri: Uri? = null
+    private var lastProcessedScreenshotTime: Long = 0L
     
     // Keep track of the current selected images
     private var currentSelectedImages: List<Bitmap> = emptyList()
@@ -932,6 +934,14 @@ class PhotoReasoningViewModel(
         context: Context,
         screenInfo: String? = null
     ) {
+        val currentTime = System.currentTimeMillis()
+        if (screenshotUri == lastProcessedScreenshotUri && (currentTime - lastProcessedScreenshotTime) < 2000) { // 2-second debounce window
+            Log.w(TAG, "addScreenshotToConversation: Debouncing duplicate/rapid call for URI $screenshotUri")
+            return // Exit the function early if it's a duplicate call within the window
+        }
+        lastProcessedScreenshotUri = screenshotUri
+        lastProcessedScreenshotTime = currentTime
+
         PhotoReasoningApplication.applicationScope.launch(Dispatchers.Main) {
             try {
                 Log.d(TAG, "Adding screenshot to conversation: $screenshotUri")
@@ -1005,7 +1015,7 @@ class PhotoReasoningViewModel(
                         }
                         
                         // Re-send the query with only the latest screenshot
-                        // reason(prompt, listOf(bitmap))
+                        reason(prompt, listOf(bitmap))
                         
                         // Show a toast to indicate the screenshot was added
                         Toast.makeText(context, "Screenshot added to conversation", Toast.LENGTH_SHORT).show()
