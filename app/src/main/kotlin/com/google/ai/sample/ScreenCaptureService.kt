@@ -55,6 +55,10 @@ class ScreenCaptureService : Service() {
     private var isReady = false // Flag to indicate if MediaProjection is set up and active
     private val isScreenshotRequestedRef = java.util.concurrent.atomic.AtomicBoolean(false)
 
+    private lateinit var mediaProjectionManager: MediaProjectionManager
+    private var latestActivityManagerResultCode: Int? = null
+    private var latestActivityManagerResultData: android.content.Intent? = null
+
     // Callback for MediaProjection
     private val mediaProjectionCallback = object : MediaProjection.Callback() {
         override fun onStop() {
@@ -68,6 +72,7 @@ class ScreenCaptureService : Service() {
         instance = this
         Log.d(TAG, "onCreate: Service created")
         createNotificationChannel()
+        mediaProjectionManager = getSystemService(Context.MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -94,6 +99,9 @@ class ScreenCaptureService : Service() {
                 Log.d(TAG, "onStartCommand (START_CAPTURE): resultCode=$resultCode, hasResultData=${resultData != null}")
 
                 if (resultCode == Activity.RESULT_OK && resultData != null) {
+                    this.latestActivityManagerResultCode = resultCode
+                    this.latestActivityManagerResultData = resultData
+                    Log.d(TAG, "Stored latest permission grant data.")
                     val takeScreenshotFlag = intent.getBooleanExtra(EXTRA_TAKE_SCREENSHOT_ON_START, false)
                     startCapture(resultCode, resultData, takeScreenshotFlag)
                 } else {
@@ -156,13 +164,13 @@ class ScreenCaptureService : Service() {
 
     private fun startCapture(resultCode: Int, data: Intent, takeScreenshotOnStart: Boolean) {
         try {
-            Log.d(TAG, "startCapture: Getting MediaProjection, takeScreenshotOnStart: $takeScreenshotOnStart")
-            val mediaProjectionManager = getSystemService(Context.MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
+            Log.d(TAG, "startCapture: Using member mediaProjectionManager, takeScreenshotOnStart: $takeScreenshotOnStart")
+            // val mediaProjectionManager = getSystemService(Context.MEDIA_PROJECTION_SERVICE) as MediaProjectionManager // Now using member variable
 
             mediaProjection?.unregisterCallback(mediaProjectionCallback) // Unregister old before stopping
             mediaProjection?.stop() // Stop any existing projection
 
-            mediaProjection = mediaProjectionManager.getMediaProjection(resultCode, data)
+            mediaProjection = this.mediaProjectionManager.getMediaProjection(resultCode, data)
 
             if (mediaProjection == null) {
                 Log.e(TAG, "MediaProjection is null after getMediaProjection call")
@@ -195,12 +203,49 @@ class ScreenCaptureService : Service() {
     }
 
 private fun takeScreenshot() {
+    isScreenshotRequestedRef.set(true) // Set flag for the current attempt first
+
+    if (mediaProjection == null) { // If current projection is null
+        if (latestActivityManagerResultCode != null && latestActivityManagerResultData != null) {
+            Log.d(TAG, "takeScreenshot: MediaProjection is null, attempting to re-initialize from stored token.")
+            try {
+                // mediaProjectionManager is already initialized in onCreate
+                mediaProjection = mediaProjectionManager.getMediaProjection(latestActivityManagerResultCode!!, latestActivityManagerResultData!!)
+                if (mediaProjection != null) {
+                    mediaProjection!!.registerCallback(mediaProjectionCallback, Handler(Looper.getMainLooper()))
+                    // Reset virtualDisplay and imageReader so they are re-created with the new projection
+                    virtualDisplay?.release()
+                    virtualDisplay = null
+                    imageReader?.close()
+                    imageReader = null
+                    isReady = true // Mark as ready to proceed with capture setup
+                    Log.d(TAG, "takeScreenshot: MediaProjection re-initialized successfully.")
+                    // The existing logic below for setting up ImageReader/VirtualDisplay will now run
+                } else {
+                    Log.e(TAG, "takeScreenshot: Failed to re-initialize MediaProjection from stored token.")
+                    isReady = false
+                    return // Cannot proceed
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "takeScreenshot: Exception during MediaProjection re-initialization", e)
+                isReady = false
+                mediaProjection = null // Ensure it's null on failure
+                return // Cannot proceed
+            }
+        } else {
+            Log.e(TAG, "takeScreenshot: MediaProjection is null and no valid stored grant data available. Cannot capture.")
+            isReady = false // Ensure isReady reflects this state
+            return // Cannot proceed
+        }
+    }
+
+    // Original check after re-init attempt (or if projection was already valid)
     if (!isReady || mediaProjection == null) {
-        Log.e(TAG, "Cannot take screenshot - service not ready or mediaProjection is null. isReady=$isReady, mediaProjectionIsNull=${mediaProjection == null}")
+        Log.e(TAG, "Cannot take screenshot - service not ready or mediaProjection is null after re-init attempt. isReady=$isReady, mediaProjectionIsNull=${mediaProjection == null}")
         return
     }
-    isScreenshotRequestedRef.set(true)
-    Log.d(TAG, "takeScreenshot: Preparing to capture. isScreenshotRequestedRef set to true.")
+    // isScreenshotRequestedRef.set(true); // Moved to the top
+    Log.d(TAG, "takeScreenshot: Preparing to capture. isScreenshotRequestedRef is true.")
 
     try {
         // Check if we need to initialize VirtualDisplay and ImageReader
@@ -378,24 +423,26 @@ private fun takeScreenshot() {
             mediaProjection?.unregisterCallback(mediaProjectionCallback)
             mediaProjection?.stop()
             mediaProjection = null
+            // latestActivityManagerResultCode and latestActivityManagerResultData are NOT cleared
         } catch (e: Exception) {
-            Log.e(TAG, "Error during full cleanup", e)
+            Log.e(TAG, "Error during media resource cleanup", e)
         } finally {
-            stopForeground(STOP_FOREGROUND_REMOVE)
-            stopSelf() // This will trigger onDestroy eventually
-            instance = null // Clear static instance
-            Log.d(TAG, "Full cleanup finished, service fully stopped.")
+            // Service is kept alive, but foreground state might need adjustment if no longer actively capturing.
+            // For now, only remove notification if service is meant to be truly idle.
+            // If it's expected to be ready for takeScreenshot() calls, it might need to remain foreground.
+            // Task implies service stays alive, so let's remove stopForeground for now,
+            // as it might be restarted by a takeScreenshot() call shortly.
+            // stopForeground(STOP_FOREGROUND_REMOVE) // Re-evaluate if notification should persist
+            Log.d(TAG, "Media resources cleaned up. Service remains active.")
         }
     }
 
     override fun onDestroy() {
         Log.d(TAG, "onDestroy: Service being destroyed")
-        // Cleanup is called from ACTION_STOP_CAPTURE or if projection stops externally.
-        // If service is killed by system, this ensures cleanup too.
-        if (isReady || mediaProjection != null) { // Check if cleanup is actually needed
-           cleanup()
-        }
-        instance = null // Ensure instance is cleared
+        cleanup() // Ensure all media resources are released
+        latestActivityManagerResultCode = null // Clear stored grant data when service is destroyed
+        latestActivityManagerResultData = null
+        instance = null // Clear static instance
         super.onDestroy()
     }
 
