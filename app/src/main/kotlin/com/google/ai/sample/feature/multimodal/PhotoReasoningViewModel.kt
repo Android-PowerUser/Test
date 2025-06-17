@@ -107,9 +107,10 @@ class PhotoReasoningViewModel(
     fun reason(
         userInput: String,
         selectedImages: List<Bitmap>,
-        screenInfoForPrompt: String? = null
+        screenInfoForPrompt: String? = null,
+        imageUrisForChat: List<String>? = null
     ) {
-        Log.d(TAG, "reason() called. User input: '$userInput', Image count: ${selectedImages.size}, ScreenInfo: ${screenInfoForPrompt != null}")
+        Log.d(TAG, "reason() called. User input: '$userInput', Image count: ${selectedImages.size}, ScreenInfo: ${screenInfoForPrompt != null}, ImageUris: ${imageUrisForChat != null}")
         _uiState.value = PhotoReasoningUiState.Loading
         Log.d(TAG, "Setting _showStopNotificationFlow to true")
         _showStopNotificationFlow.value = true
@@ -136,6 +137,7 @@ class PhotoReasoningViewModel(
         val userMessage = PhotoReasoningMessage(
             text = aiPromptText, // Use the combined text
             participant = PhotoParticipant.USER,
+            imageUris = imageUrisForChat, // Use the new parameter here
             isPending = false
         )
         _chatState.addMessage(userMessage)
@@ -1002,7 +1004,8 @@ class PhotoReasoningViewModel(
                         reason(
                             userInput = genericAnalysisPrompt,
                             selectedImages = listOf(bitmap),
-                            screenInfoForPrompt = screenInfo
+                            screenInfoForPrompt = screenInfo,
+                            imageUrisForChat = listOf(screenshotUri.toString()) // Add this argument
                         )
                         
                         // Show a toast to indicate the screenshot was added
