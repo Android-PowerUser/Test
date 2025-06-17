@@ -59,6 +59,8 @@ class PhotoReasoningViewModel(
         
     // Keep track of the latest screenshot URI
     private var latestScreenshotUri: Uri? = null
+    private var lastProcessedScreenshotUri: Uri? = null
+    private var lastProcessedScreenshotTime: Long = 0L
     
     // Keep track of the current selected images
     private var currentSelectedImages: List<Bitmap> = emptyList()
@@ -104,19 +106,27 @@ class PhotoReasoningViewModel(
 
     fun reason(
         userInput: String,
-        selectedImages: List<Bitmap>
+        selectedImages: List<Bitmap>,
+        screenInfoForPrompt: String? = null,
+        imageUrisForChat: List<String>? = null
     ) {
-        Log.d(TAG, "reason() called. User input: '$userInput', Image count: ${selectedImages.size}")
+        Log.d(TAG, "reason() called. User input: '$userInput', Image count: ${selectedImages.size}, ScreenInfo: ${screenInfoForPrompt != null}, ImageUris: ${imageUrisForChat != null}")
         _uiState.value = PhotoReasoningUiState.Loading
         Log.d(TAG, "Setting _showStopNotificationFlow to true")
         _showStopNotificationFlow.value = true
         Log.d(TAG, "_showStopNotificationFlow value is now: ${_showStopNotificationFlow.value}")
         stopExecutionFlag.set(false)
 
-        val prompt = "FOLLOW THE INSTRUCTIONS STRICTLY: $userInput"
+        val combinedPromptTextBuilder = StringBuilder(userInput)
+        if (screenInfoForPrompt != null && screenInfoForPrompt.isNotBlank()) { // Added isNotBlank check
+            combinedPromptTextBuilder.append("\n\nScreen Context:\n$screenInfoForPrompt")
+        }
+        val aiPromptText = combinedPromptTextBuilder.toString()
+
+        val prompt = "FOLLOW THE INSTRUCTIONS STRICTLY: $aiPromptText"
 
         // Store the current user input and selected images
-        currentUserInput = userInput
+        currentUserInput = userInput // This should ideally store aiPromptText or handle context separately if needed for retry. For now, task is specific to prompt to AI and chat.
         currentSelectedImages = selectedImages
 
         // Clear previous commands
@@ -125,8 +135,9 @@ class PhotoReasoningViewModel(
 
         // Add user message to chat history
         val userMessage = PhotoReasoningMessage(
-            text = userInput,
+            text = aiPromptText, // Use the combined text
             participant = PhotoParticipant.USER,
+            imageUris = imageUrisForChat ?: emptyList(), // Use the new parameter here
             isPending = false
         )
         _chatState.addMessage(userMessage)
@@ -932,6 +943,14 @@ class PhotoReasoningViewModel(
         context: Context,
         screenInfo: String? = null
     ) {
+        val currentTime = System.currentTimeMillis()
+        if (screenshotUri == lastProcessedScreenshotUri && (currentTime - lastProcessedScreenshotTime) < 2000) { // 2-second debounce window
+            Log.w(TAG, "addScreenshotToConversation: Debouncing duplicate/rapid call for URI $screenshotUri")
+            return // Exit the function early if it's a duplicate call within the window
+        }
+        lastProcessedScreenshotUri = screenshotUri
+        lastProcessedScreenshotTime = currentTime
+
         PhotoReasoningApplication.applicationScope.launch(Dispatchers.Main) {
             try {
                 Log.d(TAG, "Adding screenshot to conversation: $screenshotUri")
@@ -952,25 +971,6 @@ class PhotoReasoningViewModel(
                 
                 // Show toast
                 Toast.makeText(context, "Processing screenshot...", Toast.LENGTH_SHORT).show()
-                
-                // Create message text with screen information if available
-                val messageText = if (screenInfo != null) {
-                    "Screenshot captured\n\n$screenInfo"
-                } else {
-                    "Screenshot captured"
-                }
-                
-                // Add screenshot message to chat history
-                val screenshotMessage = PhotoReasoningMessage(
-                    text = messageText,
-                    participant = PhotoParticipant.USER,
-                    imageUris = listOf(screenshotUri.toString())
-                )
-                _chatState.addMessage(screenshotMessage)
-                _chatMessagesFlow.value = chatMessages
-                
-                // Save chat history after adding screenshot
-                saveChatHistory(context)
                 
                 // Process the screenshot
                 val imageRequest = imageRequestBuilder!!
@@ -998,14 +998,15 @@ class PhotoReasoningViewModel(
                         Toast.makeText(context, "Screenshot added, sending to AI...", Toast.LENGTH_SHORT).show()
                         
                         // Create prompt with screen information if available
-                        val prompt = if (screenInfo != null) {
-                            "Analyze this screenshot. Here is the available screen information: $screenInfo"
-                        } else {
-                            "Analyze this screenshot"
-                        }
+                        val genericAnalysisPrompt = "Analyze the provided screenshot and its context."
                         
                         // Re-send the query with only the latest screenshot
-                        reason(prompt, listOf(bitmap))
+                        reason(
+                            userInput = genericAnalysisPrompt,
+                            selectedImages = listOf(bitmap),
+                            screenInfoForPrompt = screenInfo,
+                            imageUrisForChat = listOf(screenshotUri.toString()) // Add this argument
+                        )
                         
                         // Show a toast to indicate the screenshot was added
                         Toast.makeText(context, "Screenshot added to conversation", Toast.LENGTH_SHORT).show()

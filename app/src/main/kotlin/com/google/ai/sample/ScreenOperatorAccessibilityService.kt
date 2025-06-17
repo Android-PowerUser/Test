@@ -180,8 +180,8 @@ class ScreenOperatorAccessibilityService : AccessibilityService() {
 
     private fun scheduleNextCommandProcessing() {
         val nextCommandDelay = if (commandQueue.peek() is Command.TakeScreenshot) {
-            Log.d(TAG, "Next command in queue is TakeScreenshot, scheduling with 850ms delay.")
-            850L
+            Log.d(TAG, "Next command in queue is TakeScreenshot, scheduling with 50ms delay.")
+            50L
         } else {
             500L
         }

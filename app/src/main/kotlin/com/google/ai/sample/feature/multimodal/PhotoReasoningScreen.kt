@@ -189,7 +189,12 @@ internal fun PhotoReasoningRoute(
                         if (result is SuccessResult) (result.drawable as BitmapDrawable).bitmap else null
                     } catch (e: Exception) { null }
                 }
-                viewModel.reason(inputText, bitmaps)
+                viewModel.reason(
+                    userInput = inputText,
+                    selectedImages = bitmaps,
+                    screenInfoForPrompt = null, // User-initiated messages don't have prior screen context here
+                    imageUrisForChat = selectedItems.map { it.toString() }
+                )
             }
         },
         isAccessibilityServiceEnabled = isAccessibilityServiceEffectivelyEnabled,
