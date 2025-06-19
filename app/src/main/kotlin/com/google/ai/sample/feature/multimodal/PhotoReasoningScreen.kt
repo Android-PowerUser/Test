@@ -398,7 +398,7 @@ fun PhotoReasoningScreen(
         }
 
         if (commandExecutionStatus.isNotEmpty()) {
-            Card(modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer)) {
+            Card(modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp).wrapContentHeight(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer)) {
                 Column(modifier = Modifier.padding(16.dp)) {
                     Text("Command Status:", style = MaterialTheme.typography.titleMedium)
                     Spacer(Modifier.height(4.dp))
@@ -407,7 +407,7 @@ fun PhotoReasoningScreen(
             }
         }
         if (detectedCommands.isNotEmpty()) {
-            Card(modifier = Modifier.padding(vertical = 8.dp).wrapContentHeight(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.tertiaryContainer)) {
+            Card(modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp).wrapContentHeight(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.tertiaryContainer)) {
                 Column(modifier = Modifier.padding(16.dp)) {
                     Text("Detected Commands:", style = MaterialTheme.typography.titleMedium)
                     Spacer(Modifier.height(4.dp))
