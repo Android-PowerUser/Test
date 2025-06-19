@@ -267,9 +267,32 @@ fun PhotoReasoningScreen(
         uri?.let { imageUris.add(it) }
     }
 
-    LaunchedEffect(chatMessages.size) {
+    LaunchedEffect(chatMessages.size, commandExecutionStatus, detectedCommands.size) {
+        val chatMessageCount = chatMessages.size
+        var targetIndex = -1 // Default to no scroll if no items
+
         if (chatMessages.isNotEmpty()) {
-            listState.animateScrollToItem(chatMessages.size - 1)
+            targetIndex = chatMessageCount - 1 // Last chat message
+        }
+
+        val commandStatusPresent = commandExecutionStatus.isNotEmpty()
+        val detectedCommandsPresent = detectedCommands.isNotEmpty()
+
+        if (commandStatusPresent) {
+            targetIndex = chatMessageCount // Index of command status card (0-based from chat messages)
+        }
+        if (detectedCommandsPresent) {
+            targetIndex = chatMessageCount + (if (commandStatusPresent) 1 else 0) // Index of detected commands card
+        }
+
+        val totalItems = chatMessageCount +
+                         (if (commandStatusPresent) 1 else 0) +
+                         (if (detectedCommandsPresent) 1 else 0)
+
+        if (targetIndex >= 0 && targetIndex < totalItems) {
+            listState.animateScrollToItem(targetIndex)
+        } else if (totalItems > 0) { // Fallback for safety, if targetIndex is somehow out of initial bounds but items exist
+            listState.animateScrollToItem(totalItems - 1)
         }
     }
 
@@ -345,9 +368,48 @@ fun PhotoReasoningScreen(
                     PhotoParticipant.ERROR -> ErrorChatBubble(message.text)
                 }
             }
+
+            if (commandExecutionStatus.isNotEmpty()) {
+                item {
+                    Card(
+                        modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp, horizontal = 8.dp).wrapContentHeight(),
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer)
+                    ) {
+                        Column(modifier = Modifier.padding(16.dp)) {
+                            Text("Command Status:", style = MaterialTheme.typography.titleMedium)
+                            Spacer(Modifier.height(4.dp))
+                            Text(commandExecutionStatus, color = MaterialTheme.colorScheme.onSecondaryContainer)
+                        }
+                    }
+                }
+            }
+
+            if (detectedCommands.isNotEmpty()) {
+                item {
+                    Card(
+                        modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp, horizontal = 8.dp).wrapContentHeight(),
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.tertiaryContainer)
+                    ) {
+                        Column(modifier = Modifier.padding(16.dp)) {
+                            Text("Detected Commands:", style = MaterialTheme.typography.titleMedium)
+                            Spacer(Modifier.height(4.dp))
+                            detectedCommands.forEachIndexed { index, command ->
+                                val commandText = when (command) {
+                                    is Command.ClickButton -> "Click on button: \"${command.buttonText}\""
+                                    is Command.TapCoordinates -> "Tap coordinates: (${command.x}, ${command.y})"
+                                    is Command.TakeScreenshot -> "Take screenshot"
+                                    else -> command::class.simpleName ?: "Unknown Command"
+                                }
+                                Text("${index + 1}. $commandText", color = MaterialTheme.colorScheme.onTertiaryContainer)
+                                if (index < detectedCommands.size - 1) Divider(Modifier.padding(vertical = 4.dp), color = MaterialTheme.colorScheme.onTertiaryContainer.copy(alpha = 0.2f))
+                            }
+                        }
+                    }
+                }
+            }
         }
 
-        val showStopButton = uiState is PhotoReasoningUiState.Loading || commandExecutionStatus.isNotEmpty()
+        val showStopButton = uiState is PhotoReasoningUiState.Loading // commandExecutionStatus check is implicitly handled by cards in LazyColumn
 
         if (showStopButton) {
             StopButton(onClick = onStopClicked)
@@ -400,43 +462,7 @@ fun PhotoReasoningScreen(
             }
         }
 
-        // 5 & 6. Status and Commands Cards Column
-        Column(modifier = Modifier.fillMaxWidth()) { // This new Column wraps the two cards
-            if (commandExecutionStatus.isNotEmpty()) {
-                Card(
-                    modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp).wrapContentHeight(),
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer)
-                ) {
-                    Column(modifier = Modifier.padding(16.dp)) {
-                        Text("Command Status:", style = MaterialTheme.typography.titleMedium)
-                        Spacer(Modifier.height(4.dp))
-                        Text(commandExecutionStatus, color = MaterialTheme.colorScheme.onSecondaryContainer)
-                    }
-                }
-            }
-            if (detectedCommands.isNotEmpty()) {
-                Card(
-                    modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp).wrapContentHeight(),
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.tertiaryContainer)
-                ) {
-                    Column(modifier = Modifier.padding(16.dp)) {
-                        Text("Detected Commands:", style = MaterialTheme.typography.titleMedium)
-                        Spacer(Modifier.height(4.dp))
-                        detectedCommands.forEachIndexed { index, command ->
-                            val commandText = when (command) {
-                                is Command.ClickButton -> "Click on button: \"${command.buttonText}\""
-                                is Command.TapCoordinates -> "Tap coordinates: (${command.x}, ${command.y})"
-                                is Command.TakeScreenshot -> "Take screenshot"
-                                else -> command::class.simpleName ?: "Unknown Command"
-                            }
-                            Text("${index + 1}. $commandText", color = MaterialTheme.colorScheme.onTertiaryContainer)
-                            if (index < detectedCommands.size - 1) Divider(Modifier.padding(vertical = 4.dp), color = MaterialTheme.colorScheme.onTertiaryContainer.copy(alpha = 0.2f))
-                        }
-                    }
-                }
-            }
-        }
-
+        // Popups remain outside the main content flow, attached to the screen Column
         if (showDatabaseListPopup) {
             DatabaseListPopup(
                 onDismissRequest = { showDatabaseListPopup = false },
