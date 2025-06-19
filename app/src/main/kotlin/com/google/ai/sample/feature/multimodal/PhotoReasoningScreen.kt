@@ -273,7 +273,10 @@ fun PhotoReasoningScreen(
         }
     }
 
-    Column(modifier = Modifier.padding(all = 16.dp).fillMaxHeight()) {
+    Column(
+        modifier = Modifier.padding(all = 16.dp).fillMaxHeight(),
+        verticalArrangement = Arrangement.Top
+    ) {
         Card(
             modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp),
             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)
