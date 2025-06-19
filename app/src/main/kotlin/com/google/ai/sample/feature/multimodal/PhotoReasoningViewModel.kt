@@ -104,13 +104,23 @@ class PhotoReasoningViewModel(
     private var commandProcessingJob: Job? = null
     private val stopExecutionFlag = AtomicBoolean(false)
 
-    fun reason(
+    init {
+        viewModelScope.launch {
+            initializeViewModel()
+        }
+    }
+
+    private suspend fun initializeViewModel() {
+        loadSystemMessage(MainActivity.getInstance()?.applicationContext!!)
+    }
+
+    private fun performReasoning(
         userInput: String,
         selectedImages: List<Bitmap>,
         screenInfoForPrompt: String? = null,
         imageUrisForChat: List<String>? = null
     ) {
-        Log.d(TAG, "reason() called. User input: '$userInput', Image count: ${selectedImages.size}, ScreenInfo: ${screenInfoForPrompt != null}, ImageUris: ${imageUrisForChat != null}")
+        Log.d(TAG, "performReasoning() called. User input: '$userInput', Image count: ${selectedImages.size}, ScreenInfo: ${screenInfoForPrompt != null}, ImageUris: ${imageUrisForChat != null}")
         _uiState.value = PhotoReasoningUiState.Loading
         Log.d(TAG, "Setting _showStopNotificationFlow to true")
         _showStopNotificationFlow.value = true
@@ -195,6 +205,22 @@ class PhotoReasoningViewModel(
             if (currentReasoningJob?.isActive != true) return@launch // Check for cancellation outside content block
             sendMessageWithRetry(inputContent, 0)
         }
+    }
+
+    fun reason(
+        userInput: String,
+        selectedImages: List<Bitmap>,
+        screenInfoForPrompt: String? = null,
+        imageUrisForChat: List<String>? = null
+    ) {
+        if (!_isInitialized.value) {
+            viewModelScope.launch {
+                initializeViewModel()
+                performReasoning(userInput, selectedImages, screenInfoForPrompt, imageUrisForChat)
+            }
+            return
+        }
+        performReasoning(userInput, selectedImages, screenInfoForPrompt, imageUrisForChat)
     }
 
     fun onStopClicked() {
