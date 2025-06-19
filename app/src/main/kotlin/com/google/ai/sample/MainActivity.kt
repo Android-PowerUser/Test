@@ -111,7 +111,7 @@ class MainActivity : ComponentActivity() {
     private var showTrialInfoDialog by mutableStateOf(false)
     private var trialInfoMessage by mutableStateOf("")
 
-    private var showPermissionRationaleDialog by mutableStateOf(false)
+    // private var showPermissionRationaleDialog by mutableStateOf(false) // Deleted
     private var permissionRequestCount by mutableStateOf(0)
 
     // MediaProjection
@@ -166,32 +166,7 @@ class MainActivity : ComponentActivity() {
 
     // Permission Launchers
     private lateinit var requestNotificationPermissionLauncher: ActivityResultLauncher<String>
-    private val requestPermissionLauncher = registerForActivityResult(
-        ActivityResultContracts.RequestMultiplePermissions()
-    ) { permissions ->
-        Log.d(TAG, "requestPermissionLauncher callback received. Permissions: $permissions")
-        val allGranted = permissions.entries.all { it.value }
-        if (allGranted) {
-            Log.i(TAG, "All required permissions granted by user.")
-            updateStatusMessage("All required permissions granted")
-        } else {
-            val deniedPermissions = permissions.entries.filter { !it.value }.map { it.key }
-            Log.w(TAG, "Permissions denied. Current request count: $permissionRequestCount. Denied permissions: $deniedPermissions")
-
-            if (permissionRequestCount == 1) {
-                Log.i(TAG, "Permissions denied once. Showing rationale dialog again for a second attempt.")
-                showPermissionRationaleDialog = true
-            } else if (permissionRequestCount >= 2) {
-                Log.w(TAG, "Permissions denied after second formal request (request count: $permissionRequestCount). App will exit.")
-                Toast.makeText(this, "Without this authorization, operation is not possible.", Toast.LENGTH_LONG).show()
-                finish()
-            } else {
-                Log.e(TAG, "Permissions denied with unexpected permissionRequestCount: $permissionRequestCount. Exiting.")
-                Toast.makeText(this, "Permissions repeatedly denied. Operation not possible.", Toast.LENGTH_LONG).show()
-                finish()
-            }
-        }
-    }
+    // private val requestPermissionLauncher = registerForActivityResult(...) // Deleted
 
     private fun requestMediaProjectionPermission() {
         Log.d(TAG, "Requesting MediaProjection permission")
@@ -377,17 +352,7 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    private val requiredPermissions = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-        arrayOf(
-            Manifest.permission.READ_MEDIA_IMAGES,
-            Manifest.permission.READ_MEDIA_VIDEO
-        )
-    } else {
-        arrayOf(
-            Manifest.permission.READ_EXTERNAL_STORAGE,
-            Manifest.permission.WRITE_EXTERNAL_STORAGE
-        )
-    }
+    // private val requiredPermissions = ... // Deleted
 
     override fun onCreate(savedInstanceState: Bundle?) {
         Log.d(TAG, "onCreate: Activity creating.")
@@ -404,8 +369,8 @@ class MainActivity : ComponentActivity() {
              Log.d(TAG, "onCreate: API key found.")
         }
 
-        Log.d(TAG, "onCreate: Calling checkAndRequestPermissions.")
-        checkAndRequestPermissions()
+        // Log.d(TAG, "onCreate: Calling checkAndRequestPermissions.") // Deleted
+        // checkAndRequestPermissions() // Deleted
         Log.d(TAG, "onCreate: Calling setupBillingClient.")
         setupBillingClient()
 
@@ -523,19 +488,8 @@ class MainActivity : ComponentActivity() {
                     Log.d(TAG, "setContent: Rendering AppNavigation.")
                     AppNavigation(navController)
 
-                    if (showPermissionRationaleDialog) {
-                        Log.d(TAG, "setContent: Rendering PermissionRationaleDialog. Request count before dialog action: $permissionRequestCount")
-                        PermissionRationaleDialog(
-                            onDismiss = {
-                                Log.i(TAG, "PermissionRationaleDialog OK clicked. Current request count: $permissionRequestCount")
-                                permissionRequestCount++
-                                Log.i(TAG, "Permission request count incremented to: $permissionRequestCount")
-                                showPermissionRationaleDialog = false
-                                Log.i(TAG, "Requesting permissions now. Required: ${requiredPermissions.joinToString()}")
-                                requestPermissionLauncher.launch(requiredPermissions)
-                            }
-                        )
-                    } else if (showFirstLaunchInfoDialog) {
+                    // if (showPermissionRationaleDialog) { ... } // Deleted block
+                    if (showFirstLaunchInfoDialog) {
                         Log.d(TAG, "setContent: Rendering FirstLaunchInfoDialog.")
                         FirstLaunchInfoDialog(
                             onDismiss = {
@@ -1086,18 +1040,7 @@ class MainActivity : ComponentActivity() {
         Log.d(TAG, "onDestroy: Finished.")
     }
 
-    private fun checkAndRequestPermissions() {
-        Log.d(TAG, "checkAndRequestPermissions called.")
-        val permissionsToRequest = requiredPermissions.filter {
-            ContextCompat.checkSelfPermission(this, it) != PackageManager.PERMISSION_GRANTED
-        }.toTypedArray()
-        if (permissionsToRequest.isNotEmpty()) {
-            Log.i(TAG, "Required permissions not granted. Showing rationale dialog. Permissions: ${permissionsToRequest.joinToString()}")
-            showPermissionRationaleDialog = true
-        } else {
-            Log.i(TAG, "All required permissions already granted.")
-        }
-    }
+    // private fun checkAndRequestPermissions() { ... } // Deleted
 
     companion object {
         private const val TAG = "MainActivity"
@@ -1173,49 +1116,8 @@ fun FirstLaunchInfoDialog(onDismiss: () -> Unit) {
     }
 }
 
-@Composable
-fun PermissionRationaleDialog(onDismiss: () -> Unit) {
-    Log.d("PermissionRationaleDialog", "Composing PermissionRationaleDialog")
-    Dialog(onDismissRequest = {
-        Log.d("PermissionRationaleDialog", "onDismissRequest called")
-        onDismiss()
-    }) {
-        Card(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(16.dp),
-        ) {
-            Column(
-                modifier = Modifier
-                    .padding(16.dp)
-                    .fillMaxWidth(),
-                verticalArrangement = Arrangement.Center,
-                horizontalAlignment = Alignment.CenterHorizontally
-            ) {
-                Text(
-                    text = "Permission Required",
-                    style = MaterialTheme.typography.titleLarge
-                )
-                Spacer(modifier = Modifier.height(16.dp))
-                Text(
-                    text = "You'll immediately be asked for photo and video permissions. These is necessary so the AI ​​can see the screenshots and thus also the screen taken by the Screen Operator. It will never access media that the Screen Operator didn't create themselves.",
-                    style = MaterialTheme.typography.bodyMedium,
-                    modifier = Modifier.align(Alignment.CenterHorizontally)
-                )
-                Spacer(modifier = Modifier.height(24.dp))
-                TextButton(
-                    onClick = {
-                        Log.d("PermissionRationaleDialog", "OK button clicked")
-                        onDismiss()
-                    },
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Text("OK")
-                }
-            }
-        }
-    }
-}
+// @Composable // Deleted
+// fun PermissionRationaleDialog(onDismiss: () -> Unit) { ... } // Deleted
 
 
 @Composable

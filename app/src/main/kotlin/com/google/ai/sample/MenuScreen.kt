@@ -202,7 +202,7 @@ fun MenuScreen(
                                                 // onItemClicked will be called from dialog
                                             } else {
                                                 Log.d("MenuScreen", "Rationale not needed or already handled. Requesting permission directly.")
-                                                mainActivity.requestNotificationPermission()
+                                                // mainActivity.requestNotificationPermission()
                                                 onItemClicked(menuItem.routeId) // Proceed to navigate
                                             }
                                         } else {
@@ -322,7 +322,7 @@ fun MenuScreen(
                         showRationaleDialogForPhotoReasoning = false
                         mainActivity?.setNotificationRationaleShown(true)
                         Log.d("MenuScreen", "Requesting notification permission from rationale dialog.")
-                        mainActivity?.requestNotificationPermission()
+                        // mainActivity?.requestNotificationPermission()
                         // Log after to see if it's called immediately or if requestNotificationPermission is suspending (it's not)
                         Log.d("MenuScreen", "Navigating to photo_reasoning after rationale OK.")
                         mainActivity?.let { onItemClicked("photo_reasoning") }
