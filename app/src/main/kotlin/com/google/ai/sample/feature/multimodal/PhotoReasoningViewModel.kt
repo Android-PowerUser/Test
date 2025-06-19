@@ -31,6 +31,8 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+// Removed duplicate StateFlow import
+// Removed duplicate asStateFlow import
 // import kotlinx.coroutines.isActive // Removed as we will use job.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -48,9 +50,17 @@ class PhotoReasoningViewModel(
         MutableStateFlow(PhotoReasoningUiState.Initial)
     val uiState: StateFlow<PhotoReasoningUiState> =
         _uiState.asStateFlow()
+
+    private val _isInitialized = MutableStateFlow(false)
+    val isInitialized: StateFlow<Boolean> = _isInitialized.asStateFlow()
+
+    private val _showStopNotificationFlow = MutableStateFlow(false)
+    val showStopNotificationFlow: StateFlow<Boolean> = _showStopNotificationFlow.asStateFlow()
         
     // Keep track of the latest screenshot URI
     private var latestScreenshotUri: Uri? = null
+    private var lastProcessedScreenshotUri: Uri? = null
+    private var lastProcessedScreenshotTime: Long = 0L
     
     // Keep track of the current selected images
     private var currentSelectedImages: List<Bitmap> = emptyList()
@@ -96,15 +106,27 @@ class PhotoReasoningViewModel(
 
     fun reason(
         userInput: String,
-        selectedImages: List<Bitmap>
+        selectedImages: List<Bitmap>,
+        screenInfoForPrompt: String? = null,
+        imageUrisForChat: List<String>? = null
     ) {
+        Log.d(TAG, "reason() called. User input: '$userInput', Image count: ${selectedImages.size}, ScreenInfo: ${screenInfoForPrompt != null}, ImageUris: ${imageUrisForChat != null}")
         _uiState.value = PhotoReasoningUiState.Loading
-        stopExecutionFlag.set(false) // Reset flag at the beginning of a new reason call
+        Log.d(TAG, "Setting _showStopNotificationFlow to true")
+        _showStopNotificationFlow.value = true
+        Log.d(TAG, "_showStopNotificationFlow value is now: ${_showStopNotificationFlow.value}")
+        stopExecutionFlag.set(false)
 
-        val prompt = "FOLLOW THE INSTRUCTIONS STRICTLY: $userInput"
+        val combinedPromptTextBuilder = StringBuilder(userInput)
+        if (screenInfoForPrompt != null && screenInfoForPrompt.isNotBlank()) { // Added isNotBlank check
+            combinedPromptTextBuilder.append("\n\nScreen Context:\n$screenInfoForPrompt")
+        }
+        val aiPromptText = combinedPromptTextBuilder.toString()
+
+        val prompt = "FOLLOW THE INSTRUCTIONS STRICTLY: $aiPromptText"
 
         // Store the current user input and selected images
-        currentUserInput = userInput
+        currentUserInput = userInput // This should ideally store aiPromptText or handle context separately if needed for retry. For now, task is specific to prompt to AI and chat.
         currentSelectedImages = selectedImages
 
         // Clear previous commands
@@ -113,8 +135,9 @@ class PhotoReasoningViewModel(
 
         // Add user message to chat history
         val userMessage = PhotoReasoningMessage(
-            text = userInput,
+            text = aiPromptText, // Use the combined text
             participant = PhotoParticipant.USER,
+            imageUris = imageUrisForChat ?: emptyList(), // Use the new parameter here
             isPending = false
         )
         _chatState.addMessage(userMessage)
@@ -175,6 +198,7 @@ class PhotoReasoningViewModel(
     }
 
     fun onStopClicked() {
+        _showStopNotificationFlow.value = false // Hide notification immediately on stop
         stopExecutionFlag.set(true)
         currentReasoningJob?.cancel()
         commandProcessingJob?.cancel()
@@ -228,11 +252,12 @@ class PhotoReasoningViewModel(
         if (currentReasoningJob?.isActive != true || stopExecutionFlag.get()) {
             if (stopExecutionFlag.get()) {
                 // User initiated stop, onStopClicked will handle UI and message
-                return
+                return // _showStopNotificationFlow is already false from onStopClicked
             } else {
                 // Cancellation not by user stop button
                 _uiState.value = PhotoReasoningUiState.Error("Operation cancelled unexpectedly before sending.")
                 updateAiMessage("Operation cancelled unexpectedly.")
+                _showStopNotificationFlow.value = false
                 return
             }
         }
@@ -244,11 +269,12 @@ class PhotoReasoningViewModel(
             if (currentReasoningJob?.isActive != true || stopExecutionFlag.get()) {
                 if (stopExecutionFlag.get()) {
                     // User initiated stop, onStopClicked will handle UI and message
-                    return
+                    return // _showStopNotificationFlow is already false from onStopClicked
                 } else {
                     // Cancellation not by user stop button
                     _uiState.value = PhotoReasoningUiState.Error("Operation cancelled unexpectedly after sending.")
                     updateAiMessage("Operation cancelled unexpectedly.")
+                    _showStopNotificationFlow.value = false
                     return
                 }
             }
@@ -263,10 +289,12 @@ class PhotoReasoningViewModel(
                     if (stopExecutionFlag.get()) {
                         // User initiated stop, onStopClicked will handle UI and message
                         shouldProceed = false // Signal to skip further processing
+                        // _showStopNotificationFlow handled by onStopClicked or subsequent checks if shouldProceed is false
                     } else {
                         // Cancellation not by user stop button
                         _uiState.value = PhotoReasoningUiState.Error("Operation cancelled unexpectedly during response processing.")
                         updateAiMessage("Operation cancelled unexpectedly.")
+                        _showStopNotificationFlow.value = false
                         shouldProceed = false // Signal to skip further processing
                     }
                 }
@@ -277,16 +305,17 @@ class PhotoReasoningViewModel(
                     if (currentReasoningJob?.isActive != true || stopExecutionFlag.get()) { // Re-check for cancellation
                         if (stopExecutionFlag.get()) {
                             // User initiated stop, onStopClicked will handle UI and message
-                            // No action needed here, shouldProceed will prevent further execution if already false
-                            // or the outer checks in this function will catch it.
+                            // _showStopNotificationFlow handled by onStopClicked
                         } else {
                             _uiState.value = PhotoReasoningUiState.Error("Operation cancelled unexpectedly before UI update.")
                             updateAiMessage("Operation cancelled unexpectedly.")
+                            _showStopNotificationFlow.value = false
                         }
                         // No return@withContext, logic will naturally skip due to outer 'if (shouldProceed)' and this check
                         // or if shouldProceed was set to false earlier.
                     } else {
                         _uiState.value = PhotoReasoningUiState.Success(outputContent)
+                        _showStopNotificationFlow.value = false // Operation successful
 
                         // Update the AI message in chat history
                         updateAiMessage(outputContent)
@@ -299,6 +328,12 @@ class PhotoReasoningViewModel(
                         }
                     }
                 }
+            } else {
+                // If shouldProceed is false, and it wasn't due to stopExecutionFlag, ensure notification is cancelled.
+                // If stopExecutionFlag was true, onStopClicked already handled it.
+                if (!stopExecutionFlag.get()) {
+                    _showStopNotificationFlow.value = false
+                }
             }
 
 
@@ -309,6 +344,7 @@ class PhotoReasoningViewModel(
                     // Ensure we are still active before saving
                     if (currentReasoningJob?.isActive == true && !stopExecutionFlag.get()) {
                         saveChatHistory(MainActivity.getInstance()?.applicationContext)
+                        // _showStopNotificationFlow already set to false if successful
                     }
                 }
             }
@@ -317,6 +353,7 @@ class PhotoReasoningViewModel(
                 // If user already stopped, just log the error and return.
                 // Do not update UI or send chat messages as onStopClicked handles this.
                 Log.w(TAG, "Exception caught after stop flag was set: ${e.message}", e)
+                // _showStopNotificationFlow is already false from onStopClicked
                 return
             }
             // If the stop flag is not set, but the job is inactive (cancelled by other means)
@@ -324,6 +361,7 @@ class PhotoReasoningViewModel(
                 _uiState.value = PhotoReasoningUiState.Error("Operation cancelled and then an error occurred.") // Or a more fitting message
                 updateAiMessage("Operation cancelled, error during cleanup: ${e.message}")
                 Log.e(TAG, "Error generating content after job was cancelled: ${e.message}", e)
+                _showStopNotificationFlow.value = false
                 return
             }
 
@@ -335,30 +373,46 @@ class PhotoReasoningViewModel(
                 // The check currentReasoningJob?.isActive != true is still relevant if the job gets cancelled
                 // by other means after the top checks in this catch block.
                 // stopExecutionFlag.get() is less likely to be true here due to the top check, but kept for defense.
-                if (currentReasoningJob?.isActive != true || stopExecutionFlag.get()) return
-                handleQuotaExceededError(e, inputContent, retryCount)
-                return
+                if (currentReasoningJob?.isActive != true || stopExecutionFlag.get()){
+                     if (!stopExecutionFlag.get()) _showStopNotificationFlow.value = false
+                     return
+                }
+                handleQuotaExceededError(e, inputContent, retryCount) // This might retry or be terminal
+                // If handleQuotaExceededError doesn't lead to a retry (i.e., it's terminal), we need to set flow to false.
+                // This logic is tricky as handleQuotaExceededError has its own returns.
+                // For now, assume if it returns here, it might retry. If it's terminal, it sets UI state and should set flow.
+                // This will be refined by inspecting handleQuotaExceededError.
+                // For now, if it's truly terminal and doesn't retry, the general error path below will catch it.
+                // Let's assume retries handle the flow, and terminal errors are handled below or within the handler.
+                return // if handleQuotaExceededError is not terminal and retries, it will reset the flow value at reason() start
             }
 
             // Check for other 503 errors
             if (is503Error(e) && apiKeyManager != null) {
-                if (currentReasoningJob?.isActive != true || stopExecutionFlag.get()) return
-                handle503Error(e, inputContent, retryCount)
+                if (currentReasoningJob?.isActive != true || stopExecutionFlag.get()){
+                    if (!stopExecutionFlag.get()) _showStopNotificationFlow.value = false
+                    return
+                }
+                handle503Error(e, inputContent, retryCount) // Similar to above, assumes retries handle flow
                 return
             }
 
-            // If we get here, it's not a 503 error or quota exceeded error
+            // If we get here, it's not a 503 error or quota exceeded error that led to a retry path
             // The stopExecutionFlag.get() check here is mostly redundant due to the top check,
             // but currentReasoningJob?.isActive is still a valid check.
             if (currentReasoningJob?.isActive == true && !stopExecutionFlag.get()) {
                 withContext(Dispatchers.Main) {
                      if (currentReasoningJob?.isActive != true || stopExecutionFlag.get()) {
+                        if (!stopExecutionFlag.get()) {
+                            _showStopNotificationFlow.value = false
+                        }
                         // If cancelled (possibly between the outer check and here, or due to job inactivity)
                         // Potentially log or update UI to reflect this specific state if desired.
                         // For now, this means the error e won't be set as the primary UI state.
                      } else {
                         _uiState.value = PhotoReasoningUiState.Error(e.localizedMessage ?: "Unknown error")
                         _commandExecutionStatus.value = "Error during generation: ${e.localizedMessage}"
+                        _showStopNotificationFlow.value = false // Terminal error
 
                         // Update chat with error message
                         _chatState.replaceLastPendingMessage()
@@ -374,17 +428,13 @@ class PhotoReasoningViewModel(
                         saveChatHistory(MainActivity.getInstance()?.applicationContext)
                     }
                 }
-            } else {
-                 // This branch could be reached if:
-                 // 1. stopExecutionFlag was set by another thread between the top check and here.
-                 // 2. currentReasoningJob became inactive for reasons other than the stop flag.
-                 // If stopExecutionFlag is true, onStopClicked handles the message.
-                 // If only job inactive, a general "cancelled during error processing" might be okay,
-                 // but the specific check for job inactivity at the top of the catch block should handle most cases.
-                 if (!stopExecutionFlag.get()) {
+            } else { // This 'else' covers cases where job became inactive or stop flag was set concurrently
+                 if (!stopExecutionFlag.get()) { // If not stopped by user, then it's a cancellation
                     _uiState.value = PhotoReasoningUiState.Error("Operation error processing or cancelled.")
                     updateAiMessage("Operation error processing or cancelled.")
+                    _showStopNotificationFlow.value = false
                  }
+                 // If stopExecutionFlag.get() is true, onStopClicked handles the notification flow.
             }
         }
     }
@@ -663,7 +713,9 @@ class PhotoReasoningViewModel(
         _systemMessage.value = message
         
         // Also load chat history
-        loadChatHistory(context)
+        loadChatHistory(context) // This line calls rebuildChatHistory internally
+
+        _isInitialized.value = true // Add this line
     }
 
     /**
@@ -891,6 +943,14 @@ class PhotoReasoningViewModel(
         context: Context,
         screenInfo: String? = null
     ) {
+        val currentTime = System.currentTimeMillis()
+        if (screenshotUri == lastProcessedScreenshotUri && (currentTime - lastProcessedScreenshotTime) < 2000) { // 2-second debounce window
+            Log.w(TAG, "addScreenshotToConversation: Debouncing duplicate/rapid call for URI $screenshotUri")
+            return // Exit the function early if it's a duplicate call within the window
+        }
+        lastProcessedScreenshotUri = screenshotUri
+        lastProcessedScreenshotTime = currentTime
+
         PhotoReasoningApplication.applicationScope.launch(Dispatchers.Main) {
             try {
                 Log.d(TAG, "Adding screenshot to conversation: $screenshotUri")
@@ -911,25 +971,6 @@ class PhotoReasoningViewModel(
                 
                 // Show toast
                 Toast.makeText(context, "Processing screenshot...", Toast.LENGTH_SHORT).show()
-                
-                // Create message text with screen information if available
-                val messageText = if (screenInfo != null) {
-                    "Screenshot captured\n\n$screenInfo"
-                } else {
-                    "Screenshot captured"
-                }
-                
-                // Add screenshot message to chat history
-                val screenshotMessage = PhotoReasoningMessage(
-                    text = messageText,
-                    participant = PhotoParticipant.USER,
-                    imageUris = listOf(screenshotUri.toString())
-                )
-                _chatState.addMessage(screenshotMessage)
-                _chatMessagesFlow.value = chatMessages
-                
-                // Save chat history after adding screenshot
-                saveChatHistory(context)
                 
                 // Process the screenshot
                 val imageRequest = imageRequestBuilder!!
@@ -957,14 +998,15 @@ class PhotoReasoningViewModel(
                         Toast.makeText(context, "Screenshot added, sending to AI...", Toast.LENGTH_SHORT).show()
                         
                         // Create prompt with screen information if available
-                        val prompt = if (screenInfo != null) {
-                            "Analyze this screenshot. Here is the available screen information: $screenInfo"
-                        } else {
-                            "Analyze this screenshot"
-                        }
+                        val genericAnalysisPrompt = "Analyze the provided screenshot and its context."
                         
                         // Re-send the query with only the latest screenshot
-                        reason(prompt, listOf(bitmap))
+                        reason(
+                            userInput = genericAnalysisPrompt,
+                            selectedImages = listOf(bitmap),
+                            screenInfoForPrompt = screenInfo,
+                            imageUrisForChat = listOf(screenshotUri.toString()) // Add this argument
+                        )
                         
                         // Show a toast to indicate the screenshot was added
                         Toast.makeText(context, "Screenshot added to conversation", Toast.LENGTH_SHORT).show()

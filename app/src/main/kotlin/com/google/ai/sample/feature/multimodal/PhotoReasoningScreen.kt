@@ -26,6 +26,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items 
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -406,7 +407,7 @@ fun PhotoReasoningScreen(
             }
         }
         if (detectedCommands.isNotEmpty()) {
-            Card(modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.tertiaryContainer)) {
+            Card(modifier = Modifier.padding(vertical = 8.dp).wrapContentHeight(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.tertiaryContainer)) {
                 Column(modifier = Modifier.padding(16.dp)) {
                     Text("Detected Commands:", style = MaterialTheme.typography.titleMedium)
                     Spacer(Modifier.height(4.dp))
