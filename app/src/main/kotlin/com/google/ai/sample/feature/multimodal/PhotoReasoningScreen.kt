@@ -26,6 +26,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items 
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -272,7 +273,7 @@ fun PhotoReasoningScreen(
         }
     }
 
-    Column(modifier = Modifier.padding(all = 16.dp)) {
+    Column(modifier = Modifier.fillMaxSize().padding(all = 16.dp)) {
         Card(
             modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp),
             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)
@@ -397,7 +398,7 @@ fun PhotoReasoningScreen(
         }
 
         if (commandExecutionStatus.isNotEmpty()) {
-            Card(modifier = Modifier.fillMaxWidth().padding(top = 8.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer)) {
+            Card(modifier = Modifier.fillMaxWidth().wrapContentHeight().padding(top = 8.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer)) {
                 Column(modifier = Modifier.padding(16.dp)) {
                     Text("Command Status:", style = MaterialTheme.typography.titleMedium)
                     Spacer(Modifier.height(4.dp))
@@ -406,7 +407,7 @@ fun PhotoReasoningScreen(
             }
         }
         if (detectedCommands.isNotEmpty()) {
-            Card(modifier = Modifier.fillMaxWidth().padding(top = 8.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.tertiaryContainer)) {
+            Card(modifier = Modifier.fillMaxWidth().wrapContentHeight().padding(top = 8.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.tertiaryContainer)) {
                 Column(modifier = Modifier.padding(16.dp)) {
                     Text("Detected Commands:", style = MaterialTheme.typography.titleMedium)
                     Spacer(Modifier.height(4.dp))
