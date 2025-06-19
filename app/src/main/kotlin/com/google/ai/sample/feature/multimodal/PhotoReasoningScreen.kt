@@ -274,8 +274,7 @@ fun PhotoReasoningScreen(
     }
 
     Column(
-        modifier = Modifier.padding(all = 16.dp).fillMaxHeight(),
-        verticalArrangement = Arrangement.Top
+        modifier = Modifier.padding(all = 16.dp)
     ) {
         Card(
             modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp),
