@@ -332,6 +332,33 @@ private fun takeScreenshot() {
                 picturesDir.mkdirs()
             }
 
+            // List existing screenshot files
+            val screenshotFiles = picturesDir.listFiles { _, name ->
+                name.startsWith("screenshot_") && name.endsWith(".png")
+            }?.toMutableList() ?: mutableListOf()
+
+            // Sort files by name (timestamp) to find the oldest
+            screenshotFiles.sortBy { it.name }
+
+            // If count is 100 or more, delete oldest ones until count is 99
+            // This makes space for the new screenshot, keeping the total at a max of 100
+            val maxScreenshots = 100
+            var screenshotsToDelete = screenshotFiles.size - (maxScreenshots -1) // Number of files to delete to make space for the new one
+
+            if (screenshotsToDelete > 0) {
+                Log.i(TAG, "Max screenshots reached. Current count: ${screenshotFiles.size}. Attempting to delete $screenshotsToDelete oldest screenshot(s).")
+                for (i in 0 until screenshotsToDelete) {
+                    if (i < screenshotFiles.size) {
+                        val oldestFile = screenshotFiles[i]
+                        if (oldestFile.delete()) {
+                            Log.i(TAG, "Deleted oldest screenshot: ${oldestFile.absolutePath}")
+                        } else {
+                            Log.e(TAG, "Failed to delete oldest screenshot: ${oldestFile.absolutePath}")
+                        }
+                    }
+                }
+            }
+
             val timestamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(Date())
             val file = File(picturesDir, "screenshot_$timestamp.png")
 
