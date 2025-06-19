@@ -400,29 +400,38 @@ fun PhotoReasoningScreen(
             }
         }
 
-        if (commandExecutionStatus.isNotEmpty()) {
-            Card(modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp).wrapContentHeight(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer)) {
-                Column(modifier = Modifier.padding(16.dp)) {
-                    Text("Command Status:", style = MaterialTheme.typography.titleMedium)
-                    Spacer(Modifier.height(4.dp))
-                    Text(commandExecutionStatus, color = MaterialTheme.colorScheme.onSecondaryContainer)
+        // 5 & 6. Status and Commands Cards Column
+        Column(modifier = Modifier.fillMaxWidth()) { // This new Column wraps the two cards
+            if (commandExecutionStatus.isNotEmpty()) {
+                Card(
+                    modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp).wrapContentHeight(),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer)
+                ) {
+                    Column(modifier = Modifier.padding(16.dp)) {
+                        Text("Command Status:", style = MaterialTheme.typography.titleMedium)
+                        Spacer(Modifier.height(4.dp))
+                        Text(commandExecutionStatus, color = MaterialTheme.colorScheme.onSecondaryContainer)
+                    }
                 }
             }
-        }
-        if (detectedCommands.isNotEmpty()) {
-            Card(modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp).wrapContentHeight(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.tertiaryContainer)) {
-                Column(modifier = Modifier.padding(16.dp)) {
-                    Text("Detected Commands:", style = MaterialTheme.typography.titleMedium)
-                    Spacer(Modifier.height(4.dp))
-                    detectedCommands.forEachIndexed { index, command ->
-                        val commandText = when (command) {
-                            is Command.ClickButton -> "Click on button: \"${command.buttonText}\""
-                            is Command.TapCoordinates -> "Tap coordinates: (${command.x}, ${command.y})"
-                            is Command.TakeScreenshot -> "Take screenshot"
-                            else -> command::class.simpleName ?: "Unknown Command"
+            if (detectedCommands.isNotEmpty()) {
+                Card(
+                    modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp).wrapContentHeight(),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.tertiaryContainer)
+                ) {
+                    Column(modifier = Modifier.padding(16.dp)) {
+                        Text("Detected Commands:", style = MaterialTheme.typography.titleMedium)
+                        Spacer(Modifier.height(4.dp))
+                        detectedCommands.forEachIndexed { index, command ->
+                            val commandText = when (command) {
+                                is Command.ClickButton -> "Click on button: \"${command.buttonText}\""
+                                is Command.TapCoordinates -> "Tap coordinates: (${command.x}, ${command.y})"
+                                is Command.TakeScreenshot -> "Take screenshot"
+                                else -> command::class.simpleName ?: "Unknown Command"
+                            }
+                            Text("${index + 1}. $commandText", color = MaterialTheme.colorScheme.onTertiaryContainer)
+                            if (index < detectedCommands.size - 1) Divider(Modifier.padding(vertical = 4.dp), color = MaterialTheme.colorScheme.onTertiaryContainer.copy(alpha = 0.2f))
                         }
-                        Text("${index + 1}. $commandText", color = MaterialTheme.colorScheme.onTertiaryContainer)
-                        if (index < detectedCommands.size - 1) Divider(Modifier.padding(vertical = 4.dp), color = MaterialTheme.colorScheme.onTertiaryContainer.copy(alpha = 0.2f))
                     }
                 }
             }
