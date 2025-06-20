@@ -62,6 +62,7 @@ class ScreenCaptureService : Service() {
         const val EXTRA_AI_CHAT_HISTORY_JSON = "com.google.ai.sample.EXTRA_AI_CHAT_HISTORY_JSON"
         const val EXTRA_AI_MODEL_NAME = "com.google.ai.sample.EXTRA_AI_MODEL_NAME" // For service to create model
         const val EXTRA_AI_API_KEY = "com.google.ai.sample.EXTRA_AI_API_KEY"     // For service to create model
+        const val EXTRA_TEMP_FILE_PATHS = "com.google.ai.sample.EXTRA_TEMP_FILE_PATHS"
 
 
         // For broadcasting AI call results from the service
@@ -173,6 +174,8 @@ class ScreenCaptureService : Service() {
                 val chatHistoryJson = intent.getStringExtra(EXTRA_AI_CHAT_HISTORY_JSON)
                 val modelName = intent.getStringExtra(EXTRA_AI_MODEL_NAME)
                 val apiKey = intent.getStringExtra(EXTRA_AI_API_KEY)
+                val tempFilePaths = intent.getStringArrayListExtra(EXTRA_TEMP_FILE_PATHS) ?: ArrayList()
+                Log.d(TAG, "Received tempFilePaths for cleanup: $tempFilePaths")
 
                 if (inputContentJson == null || chatHistoryJson == null || modelName == null || apiKey == null) {
                     Log.e(TAG, "Missing necessary data for AI call. inputContentJson: ${inputContentJson != null}, chatHistoryJson: ${chatHistoryJson != null}, modelName: ${modelName != null}, apiKey: ${apiKey != null}")
@@ -217,19 +220,33 @@ class ScreenCaptureService : Service() {
                         // could be added here if this service becomes responsible for ApiKeyManager interactions.
                         // For "minimal changes", we just report the error back.
                     }
-
-                    // Broadcast the result (success or error) back to the ViewModel.
-                    val resultIntent = Intent(ACTION_AI_CALL_RESULT).apply {
-                        `package` = applicationContext.packageName // Ensure only our app receives it
-                        if (responseText != null) {
-                            putExtra(EXTRA_AI_RESPONSE_TEXT, responseText)
+                    finally {
+                        // Broadcast the result (success or error) back to the ViewModel.
+                        val resultIntent = Intent(ACTION_AI_CALL_RESULT).apply {
+                            `package` = applicationContext.packageName // Ensure only our app receives it
+                            if (responseText != null) {
+                                putExtra(EXTRA_AI_RESPONSE_TEXT, responseText)
+                            }
+                            if (errorMessage != null) {
+                                putExtra(EXTRA_AI_ERROR_MESSAGE, errorMessage)
+                            }
                         }
-                        if (errorMessage != null) {
-                            putExtra(EXTRA_AI_ERROR_MESSAGE, errorMessage)
+                        applicationContext.sendBroadcast(resultIntent)
+                        Log.d(TAG, "Broadcast sent for AI_CALL_RESULT. Error: $errorMessage, Response: ${responseText != null}")
+
+                        // Comment: Clean up temporary image files passed from the ViewModel.
+                        if (tempFilePaths.isNotEmpty()) {
+                            Log.d(TAG, "Cleaning up ${tempFilePaths.size} temporary image files.")
+                            for (filePath in tempFilePaths) {
+                                val deleted = com.google.ai.sample.util.ImageUtils.deleteFile(filePath)
+                                if (!deleted) {
+                                    Log.w(TAG, "Failed to delete temporary file: $filePath")
+                                }
+                            }
+                        } else {
+                            Log.d(TAG, "No temporary image files to clean up.")
                         }
                     }
-                    applicationContext.sendBroadcast(resultIntent)
-                    Log.d(TAG, "Broadcast sent for AI_CALL_RESULT. Error: $errorMessage, Response: ${responseText != null}")
                 }
                 // START_STICKY is appropriate if the service is also managing MediaProjection independently.
                 // If it becomes purely command-driven, START_NOT_STICKY might be considered after all commands processed.

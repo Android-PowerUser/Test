@@ -1,5 +1,6 @@
 package com.google.ai.sample.feature.multimodal.dtos
 
+import android.content.Context // Required for SDK ImagePart
 import android.graphics.Bitmap // Required for SDK ImagePart
 import com.google.ai.sample.util.ImageUtils // Our Base64<->Bitmap utils
 import com.google.ai.client.generativeai.type.Content // SDK Content
@@ -10,13 +11,15 @@ import com.google.ai.client.generativeai.type.content // SDK content builder
 
 // --- SDK to DTO Mappers ---
 
-fun Part.toDto(): PartDto {
+fun Part.toDto(context: Context): PartDto { // Added context parameter
     return when (this) {
         is TextPart -> TextPartDto(text = this.text)
         is ImagePart -> {
-            // Assuming this.image is a Bitmap. The SDK's ImagePart constructor takes a Bitmap.
-            val base64Image = ImageUtils.bitmapToBase64(this.image)
-            ImagePartDto(base64Image = base64Image)
+            // Save the Bitmap to a temp file and get its path
+            val filePath = ImageUtils.saveBitmapToTempFile(context, this.image)
+            // Handle case where filePath might be null (saving failed)
+            filePath?.let { ImagePartDto(imageFilePath = it) }
+                ?: throw RuntimeException("Failed to save bitmap to temporary file for ImagePart.") // Or handle more gracefully
         }
         // Add other SDK Part types here if they become relevant
         // e.g., is BlobPart -> BlobPartDto(...)
@@ -24,25 +27,22 @@ fun Part.toDto(): PartDto {
     }
 }
 
-fun Content.toDto(): ContentDto {
+fun Content.toDto(context: Context): ContentDto { // Added context parameter
     return ContentDto(
-        role = this.role, // SDK Content has a nullable 'role' (String)
-        parts = this.parts.map { it.toDto() } // parts is List<Part>
+        role = this.role,
+        parts = this.parts.map { it.toDto(context) } // Pass context to Part.toDto()
     )
 }
 
 // --- DTO to SDK Mappers ---
 
-fun PartDto.toSdk(): Part {
+fun PartDto.toSdk(): Part { // No context needed here as path is absolute
     return when (this) {
         is TextPartDto -> TextPart(text = this.text)
         is ImagePartDto -> {
-            val bitmap: Bitmap? = ImageUtils.base64ToBitmap(this.base64Image)
-            // The SDK's image builder part of `content { image(bitmap) }` expects a non-null Bitmap.
-            // If bitmap is null (due to bad Base64), we might throw an error or return a placeholder/skip.
-            // For now, let's throw an error, as a null bitmap in an ImagePart usually indicates a problem.
+            val bitmap: Bitmap? = ImageUtils.loadBitmapFromFile(this.imageFilePath)
             bitmap?.let { ImagePart(it) }
-                ?: throw IllegalArgumentException("Failed to convert Base64 to Bitmap for ImagePartDto, or Base64 was invalid.")
+                ?: throw IllegalArgumentException("Failed to load Bitmap from file path: ${this.imageFilePath}, or file was invalid.")
         }
         // Add other PartDto types here
         // else -> throw IllegalArgumentException("Unsupported PartDto type for SDK conversion: ${this.javaClass.name}")

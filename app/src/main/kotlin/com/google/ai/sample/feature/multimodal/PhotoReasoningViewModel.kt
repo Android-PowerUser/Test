@@ -33,7 +33,9 @@ import com.google.ai.sample.util.SystemMessagePreferences
 import com.google.ai.sample.util.SystemMessageEntryPreferences // Added import
 import com.google.ai.sample.util.SystemMessageEntry // Added import
 import com.google.ai.sample.feature.multimodal.dtos.toDto // Added for DTO mapping
+import com.google.ai.sample.feature.multimodal.dtos.ImagePartDto // Required for path extraction
 import kotlinx.coroutines.Dispatchers
+import java.util.ArrayList // Required for StringArrayListExtra
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
@@ -375,11 +377,27 @@ class PhotoReasoningViewModel(
             // This assumes Content and List<Content> are @Serializable or have custom serializers.
             // Add @file:UseSerializers(ContentSerializer::class, PartSerializer::class etc.) if needed at top of file
             // Or create DTOs. For this subtask, we'll assume direct serialization is possible.
-            val inputContentDto = inputContent.toDto() // Use the mapper
-            val chatHistoryDtos = chat.history.map { it.toDto() } // Use the mapper for each item
+            val inputContentDto = inputContent.toDto(context) // Pass context
+            val chatHistoryDtos = chat.history.map { it.toDto(context) } // Pass context
 
             val inputContentJson = Json.encodeToString(inputContentDto)
             val chatHistoryJson = Json.encodeToString(chatHistoryDtos)
+
+            // Collect Temporary File Paths
+            val tempFilePaths = ArrayList<String>()
+            inputContentDto.parts.forEach { partDto ->
+                if (partDto is ImagePartDto) {
+                    tempFilePaths.add(partDto.imageFilePath)
+                }
+            }
+            chatHistoryDtos.forEach { contentDto ->
+                contentDto.parts.forEach { partDto ->
+                    if (partDto is ImagePartDto) {
+                        tempFilePaths.add(partDto.imageFilePath)
+                    }
+                }
+            }
+            Log.d(TAG, "Collected temporary file paths to send to service: $tempFilePaths")
 
             val serviceIntent = Intent(context, ScreenCaptureService::class.java).apply {
                 action = ScreenCaptureService.ACTION_EXECUTE_AI_CALL
@@ -389,6 +407,8 @@ class PhotoReasoningViewModel(
                 apiKeyManager?.getCurrentApiKey()?.let { apiKey -> // Pass current API key
                     putExtra(ScreenCaptureService.EXTRA_AI_API_KEY, apiKey)
                 }
+                // Add the new extra for file paths
+                putStringArrayListExtra(ScreenCaptureService.EXTRA_TEMP_FILE_PATHS, tempFilePaths)
             }
             context.startService(serviceIntent)
             Log.d(TAG, "sendMessageWithRetry: Sent intent to ScreenCaptureService to execute AI call.")

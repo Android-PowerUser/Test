@@ -1,9 +1,13 @@
 package com.google.ai.sample.util // Or your chosen utility package
 
+import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.util.Base64
+import android.util.Log
 import java.io.ByteArrayOutputStream
+import java.io.File
+import java.io.FileOutputStream
 
 object ImageUtils {
 
@@ -32,6 +36,60 @@ object ImageUtils {
         } catch (e: Exception) {
             android.util.Log.e("ImageUtils", "Unexpected error decoding Base64 string to Bitmap: ${e.message}")
             null
+        }
+    }
+
+    fun saveBitmapToTempFile(context: Context, bitmap: Bitmap): String? {
+        return try {
+            val cacheDir = File(context.cacheDir, "image_parts")
+            cacheDir.mkdirs() // Ensure the directory exists
+
+            // Create a unique filename
+            val fileName = "temp_image_${System.currentTimeMillis()}.png"
+            val tempFile = File(cacheDir, fileName)
+
+            FileOutputStream(tempFile).use { fos ->
+                bitmap.compress(Bitmap.CompressFormat.PNG, 100, fos)
+            }
+            Log.d("ImageUtils", "Bitmap saved to temp file: ${tempFile.absolutePath}")
+            tempFile.absolutePath
+        } catch (e: Exception) {
+            Log.e("ImageUtils", "Error saving bitmap to temp file: ${e.message}", e)
+            null
+        }
+    }
+
+    fun loadBitmapFromFile(filePath: String): Bitmap? {
+        return try {
+            if (!File(filePath).exists()) {
+                Log.e("ImageUtils", "File not found for loading bitmap: $filePath")
+                return null
+            }
+            BitmapFactory.decodeFile(filePath)
+        } catch (e: Exception) {
+            Log.e("ImageUtils", "Error loading bitmap from file: $filePath", e)
+            null
+        }
+    }
+
+    fun deleteFile(filePath: String): Boolean {
+        return try {
+            val file = File(filePath)
+            if (file.exists()) {
+                val deleted = file.delete()
+                if (deleted) {
+                    Log.d("ImageUtils", "Successfully deleted file: $filePath")
+                } else {
+                    Log.w("ImageUtils", "Failed to delete file: $filePath")
+                }
+                return deleted
+            } else {
+                Log.w("ImageUtils", "File not found for deletion: $filePath")
+                return false // Or true if "not existing" means "successfully not there"
+            }
+        } catch (e: Exception) {
+            Log.e("ImageUtils", "Error deleting file: $filePath", e)
+            return false
         }
     }
 }

@@ -22,13 +22,7 @@ data class TextPartDto(val text: String) : PartDto
 @Serializable
 @SerialName("image")
 data class ImagePartDto(
-    val base64Image: String,
-    // While the SDK's ImagePart takes a Bitmap, mimeType isn't directly part of its constructor.
-    // We'll assume PNG for now or make it configurable if needed by the SDK upon reconstruction.
-    // For simplicity, we'll just store the image data. The SDK might infer mimetype on load,
-    // or the model might not need it explicitly if the image format is standard.
-    // Let's keep it simple: just the base64 string. The reconstruction to Bitmap won't need a mimeType.
-    // The SDK's `image(bitmap)` builder doesn't take a mimeType.
+    val imageFilePath: String // Path to a temporary file holding the image
 ) : PartDto
 
 // Placeholder for other Part types if they become necessary later.
