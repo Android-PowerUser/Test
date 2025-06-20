@@ -12,6 +12,7 @@ import coil.ImageLoader
 import coil.request.ImageRequest
 import coil.request.SuccessResult
 import coil.size.Precision
+import com.google.ai.client.generativeai.Chat
 import com.google.ai.client.generativeai.GenerativeModel
 import com.google.ai.client.generativeai.type.content
 import com.google.ai.client.generativeai.type.Content
@@ -104,14 +105,25 @@ class PhotoReasoningViewModel(
     private var commandProcessingJob: Job? = null
     private val stopExecutionFlag = AtomicBoolean(false)
 
-    init {
-        viewModelScope.launch {
-            initializeViewModel()
+    private fun createChatWithSystemMessage(context: Context? = null): Chat {
+        val ctx = context ?: MainActivity.getInstance()?.applicationContext
+        val history = mutableListOf<Content>()
+        if (_systemMessage.value.isNotBlank()) {
+            history.add(content(role = "user") { text(_systemMessage.value) })
         }
+        ctx?.let {
+            val formattedDbEntries = formatDatabaseEntriesAsText(it)
+            if (formattedDbEntries.isNotBlank()) {
+                history.add(content(role = "user") { text(formattedDbEntries) })
+            }
+        }
+        return generativeModel.startChat(history = history)
     }
 
-    private suspend fun initializeViewModel() {
-        loadSystemMessage(MainActivity.getInstance()?.applicationContext!!)
+    private fun ensureInitialized(context: Context?) {
+        if (!_isInitialized.value && context != null) {
+            loadSystemMessage(context)
+        }
     }
 
     private fun performReasoning(
@@ -120,6 +132,10 @@ class PhotoReasoningViewModel(
         screenInfoForPrompt: String? = null,
         imageUrisForChat: List<String>? = null
     ) {
+        if (chat.history.isEmpty() && _systemMessage.value.isNotBlank()) {
+            Log.w(TAG, "performReasoning - Chat history is empty but system message exists. Recreating chat instance.")
+            chat = createChatWithSystemMessage()
+        }
         Log.d(TAG, "performReasoning() called. User input: '$userInput', Image count: ${selectedImages.size}, ScreenInfo: ${screenInfoForPrompt != null}, ImageUris: ${imageUrisForChat != null}")
         _uiState.value = PhotoReasoningUiState.Loading
         Log.d(TAG, "Setting _showStopNotificationFlow to true")
@@ -213,13 +229,13 @@ class PhotoReasoningViewModel(
         screenInfoForPrompt: String? = null,
         imageUrisForChat: List<String>? = null
     ) {
-        if (!_isInitialized.value) {
-            viewModelScope.launch {
-                initializeViewModel()
-                performReasoning(userInput, selectedImages, screenInfoForPrompt, imageUrisForChat)
-            }
+        val context = MainActivity.getInstance()?.applicationContext
+        if (context == null) {
+            Log.e(TAG, "Context not available, cannot proceed with reasoning")
+            _uiState.value = PhotoReasoningUiState.Error("Application not ready")
             return
         }
+        ensureInitialized(context)
         performReasoning(userInput, selectedImages, screenInfoForPrompt, imageUrisForChat)
     }
 
@@ -275,6 +291,9 @@ class PhotoReasoningViewModel(
      * @param retryCount The current retry count
      */
     private suspend fun sendMessageWithRetry(inputContent: Content, retryCount: Int) {
+        Log.d(TAG, "sendMessageWithRetry - Current chat history size: ${chat.history.size}")
+        Log.d(TAG, "sendMessageWithRetry - System message: '${_systemMessage.value}'")
+        Log.d(TAG, "sendMessageWithRetry - Is initialized: ${_isInitialized.value}")
         if (currentReasoningJob?.isActive != true || stopExecutionFlag.get()) {
             if (stopExecutionFlag.get()) {
                 // User initiated stop, onStopClicked will handle UI and message
@@ -584,9 +603,7 @@ class PhotoReasoningViewModel(
                     )
                     
                     // Create a new chat instance with the new model
-                    chat = generativeModel.startChat(
-                        history = emptyList()
-                    )
+                    chat = createChatWithSystemMessage()
                     
                     // Retry the request with the new API key
                     if (currentReasoningJob?.isActive != true || stopExecutionFlag.get()) return // Check for cancellation
@@ -734,12 +751,17 @@ class PhotoReasoningViewModel(
     /**
      * Load the system message from SharedPreferences
      */
-    fun loadSystemMessage(context: Context) {
+    fun loadSystemMessage(context: Context?) {
+        if (context == null) {
+            Log.w(TAG, "Cannot load system message: context is null")
+            return
+        }
         val message = SystemMessagePreferences.loadSystemMessage(context)
         _systemMessage.value = message
         
         // Also load chat history
         loadChatHistory(context) // This line calls rebuildChatHistory internally
+        chat = createChatWithSystemMessage(context)
 
         _isInitialized.value = true // Add this line
     }
