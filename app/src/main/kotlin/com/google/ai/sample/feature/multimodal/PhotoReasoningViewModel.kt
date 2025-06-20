@@ -2,6 +2,9 @@ package com.google.ai.sample.feature.multimodal
 
 import android.content.Context
 import android.graphics.Bitmap
+import android.content.BroadcastReceiver
+import android.content.Intent
+import android.content.IntentFilter
 import android.graphics.drawable.BitmapDrawable
 import android.net.Uri
 import android.util.Log
@@ -12,12 +15,14 @@ import coil.ImageLoader
 import coil.request.ImageRequest
 import coil.request.SuccessResult
 import coil.size.Precision
+import com.google.ai.client.generativeai.Chat
 import com.google.ai.client.generativeai.GenerativeModel
 import com.google.ai.client.generativeai.type.content
 import com.google.ai.client.generativeai.type.Content
 import com.google.ai.client.generativeai.type.GenerationConfig
 import com.google.ai.sample.ApiKeyManager
 import com.google.ai.sample.MainActivity
+import com.google.ai.sample.ScreenCaptureService
 import com.google.ai.sample.PhotoReasoningApplication
 import com.google.ai.sample.ScreenOperatorAccessibilityService
 import com.google.ai.sample.util.ChatHistoryPreferences
@@ -28,6 +33,8 @@ import com.google.ai.sample.util.SystemMessageEntryPreferences // Added import
 import com.google.ai.sample.util.SystemMessageEntry // Added import
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.serialization.encodeToString
+import kotlinx.serialization.json.Json
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -104,13 +111,85 @@ class PhotoReasoningViewModel(
     private var commandProcessingJob: Job? = null
     private val stopExecutionFlag = AtomicBoolean(false)
 
-    fun reason(
+    private val aiResultReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            if (intent?.action == ScreenCaptureService.ACTION_AI_CALL_RESULT) {
+                _showStopNotificationFlow.value = false // AI call finished one way or another
+                val responseText = intent.getStringExtra(ScreenCaptureService.EXTRA_AI_RESPONSE_TEXT)
+                val errorMessage = intent.getStringExtra(ScreenCaptureService.EXTRA_AI_ERROR_MESSAGE)
+
+                if (responseText != null) {
+                    Log.d(TAG, "AI Call Success via Broadcast: $responseText")
+                    _uiState.value = PhotoReasoningUiState.Success(responseText)
+                    updateAiMessage(responseText) // Existing method to update chat history
+                    processCommands(responseText) // Existing method
+                    saveChatHistory(MainActivity.getInstance()?.applicationContext)
+                } else if (errorMessage != null) {
+                    Log.e(TAG, "AI Call Error via Broadcast: $errorMessage")
+                    _uiState.value = PhotoReasoningUiState.Error(errorMessage)
+                    _commandExecutionStatus.value = "Error during AI generation: $errorMessage"
+                    _chatState.replaceLastPendingMessage()
+                    _chatState.addMessage(
+                        PhotoReasoningMessage(
+                            text = errorMessage,
+                            participant = PhotoParticipant.ERROR
+                        )
+                    )
+                    _chatMessagesFlow.value = chatMessages
+                    saveChatHistory(MainActivity.getInstance()?.applicationContext)
+                }
+                // Reset pending AI message if any (assuming updateAiMessage or error handling does this)
+            }
+        }
+    }
+
+    init {
+        // ... other init logic if any ...
+        val filter = IntentFilter(ScreenCaptureService.ACTION_AI_CALL_RESULT)
+        // Ensure context is available for registration; use applicationContext for broader lifecycle
+        MainActivity.getInstance()?.applicationContext?.registerReceiver(aiResultReceiver, filter)
+        Log.d(TAG, "AIResultReceiver registered.")
+    }
+
+    override fun onCleared() {
+        super.onCleared()
+        MainActivity.getInstance()?.applicationContext?.unregisterReceiver(aiResultReceiver)
+        Log.d(TAG, "AIResultReceiver unregistered.")
+        // ... other onCleared logic ...
+    }
+
+    private fun createChatWithSystemMessage(context: Context? = null): Chat {
+        val ctx = context ?: MainActivity.getInstance()?.applicationContext
+        val history = mutableListOf<Content>()
+        if (_systemMessage.value.isNotBlank()) {
+            history.add(content(role = "user") { text(_systemMessage.value) })
+        }
+        ctx?.let {
+            val formattedDbEntries = formatDatabaseEntriesAsText(it)
+            if (formattedDbEntries.isNotBlank()) {
+                history.add(content(role = "user") { text(formattedDbEntries) })
+            }
+        }
+        return generativeModel.startChat(history = history)
+    }
+
+    private fun ensureInitialized(context: Context?) {
+        if (!_isInitialized.value && context != null) {
+            loadSystemMessage(context)
+        }
+    }
+
+    private fun performReasoning(
         userInput: String,
         selectedImages: List<Bitmap>,
         screenInfoForPrompt: String? = null,
         imageUrisForChat: List<String>? = null
     ) {
-        Log.d(TAG, "reason() called. User input: '$userInput', Image count: ${selectedImages.size}, ScreenInfo: ${screenInfoForPrompt != null}, ImageUris: ${imageUrisForChat != null}")
+        if (chat.history.isEmpty() && _systemMessage.value.isNotBlank()) {
+            Log.w(TAG, "performReasoning - Chat history is empty but system message exists. Recreating chat instance.")
+            chat = createChatWithSystemMessage()
+        }
+        Log.d(TAG, "performReasoning() called. User input: '$userInput', Image count: ${selectedImages.size}, ScreenInfo: ${screenInfoForPrompt != null}, ImageUris: ${imageUrisForChat != null}")
         _uiState.value = PhotoReasoningUiState.Loading
         Log.d(TAG, "Setting _showStopNotificationFlow to true")
         _showStopNotificationFlow.value = true
@@ -197,6 +276,22 @@ class PhotoReasoningViewModel(
         }
     }
 
+    fun reason(
+        userInput: String,
+        selectedImages: List<Bitmap>,
+        screenInfoForPrompt: String? = null,
+        imageUrisForChat: List<String>? = null
+    ) {
+        val context = MainActivity.getInstance()?.applicationContext
+        if (context == null) {
+            Log.e(TAG, "Context not available, cannot proceed with reasoning")
+            _uiState.value = PhotoReasoningUiState.Error("Application not ready")
+            return
+        }
+        ensureInitialized(context)
+        performReasoning(userInput, selectedImages, screenInfoForPrompt, imageUrisForChat)
+    }
+
     fun onStopClicked() {
         _showStopNotificationFlow.value = false // Hide notification immediately on stop
         stopExecutionFlag.set(true)
@@ -248,412 +343,56 @@ class PhotoReasoningViewModel(
      * @param inputContent The content to send
      * @param retryCount The current retry count
      */
+    // This method now delegates the AI call to ScreenCaptureService
+    // to ensure it runs with foreground priority and avoids background network restrictions.
     private suspend fun sendMessageWithRetry(inputContent: Content, retryCount: Int) {
-        if (currentReasoningJob?.isActive != true || stopExecutionFlag.get()) {
-            if (stopExecutionFlag.get()) {
-                // User initiated stop, onStopClicked will handle UI and message
-                return // _showStopNotificationFlow is already false from onStopClicked
-            } else {
-                // Cancellation not by user stop button
-                _uiState.value = PhotoReasoningUiState.Error("Operation cancelled unexpectedly before sending.")
-                updateAiMessage("Operation cancelled unexpectedly.")
-                _showStopNotificationFlow.value = false
-                return
-            }
+        Log.d(TAG, "sendMessageWithRetry: Delegating AI call to ScreenCaptureService.")
+
+        val context = MainActivity.getInstance()?.applicationContext
+        if (context == null) {
+            Log.e(TAG, "sendMessageWithRetry: Context is null, cannot delegate AI call.")
+            _uiState.value = PhotoReasoningUiState.Error("Application context not available for AI call.")
+            _showStopNotificationFlow.value = false
+            return
         }
-        var shouldProceed = true // Flag to control further processing
 
         try {
-            // Send the message to the chat to maintain context
-            val response = chat.sendMessage(inputContent)
-            if (currentReasoningJob?.isActive != true || stopExecutionFlag.get()) {
-                if (stopExecutionFlag.get()) {
-                    // User initiated stop, onStopClicked will handle UI and message
-                    return // _showStopNotificationFlow is already false from onStopClicked
-                } else {
-                    // Cancellation not by user stop button
-                    _uiState.value = PhotoReasoningUiState.Error("Operation cancelled unexpectedly after sending.")
-                    updateAiMessage("Operation cancelled unexpectedly.")
-                    _showStopNotificationFlow.value = false
-                    return
+            // Serialize Content and History.
+            // This assumes Content and List<Content> are @Serializable or have custom serializers.
+            // Add @file:UseSerializers(ContentSerializer::class, PartSerializer::class etc.) if needed at top of file
+            // Or create DTOs. For this subtask, we'll assume direct serialization is possible.
+            val inputContentJson = Json.encodeToString(inputContent)
+            val chatHistoryJson = Json.encodeToString(chat.history) // chat.history is List<Content>
+
+            val serviceIntent = Intent(context, ScreenCaptureService::class.java).apply {
+                action = ScreenCaptureService.ACTION_EXECUTE_AI_CALL
+                putExtra(ScreenCaptureService.EXTRA_AI_INPUT_CONTENT_JSON, inputContentJson)
+                putExtra(ScreenCaptureService.EXTRA_AI_CHAT_HISTORY_JSON, chatHistoryJson)
+                putExtra(ScreenCaptureService.EXTRA_AI_MODEL_NAME, generativeModel.modelName) // Pass model name
+                apiKeyManager?.getCurrentApiKey()?.let { apiKey -> // Pass current API key
+                    putExtra(ScreenCaptureService.EXTRA_AI_API_KEY, apiKey)
                 }
             }
+            context.startService(serviceIntent)
+            Log.d(TAG, "sendMessageWithRetry: Sent intent to ScreenCaptureService to execute AI call.")
+            // The UI state (_uiState.value = PhotoReasoningUiState.Loading) and
+            // _showStopNotificationFlow.value = true should have been set by the calling method (performReasoning)
+            // The receiver will handle setting them to false or success/error state.
 
-            var outputContent = ""
-
-            // Process the response
-            response.text?.let { modelResponse ->
-                outputContent = modelResponse
-
-                if (currentReasoningJob?.isActive != true || stopExecutionFlag.get()) {
-                    if (stopExecutionFlag.get()) {
-                        // User initiated stop, onStopClicked will handle UI and message
-                        shouldProceed = false // Signal to skip further processing
-                        // _showStopNotificationFlow handled by onStopClicked or subsequent checks if shouldProceed is false
-                    } else {
-                        // Cancellation not by user stop button
-                        _uiState.value = PhotoReasoningUiState.Error("Operation cancelled unexpectedly during response processing.")
-                        updateAiMessage("Operation cancelled unexpectedly.")
-                        _showStopNotificationFlow.value = false
-                        shouldProceed = false // Signal to skip further processing
-                    }
-                }
-            }
-
-            if (shouldProceed) { // Only proceed if not cancelled in the 'let' block
-                withContext(Dispatchers.Main) {
-                    if (currentReasoningJob?.isActive != true || stopExecutionFlag.get()) { // Re-check for cancellation
-                        if (stopExecutionFlag.get()) {
-                            // User initiated stop, onStopClicked will handle UI and message
-                            // _showStopNotificationFlow handled by onStopClicked
-                        } else {
-                            _uiState.value = PhotoReasoningUiState.Error("Operation cancelled unexpectedly before UI update.")
-                            updateAiMessage("Operation cancelled unexpectedly.")
-                            _showStopNotificationFlow.value = false
-                        }
-                        // No return@withContext, logic will naturally skip due to outer 'if (shouldProceed)' and this check
-                        // or if shouldProceed was set to false earlier.
-                    } else {
-                        _uiState.value = PhotoReasoningUiState.Success(outputContent)
-                        _showStopNotificationFlow.value = false // Operation successful
-
-                        // Update the AI message in chat history
-                        updateAiMessage(outputContent)
-
-                        // Parse and execute commands from the response
-                        // Ensure modelResponse is accessible or passed correctly if needed here
-                        // Assuming outputContent is what's needed for processCommands if modelResponse was scoped to 'let'
-                        response.text?.let { modelResponse -> // Re-access modelResponse safely
-                            processCommands(modelResponse)
-                        }
-                    }
-                }
-            } else {
-                // If shouldProceed is false, and it wasn't due to stopExecutionFlag, ensure notification is cancelled.
-                // If stopExecutionFlag was true, onStopClicked already handled it.
-                if (!stopExecutionFlag.get()) {
-                    _showStopNotificationFlow.value = false
-                }
-            }
-
-
-            // Save chat history after successful response
-            // Ensure this runs only if processing was successful and not cancelled
-            if (shouldProceed && currentReasoningJob?.isActive == true && !stopExecutionFlag.get()) {
-                withContext(Dispatchers.Main) {
-                    // Ensure we are still active before saving
-                    if (currentReasoningJob?.isActive == true && !stopExecutionFlag.get()) {
-                        saveChatHistory(MainActivity.getInstance()?.applicationContext)
-                        // _showStopNotificationFlow already set to false if successful
-                    }
-                }
-            }
         } catch (e: Exception) {
-            if (stopExecutionFlag.get()) {
-                // If user already stopped, just log the error and return.
-                // Do not update UI or send chat messages as onStopClicked handles this.
-                Log.w(TAG, "Exception caught after stop flag was set: ${e.message}", e)
-                // _showStopNotificationFlow is already false from onStopClicked
-                return
-            }
-            // If the stop flag is not set, but the job is inactive (cancelled by other means)
-            if (currentReasoningJob?.isActive != true) {
-                _uiState.value = PhotoReasoningUiState.Error("Operation cancelled and then an error occurred.") // Or a more fitting message
-                updateAiMessage("Operation cancelled, error during cleanup: ${e.message}")
-                Log.e(TAG, "Error generating content after job was cancelled: ${e.message}", e)
-                _showStopNotificationFlow.value = false
-                return
-            }
-
-            // If stopExecutionFlag is false AND currentReasoningJob is active, proceed with normal error handling.
-            Log.e(TAG, "Error generating content: ${e.message}", e)
-
-            // Check specifically for quota exceeded errors first
-            if (isQuotaExceededError(e) && apiKeyManager != null) {
-                // The check currentReasoningJob?.isActive != true is still relevant if the job gets cancelled
-                // by other means after the top checks in this catch block.
-                // stopExecutionFlag.get() is less likely to be true here due to the top check, but kept for defense.
-                if (currentReasoningJob?.isActive != true || stopExecutionFlag.get()){
-                     if (!stopExecutionFlag.get()) _showStopNotificationFlow.value = false
-                     return
-                }
-                handleQuotaExceededError(e, inputContent, retryCount) // This might retry or be terminal
-                // If handleQuotaExceededError doesn't lead to a retry (i.e., it's terminal), we need to set flow to false.
-                // This logic is tricky as handleQuotaExceededError has its own returns.
-                // For now, assume if it returns here, it might retry. If it's terminal, it sets UI state and should set flow.
-                // This will be refined by inspecting handleQuotaExceededError.
-                // For now, if it's truly terminal and doesn't retry, the general error path below will catch it.
-                // Let's assume retries handle the flow, and terminal errors are handled below or within the handler.
-                return // if handleQuotaExceededError is not terminal and retries, it will reset the flow value at reason() start
-            }
-
-            // Check for other 503 errors
-            if (is503Error(e) && apiKeyManager != null) {
-                if (currentReasoningJob?.isActive != true || stopExecutionFlag.get()){
-                    if (!stopExecutionFlag.get()) _showStopNotificationFlow.value = false
-                    return
-                }
-                handle503Error(e, inputContent, retryCount) // Similar to above, assumes retries handle flow
-                return
-            }
-
-            // If we get here, it's not a 503 error or quota exceeded error that led to a retry path
-            // The stopExecutionFlag.get() check here is mostly redundant due to the top check,
-            // but currentReasoningJob?.isActive is still a valid check.
-            if (currentReasoningJob?.isActive == true && !stopExecutionFlag.get()) {
-                withContext(Dispatchers.Main) {
-                     if (currentReasoningJob?.isActive != true || stopExecutionFlag.get()) {
-                        if (!stopExecutionFlag.get()) {
-                            _showStopNotificationFlow.value = false
-                        }
-                        // If cancelled (possibly between the outer check and here, or due to job inactivity)
-                        // Potentially log or update UI to reflect this specific state if desired.
-                        // For now, this means the error e won't be set as the primary UI state.
-                     } else {
-                        _uiState.value = PhotoReasoningUiState.Error(e.localizedMessage ?: "Unknown error")
-                        _commandExecutionStatus.value = "Error during generation: ${e.localizedMessage}"
-                        _showStopNotificationFlow.value = false // Terminal error
-
-                        // Update chat with error message
-                        _chatState.replaceLastPendingMessage()
-                        _chatState.addMessage(
-                            PhotoReasoningMessage(
-                                text = e.localizedMessage ?: "Unknown error",
-                                participant = PhotoParticipant.ERROR
-                            )
-                        )
-                        _chatMessagesFlow.value = chatMessages
-
-                        // Save chat history even after error
-                        saveChatHistory(MainActivity.getInstance()?.applicationContext)
-                    }
-                }
-            } else { // This 'else' covers cases where job became inactive or stop flag was set concurrently
-                 if (!stopExecutionFlag.get()) { // If not stopped by user, then it's a cancellation
-                    _uiState.value = PhotoReasoningUiState.Error("Operation error processing or cancelled.")
-                    updateAiMessage("Operation error processing or cancelled.")
-                    _showStopNotificationFlow.value = false
-                 }
-                 // If stopExecutionFlag.get() is true, onStopClicked handles the notification flow.
-            }
-        }
-    }
-
-    /**
-     * Check if an exception represents a quota exceeded error
-     * 
-     * @param e The exception to check
-     * @return True if the exception represents a quota exceeded error, false otherwise
-     */
-    private fun isQuotaExceededError(e: Exception): Boolean {
-        // Check for quota exceeded error in the exception message
-        val message = e.message?.lowercase() ?: ""
-        val stackTrace = e.stackTraceToString().lowercase()
-        
-        // Check for quota exceeded patterns in both message and stack trace
-        return message.contains("exceeded your current quota") || 
-               message.contains("quota exceeded") ||
-               message.contains("rate limit") ||
-               stackTrace.contains("exceeded your current quota") ||
-               stackTrace.contains("quota exceeded") ||
-               stackTrace.contains("rate limit")
-    }
-    
-    /**
-     * Check if an exception represents a 503 Service Unavailable error
-     * 
-     * @param e The exception to check
-     * @return True if the exception represents a 503 error, false otherwise
-     */
-    private fun is503Error(e: Exception): Boolean {
-        // Check for HTTP 503 error in the exception message
-        val message = e.message?.lowercase() ?: ""
-        
-        // First check if it's a quota exceeded error, which should be handled separately
-        if (isQuotaExceededError(e)) {
-            return false
-        }
-        
-        // Check for common 503 error patterns
-        return message.contains("503") || 
-               message.contains("service unavailable") || 
-               message.contains("server unavailable") ||
-               message.contains("server error") ||
-               (e is IOException && message.contains("server"))
-    }
-    
-    /**
-     * Handle quota exceeded errors specifically
-     */
-    private suspend fun handleQuotaExceededError(e: Exception, inputContent: Content, retryCount: Int) {
-        if (currentReasoningJob?.isActive != true || stopExecutionFlag.get()) return // Check for cancellation
-        // Mark the current API key as failed
-        val currentKey = MainActivity.getInstance()?.getCurrentApiKey()
-        if (currentKey != null && apiKeyManager != null) {
-            apiKeyManager.markKeyAsFailed(currentKey)
-            
-            // Log the specific quota exceeded error
-            Log.e(TAG, "Quota exceeded for API key: ${currentKey.take(5)}..., error: ${e.message}")
-            
-            // Check if we have only one key or if all keys are failed
-            val keyCount = apiKeyManager.getKeyCount()
-            val allKeysFailed = apiKeyManager.areAllKeysFailed()
-            
-            if (keyCount <= 1 || (allKeysFailed && retryCount >= MAX_RETRY_ATTEMPTS)) {
-                // Only one key available or all keys have failed after multiple attempts
-                withContext(Dispatchers.Main) {
-                    _uiState.value = PhotoReasoningUiState.Error(
-                        "API quota exceeded. Please wait or add more API keys."
-                    )
-                    _commandExecutionStatus.value = "All API keys have exceeded their quota. Please wait or add more API keys."
-                    
-                    // Update chat with error message
-                    _chatState.replaceLastPendingMessage()
-                    _chatState.addMessage(
-                        PhotoReasoningMessage(
-                            text = "API quota exceeded. Please wait or add more API keys.",
-                            participant = PhotoParticipant.ERROR
-                        )
-                    )
-                    _chatMessagesFlow.value = chatMessages
-                    
-                    // Reset failed keys to allow retry after waiting
-                    apiKeyManager.resetFailedKeys()
-                    
-                    // Show toast
-                    MainActivity.getInstance()?.updateStatusMessage(
-                        "All API keys have exceeded their quota. Please wait or add more API keys.",
-                        true
-                    )
-                    
-                    // Save chat history even after error
-                    saveChatHistory(MainActivity.getInstance()?.applicationContext)
-                }
-            } else if (retryCount < MAX_RETRY_ATTEMPTS) {
-                // Try to switch to the next available key
-                val nextKey = apiKeyManager.switchToNextAvailableKey()
-                if (nextKey != null) {
-                    withContext(Dispatchers.Main) {
-                        _commandExecutionStatus.value = "API quota exceeded. Switch to next key..."
-                        
-                        // Show toast
-                        MainActivity.getInstance()?.updateStatusMessage(
-                            "API quota exceeded. Switch to next key...",
-                            false
-                        )
-                    }
-                    
-                    // Create a new GenerativeModel with the new API key
-                    // Get the current model name and generation config if available
-                    val modelName = generativeModel.modelName
-                    val generationConfig = generativeModel.generationConfig
-                    val safetySettings = generativeModel.safetySettings
-                    
-                    // Create a new model with the same settings but new API key
-                    generativeModel = GenerativeModel(
-                        modelName = modelName,
-                        apiKey = nextKey,
-                        generationConfig = generationConfig,
-                        safetySettings = safetySettings
-                    )
-                    
-                    // Create a new chat instance with the new model
-                    chat = generativeModel.startChat(
-                        history = emptyList()
-                    )
-                    
-                    // Retry the request with the new API key
-                    if (currentReasoningJob?.isActive != true || stopExecutionFlag.get()) return // Check for cancellation
-                    sendMessageWithRetry(inputContent, retryCount + 1)
-                    return
-                }
-            }
-        }
-    }
-
-    /**
-     * Handle 503 errors (excluding quota exceeded errors)
-     */
-    private suspend fun handle503Error(e: Exception, inputContent: Content, retryCount: Int) {
-        if (currentReasoningJob?.isActive != true || stopExecutionFlag.get()) return // Check for cancellation
-        // Mark the current API key as failed
-        val currentKey = MainActivity.getInstance()?.getCurrentApiKey()
-        if (currentKey != null && apiKeyManager != null) {
-            apiKeyManager.markKeyAsFailed(currentKey)
-            
-            // Check if we have only one key or if all keys are failed
-            val keyCount = apiKeyManager.getKeyCount()
-            val allKeysFailed = apiKeyManager.areAllKeysFailed()
-            
-            if (keyCount <= 1 || (allKeysFailed && retryCount >= MAX_RETRY_ATTEMPTS)) {
-                // Only one key available or all keys have failed after multiple attempts
-                withContext(Dispatchers.Main) {
-                    _uiState.value = PhotoReasoningUiState.Error(
-                        "Server overloaded (503). Please wait 45 seconds or add more API keys."
-                    )
-                    _commandExecutionStatus.value = "All API keys exhausted. Please wait 45 seconds or add more API keys."
-                    
-                    // Update chat with error message
-                    _chatState.replaceLastPendingMessage()
-                    _chatState.addMessage(
-                        PhotoReasoningMessage(
-                            text = "Server overloaded (503). Please wait 45 seconds or add more API keys.",
-                            participant = PhotoParticipant.ERROR
-                        )
-                    )
-                    _chatMessagesFlow.value = chatMessages
-                    
-                    // Reset failed keys to allow retry after waiting
-                    apiKeyManager.resetFailedKeys()
-                    
-                    // Show toast
-                    MainActivity.getInstance()?.updateStatusMessage(
-                        "All API keys exhausted. Please wait 45 seconds or add more API keys.",
-                        true
-                    )
-                    
-                    // Save chat history even after error
-                    saveChatHistory(MainActivity.getInstance()?.applicationContext)
-                }
-            } else if (retryCount < MAX_RETRY_ATTEMPTS) {
-                // Try to switch to the next available key
-                val nextKey = apiKeyManager.switchToNextAvailableKey()
-                if (nextKey != null) {
-                    withContext(Dispatchers.Main) {
-                        _commandExecutionStatus.value = "API key exhausted. Switch to next key..."
-                        
-                        // Show toast
-                        MainActivity.getInstance()?.updateStatusMessage(
-                            "API key exhausted (503). Switch to next key...",
-                            false
-                        )
-                    }
-                    
-                    // Create a new GenerativeModel with the new API key
-                    // Get the current model name and generation config if available
-                    val modelName = generativeModel.modelName
-                    val generationConfig = generativeModel.generationConfig
-                    val safetySettings = generativeModel.safetySettings
-                    
-                    // Create a new model with the same settings but new API key
-                    generativeModel = GenerativeModel(
-                        modelName = modelName,
-                        apiKey = nextKey,
-                        generationConfig = generationConfig,
-                        safetySettings = safetySettings
-                    )
-                    
-                    // Create a new chat instance with the new model
-                    chat = generativeModel.startChat(
-                        history = emptyList()
-                    )
-                    
-                    // Retry the request with the new API key
-                    if (currentReasoningJob?.isActive != true || stopExecutionFlag.get()) return // Check for cancellation
-                    sendMessageWithRetry(inputContent, retryCount + 1)
-                    return
-                }
-            }
+            Log.e(TAG, "sendMessageWithRetry: Error serializing or starting service for AI call.", e)
+            _uiState.value = PhotoReasoningUiState.Error("Error preparing AI call: ${e.localizedMessage}")
+            _showStopNotificationFlow.value = false
+            // Also update chat with this local error
+            _chatState.replaceLastPendingMessage()
+            _chatState.addMessage(
+                PhotoReasoningMessage(
+                    text = "Error preparing AI call: ${e.localizedMessage}",
+                    participant = PhotoParticipant.ERROR
+                )
+            )
+            _chatMessagesFlow.value = chatMessages
+            saveChatHistory(context)
         }
     }
 
@@ -708,15 +447,23 @@ class PhotoReasoningViewModel(
     /**
      * Load the system message from SharedPreferences
      */
-    fun loadSystemMessage(context: Context) {
+    fun loadSystemMessage(context: Context?) {
+        if (context == null) {
+            Log.w(TAG, "Cannot load system message: context is null")
+            return
+        }
         val message = SystemMessagePreferences.loadSystemMessage(context)
         _systemMessage.value = message
         
         // Also load chat history
         loadChatHistory(context) // This line calls rebuildChatHistory internally
+        chat = createChatWithSystemMessage(context)
 
         _isInitialized.value = true // Add this line
     }
+
+    // Removed isQuotaExceededError, is503Error, handleQuotaExceededError, and handle503Error methods
+    // as this logic is now delegated to the ScreenCaptureService.
 
     /**
      * Helper function to format database entries as text.

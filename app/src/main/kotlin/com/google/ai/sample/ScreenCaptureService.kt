@@ -25,6 +25,15 @@ import android.util.DisplayMetrics
 import android.util.Log
 import android.view.WindowManager
 import android.widget.Toast
+import com.google.ai.client.generativeai.GenerativeModel
+import com.google.ai.client.generativeai.type.Content
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.launch
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.decodeFromString
 import androidx.core.app.NotificationCompat
 import java.io.File
 import java.io.FileOutputStream
@@ -37,12 +46,26 @@ class ScreenCaptureService : Service() {
         private const val TAG = "ScreenCaptureService"
         private const val CHANNEL_ID = "ScreenCaptureChannel"
         private const val NOTIFICATION_ID = 2001
+        private const val NOTIFICATION_ID_AI = NOTIFICATION_ID + 1 // Or any distinct ID
         const val ACTION_START_CAPTURE = "com.google.ai.sample.START_CAPTURE"
         const val ACTION_TAKE_SCREENSHOT = "com.google.ai.sample.TAKE_SCREENSHOT" // New action
         const val ACTION_STOP_CAPTURE = "com.google.ai.sample.STOP_CAPTURE"   // New action
         const val EXTRA_RESULT_CODE = "result_code"
         const val EXTRA_RESULT_DATA = "result_data"
         const val EXTRA_TAKE_SCREENSHOT_ON_START = "take_screenshot_on_start"
+
+        // For triggering AI call execution in the service
+        const val ACTION_EXECUTE_AI_CALL = "com.google.ai.sample.EXECUTE_AI_CALL"
+        const val EXTRA_AI_INPUT_CONTENT_JSON = "com.google.ai.sample.EXTRA_AI_INPUT_CONTENT_JSON"
+        const val EXTRA_AI_CHAT_HISTORY_JSON = "com.google.ai.sample.EXTRA_AI_CHAT_HISTORY_JSON"
+        const val EXTRA_AI_MODEL_NAME = "com.google.ai.sample.EXTRA_AI_MODEL_NAME" // For service to create model
+        const val EXTRA_AI_API_KEY = "com.google.ai.sample.EXTRA_AI_API_KEY"     // For service to create model
+
+
+        // For broadcasting AI call results from the service
+        const val ACTION_AI_CALL_RESULT = "com.google.ai.sample.AI_CALL_RESULT"
+        const val EXTRA_AI_RESPONSE_TEXT = "com.google.ai.sample.EXTRA_AI_RESPONSE_TEXT"
+        const val EXTRA_AI_ERROR_MESSAGE = "com.google.ai.sample.EXTRA_AI_ERROR_MESSAGE"
 
         private var instance: ScreenCaptureService? = null
 
@@ -54,6 +77,7 @@ class ScreenCaptureService : Service() {
     private var imageReader: ImageReader? = null
     private var isReady = false // Flag to indicate if MediaProjection is set up and active
     private val isScreenshotRequestedRef = java.util.concurrent.atomic.AtomicBoolean(false)
+    private val serviceScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
 
     // Callback for MediaProjection
     private val mediaProjectionCallback = object : MediaProjection.Callback() {
@@ -117,6 +141,96 @@ class ScreenCaptureService : Service() {
                 Log.d(TAG, "Received ACTION_STOP_CAPTURE. Cleaning up.")
                 cleanup()
             }
+            ACTION_EXECUTE_AI_CALL -> {
+                Log.d(TAG, "ACTION_EXECUTE_AI_CALL: Ensuring foreground state for AI processing.")
+                val aiNotification = createAiOperationNotification()
+                // Comment: Attempt to start foreground for the AI call.
+                // If the service is already in foreground (e.g., for screen capture), this updates the notification
+                // or is a no-op depending on exact state. The goal is to elevate priority for the network call.
+                // We will not explicitly call stopForeground() after the AI call in this handler to keep service
+                // lifecycle management simple and rely on existing cleanup/stop mechanisms.
+                // This might mean the "AI processing" notification persists if no other action stops/changes foreground state.
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                    // Using a generic type like DATA_SYNC or SPECIAL_USE if not mediaProjection related.
+                    // However, to avoid permission issues if service was started for mediaProjection,
+                    // sticking to mediaProjection type might be safer if it's already in that mode.
+                    // For simplicity and if this call path doesn't define its own service type, we rely on the OS.
+                    // Let's use a generic type if possible, but be mindful of existing foreground state.
+                    // Re-evaluating: The service is already declared with mediaProjection.
+                    // It's safer to re-assert this type or one compatible.
+                    // Given this service *can* do media projection, reusing that type is safest.
+                    startForeground(NOTIFICATION_ID_AI, aiNotification, ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION)
+                } else {
+                    startForeground(NOTIFICATION_ID_AI, aiNotification)
+                }
+
+                Log.d(TAG, "Received ACTION_EXECUTE_AI_CALL")
+                // This service, already a Foreground Service for MediaProjection,
+                // is now also responsible for executing AI calls to leverage foreground network priority.
+                val inputContentJson = intent.getStringExtra(EXTRA_AI_INPUT_CONTENT_JSON)
+                val chatHistoryJson = intent.getStringExtra(EXTRA_AI_CHAT_HISTORY_JSON)
+                val modelName = intent.getStringExtra(EXTRA_AI_MODEL_NAME)
+                val apiKey = intent.getStringExtra(EXTRA_AI_API_KEY)
+
+                if (inputContentJson == null || chatHistoryJson == null || modelName == null || apiKey == null) {
+                    Log.e(TAG, "Missing necessary data for AI call. inputContentJson: ${inputContentJson != null}, chatHistoryJson: ${chatHistoryJson != null}, modelName: ${modelName != null}, apiKey: ${apiKey != null}")
+                    // Optionally broadcast an error back immediately
+                    broadcastAiCallError("Missing parameters for AI call in service.")
+                    return START_STICKY // Or START_NOT_STICKY if this is a fatal error for this call
+                }
+
+                serviceScope.launch {
+                    var responseText: String? = null
+                    var errorMessage: String? = null
+                    try {
+                        // Deserialize chat history and input content.
+                        // Assumes Content/List<Content> are @Serializable or custom serializers are configured for Json object.
+                        val chatHistory = Json.decodeFromString<List<Content>>(chatHistoryJson)
+                        val inputContent = Json.decodeFromString<Content>(inputContentJson)
+
+                        // Create a GenerativeModel instance for this specific call.
+                        // This ensures the call uses the API key and model name provided by the ViewModel.
+                        // Consider a default GenerationConfig or make it configurable too if needed.
+                        val generativeModel = GenerativeModel(
+                            modelName = modelName,
+                            apiKey = apiKey
+                            // generationConfig = generationConfig { ... } // Optional: add default config
+                        )
+
+                        // Start a new chat session with the provided history for this call.
+                        val tempChat = generativeModel.startChat(history = chatHistory)
+                        Log.d(TAG, "Executing AI sendMessage with history size: ${chatHistory.size}")
+                        val aiResponse = tempChat.sendMessage(inputContent)
+                        responseText = aiResponse.text
+                        Log.d(TAG, "AI call successful. Response text available: ${responseText != null}")
+
+                    } catch (e: Exception) {
+                        // Catching general exceptions from model/chat operations or serialization
+                        Log.e(TAG, "Error during AI call execution in service", e)
+                        errorMessage = e.localizedMessage ?: "Unknown error during AI call in service"
+                        // More specific error handling (like API key failure leading to trying another key via ApiKeyManager)
+                        // could be added here if this service becomes responsible for ApiKeyManager interactions.
+                        // For "minimal changes", we just report the error back.
+                    }
+
+                    // Broadcast the result (success or error) back to the ViewModel.
+                    val resultIntent = Intent(ACTION_AI_CALL_RESULT).apply {
+                        `package` = applicationContext.packageName // Ensure only our app receives it
+                        if (responseText != null) {
+                            putExtra(EXTRA_AI_RESPONSE_TEXT, responseText)
+                        }
+                        if (errorMessage != null) {
+                            putExtra(EXTRA_AI_ERROR_MESSAGE, errorMessage)
+                        }
+                    }
+                    applicationContext.sendBroadcast(resultIntent)
+                    Log.d(TAG, "Broadcast sent for AI_CALL_RESULT. Error: $errorMessage, Response: ${responseText != null}")
+                }
+                // START_STICKY is appropriate if the service is also managing MediaProjection independently.
+                // If it becomes purely command-driven, START_NOT_STICKY might be considered after all commands processed.
+                // For now, keep START_STICKY consistent with existing behavior.
+                return START_STICKY
+            }
             else -> {
                 Log.w(TAG, "Unknown or null action received: ${intent?.action}.")
                 // If service is started with unknown action and not ready, stop it.
@@ -126,6 +240,25 @@ class ScreenCaptureService : Service() {
             }
         }
         return START_STICKY
+    }
+
+    private fun broadcastAiCallError(message: String) {
+        val errorIntent = Intent(ACTION_AI_CALL_RESULT).apply {
+            `package` = applicationContext.packageName
+            putExtra(EXTRA_AI_ERROR_MESSAGE, message)
+        }
+        applicationContext.sendBroadcast(errorIntent)
+        Log.d(TAG, "Broadcast error sent for AI_CALL_RESULT: $message")
+    }
+
+    private fun createAiOperationNotification(): Notification {
+        return NotificationCompat.Builder(this, CHANNEL_ID) // Reuse existing channel
+            .setContentTitle("Screen Operator")
+            .setContentText("Processing AI request...")
+            .setSmallIcon(android.R.drawable.ic_dialog_info) // Replace with a proper app icon
+            .setPriority(NotificationCompat.PRIORITY_LOW)
+            .setOngoing(false) // AI operation is not typically as long as screen capture
+            .build()
     }
 
     private fun createNotification(): Notification {
@@ -422,6 +555,7 @@ private fun takeScreenshot() {
         if (isReady || mediaProjection != null) { // Check if cleanup is actually needed
            cleanup()
         }
+        serviceScope.cancel() // Cancel all coroutines in this scope
         instance = null // Ensure instance is cleared
         super.onDestroy()
     }
