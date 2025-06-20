@@ -7,6 +7,7 @@ import android.content.Intent
 import android.content.IntentFilter
 import android.graphics.drawable.BitmapDrawable
 import android.net.Uri
+import android.os.Build
 import android.util.Log
 import android.widget.Toast
 import androidx.lifecycle.ViewModel
@@ -145,10 +146,22 @@ class PhotoReasoningViewModel(
 
     init {
         // ... other init logic if any ...
-        val filter = IntentFilter(ScreenCaptureService.ACTION_AI_CALL_RESULT)
-        // Ensure context is available for registration; use applicationContext for broader lifecycle
-        MainActivity.getInstance()?.applicationContext?.registerReceiver(aiResultReceiver, filter)
-        Log.d(TAG, "AIResultReceiver registered.")
+        val context = MainActivity.getInstance()?.applicationContext
+        if (context != null) {
+            val filter = IntentFilter(ScreenCaptureService.ACTION_AI_CALL_RESULT)
+            // Comment: Specify RECEIVER_NOT_EXPORTED for Android 13 (API 33) and above
+            // to comply with security requirements for programmatically registered receivers.
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                context.registerReceiver(aiResultReceiver, filter, Context.RECEIVER_NOT_EXPORTED)
+            } else {
+                context.registerReceiver(aiResultReceiver, filter)
+            }
+            Log.d(TAG, "AIResultReceiver registered.")
+        } else {
+            Log.e(TAG, "Failed to register AIResultReceiver: applicationContext is null at init.")
+            // Consider if this state implies a critical failure for the ViewModel's operation.
+            // For now, just logging.
+        }
     }
 
     override fun onCleared() {
