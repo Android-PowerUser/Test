@@ -27,6 +27,8 @@ import android.view.WindowManager
 import android.widget.Toast
 import com.google.ai.client.generativeai.GenerativeModel
 import com.google.ai.client.generativeai.type.Content
+import com.google.ai.sample.feature.multimodal.dtos.ContentDto
+import com.google.ai.sample.feature.multimodal.dtos.toSdk
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -183,10 +185,13 @@ class ScreenCaptureService : Service() {
                     var responseText: String? = null
                     var errorMessage: String? = null
                     try {
-                        // Deserialize chat history and input content.
-                        // Assumes Content/List<Content> are @Serializable or custom serializers are configured for Json object.
-                        val chatHistory = Json.decodeFromString<List<Content>>(chatHistoryJson)
-                        val inputContent = Json.decodeFromString<Content>(inputContentJson)
+                        // Deserialize JSON to DTOs.
+                        val chatHistoryDtos = Json.decodeFromString<List<ContentDto>>(chatHistoryJson)
+                        val inputContentDto = Json.decodeFromString<ContentDto>(inputContentJson)
+
+                        // Convert DTOs back to SDK types.
+                        val chatHistory = chatHistoryDtos.map { it.toSdk() } // Uses ContentDto.toSdk()
+                        val inputContent = inputContentDto.toSdk()           // Uses ContentDto.toSdk()
 
                         // Create a GenerativeModel instance for this specific call.
                         // This ensures the call uses the API key and model name provided by the ViewModel.
@@ -198,9 +203,9 @@ class ScreenCaptureService : Service() {
                         )
 
                         // Start a new chat session with the provided history for this call.
-                        val tempChat = generativeModel.startChat(history = chatHistory)
+                        val tempChat = generativeModel.startChat(history = chatHistory) // Use the mapped SDK history
                         Log.d(TAG, "Executing AI sendMessage with history size: ${chatHistory.size}")
-                        val aiResponse = tempChat.sendMessage(inputContent)
+                        val aiResponse = tempChat.sendMessage(inputContent) // Use the mapped SDK inputContent
                         responseText = aiResponse.text
                         Log.d(TAG, "AI call successful. Response text available: ${responseText != null}")
 

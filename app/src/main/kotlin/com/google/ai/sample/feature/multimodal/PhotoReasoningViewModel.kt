@@ -32,6 +32,7 @@ import com.google.ai.sample.util.CommandParser
 import com.google.ai.sample.util.SystemMessagePreferences
 import com.google.ai.sample.util.SystemMessageEntryPreferences // Added import
 import com.google.ai.sample.util.SystemMessageEntry // Added import
+import com.google.ai.sample.feature.multimodal.dtos.toDto // Added for DTO mapping
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.serialization.encodeToString
@@ -374,8 +375,11 @@ class PhotoReasoningViewModel(
             // This assumes Content and List<Content> are @Serializable or have custom serializers.
             // Add @file:UseSerializers(ContentSerializer::class, PartSerializer::class etc.) if needed at top of file
             // Or create DTOs. For this subtask, we'll assume direct serialization is possible.
-            val inputContentJson = Json.encodeToString(inputContent)
-            val chatHistoryJson = Json.encodeToString(chat.history) // chat.history is List<Content>
+            val inputContentDto = inputContent.toDto() // Use the mapper
+            val chatHistoryDtos = chat.history.map { it.toDto() } // Use the mapper for each item
+
+            val inputContentJson = Json.encodeToString(inputContentDto)
+            val chatHistoryJson = Json.encodeToString(chatHistoryDtos)
 
             val serviceIntent = Intent(context, ScreenCaptureService::class.java).apply {
                 action = ScreenCaptureService.ACTION_EXECUTE_AI_CALL
