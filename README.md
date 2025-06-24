@@ -13,7 +13,7 @@ This Android app operates the screen with commands from vision LLMs
 ### How to get it from Google Play
 <br/>
 
-Unfortunately, Google's "review" of apps takes a very long time. You can also download it from this site.
+Unfortunately, Google's "review" of apps takes a very long time. You can also download it from this site (at the bottom).
 
 For the Play Store link to work you must first join the [Google Group](https://groups.google.com/g/Screen_Operator). You can then download it regularly from the [Play Store](https://play.google.com/store/apps/details?id=io.github.android_poweruser).
 
