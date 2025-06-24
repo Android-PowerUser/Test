@@ -26,10 +26,10 @@ For the Play Store link to work you must first join the [Google Group](https://g
 
 If you in your Google account identified as under 18, you need an adult account because Google is (unreasonably) denying you the API key.
 
-Android 11-12.1 doesn't work temporary because of file permission problems with the screenshots path. This seems to mainly affect Samsung devices.
-
 ##### Help with development
 
 Current development step:
+
+The app is slower in the background than in the foreground (branch .
 
 Fix a bug that prevents some apps from being launched by Screen Operator (branch Better_text). The current workaround is to go from the home screen.
