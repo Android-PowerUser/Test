@@ -30,6 +30,6 @@ If you in your Google account identified as under 18, you need an adult account 
 
 Current development step:
 
-The app is slower in the background than in the foreground (branch Faster_background_speed).
+Fix a problem that the app is slower in the background than in the foreground (branch Faster_background_speed).
 
 Fix a bug that prevents some apps from being launched by Screen Operator (branch Better_text). The current workaround is to go from the home screen.
