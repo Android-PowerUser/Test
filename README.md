@@ -12,7 +12,7 @@ This Android app operates the screen with commands from vision LLMs
 
 # ⚠️ Google has blocked the package name for using Gemini
 
-Investigation ongoing...
+#### Investigation ongoing...
 
 
 ### Download and install
