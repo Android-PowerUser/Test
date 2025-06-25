@@ -10,6 +10,11 @@ This Android app operates the screen with commands from vision LLMs
 
 <img src="https://github.com/Android-PowerUser/Screen_Operator/blob/main/Screenshot_20250526-192615_Screen%20Operator.png" alt="" width="141"/> <img src="https://github.com/Android-PowerUser/Screen_Operator/blob/main/Screenshot_20250521-095334_Screen%20Operator.png" alt="" width="141"/>
 
+# ⚠️ Google has blocked the package name for using Gemini
+
+Investigation ongoing...
+
+
 ### Download and install
 [Screen Operator.apk](https://github.com/Android-PowerUser/Screen_Operator/releases/download/v2025.6.21/ScreenOperator.apk) 
 
