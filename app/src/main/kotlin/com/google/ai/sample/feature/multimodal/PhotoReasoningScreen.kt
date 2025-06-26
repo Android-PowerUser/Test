@@ -350,12 +350,16 @@ fun PhotoReasoningScreen(
                 Column(modifier = Modifier.padding(16.dp)) {
                     Text("Accessibility Service is not enabled", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.titleMedium)
                     Spacer(modifier = Modifier.height(8.dp))
-                    Text("The click functionality requires the Accessibility Service. Please enable it in the settings.", color = MaterialTheme.colorScheme.error)
+                    Text("In order for a vision LLM to be able to operate the screen (click, scroll) using this app, the Accessibility service authorization is required, which must be activated in the settings.", color = MaterialTheme.colorScheme.error)
                     Spacer(modifier = Modifier.height(8.dp))
                     TextButton(onClick = {
                         onEnableAccessibilityService()
                         Toast.makeText(context, "Open Accessibility Settings..." as CharSequence, Toast.LENGTH_SHORT).show()
                     }) { Text("Activate Accessibility Service") }
+                    TextButton(onClick = {
+                        val activity = context as? Activity
+                        activity?.finish()
+                    }) { Text("Don't activate and close") }
                 }
             }
         }
@@ -441,8 +445,8 @@ fun PhotoReasoningScreen(
                                     // If accessibility is ON but userQuestion is BLANK, no action is needed here as the button's enabled state and tint convey this.
                                 } else {
                                     // Accessibility is OFF
-                                    onEnableAccessibilityService()
-                                    Toast.makeText(context, "Enable the Accessibility service for Screen Operator", Toast.LENGTH_LONG).show()
+                                    // onEnableAccessibilityService()
+                                    Toast.makeText(context, "The Accessibility Service is not activated", Toast.LENGTH_LONG).show()
                                 } // Closes the else block
                             },
                             enabled = isInitialized && ((isAccessibilityServiceEnabled && userQuestion.isNotBlank()) || !isAccessibilityServiceEnabled),
